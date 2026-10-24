@@ -93,6 +93,14 @@ func (h *Handler) unseen(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) seenOne(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "badgeID")
+	if key, ok := award.ParseMonthlyID(id); ok {
+		if err := h.svc.MarkMonthlySeen(r.Context(), auth.MustUser(r.Context()).ID, key); err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if _, ok := award.ByID(id); !ok {
 		h.fail(w, r, apperr.ErrNotFound)
 		return
@@ -116,12 +124,28 @@ func (h *Handler) seenBatch(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(ctx)
 	ids := r.PostForm["badge"]
 	for _, id := range ids {
+		if key, ok := award.ParseMonthlyID(id); ok {
+			// A month the caller does not hold is as bad as an unknown badge.
+			if err := h.svc.holdsMonthly(ctx, user.ID, key); err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			continue
+		}
 		if _, ok := award.ByID(id); !ok {
 			h.fail(w, r, apperr.ErrValidation)
 			return
 		}
 	}
 	for _, id := range ids {
+		if key, ok := award.ParseMonthlyID(id); ok {
+			err := h.svc.MarkMonthlySeen(ctx, user.ID, key)
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			continue
+		}
 		if err := h.svc.MarkSeen(ctx, user.ID, id); err != nil {
 			h.fail(w, r, err)
 			return

@@ -60,6 +60,10 @@ type Cards interface {
 // Badges reads the badges a person holds, whoever asks.
 type Badges interface {
 	Earned(ctx context.Context, userID uuid.UUID) ([]awards.Earned, error)
+	// MonthlyMedals are the months met; Monthly is the challenge of the local
+	// month containing now, created on first use.
+	MonthlyMedals(ctx context.Context, userID uuid.UUID) ([]awards.MonthlyMedal, error)
+	Monthly(ctx context.Context, userID uuid.UUID, now time.Time) (awards.MonthlyChallenge, error)
 }
 
 // Shares is what this viewer may see.
@@ -75,6 +79,11 @@ type View struct {
 	// Awards are the badges held, oldest first; nil unless Shares.Awards.
 	// Another person's never include a private one.
 	Awards []awards.Earned
+	// Monthly are the monthly medals held and MonthlyChallenge the current
+	// month's challenge; both nil unless Shares.Awards, like Awards. Unlike
+	// Awards, no part of them is private.
+	Monthly          []awards.MonthlyMedal
+	MonthlyChallenge *awards.MonthlyChallenge
 }
 
 // Page is one page of a person's workouts, newest first.
@@ -159,6 +168,18 @@ func (s *Service) View(ctx context.Context, viewer users.User, handle string, no
 				v.Awards = append(v.Awards, e)
 			}
 		}
+	}
+	if shares.Awards && s.badges != nil {
+		medals, err := s.badges.MonthlyMedals(ctx, p.ID)
+		if err != nil {
+			return View{}, err
+		}
+		v.Monthly = medals
+		c, err := s.badges.Monthly(ctx, p.ID, now)
+		if err != nil {
+			return View{}, err
+		}
+		v.MonthlyChallenge = &c
 	}
 	if shares.Training {
 		n, err := s.sessions.CountCompleted(ctx, p.ID)

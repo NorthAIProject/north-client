@@ -10,6 +10,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	awardsdb "github.com/NorthAIProject/north-client/internal/awards/db"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
@@ -216,6 +217,48 @@ func (s *Service) MonthlyMedals(ctx context.Context, userID uuid.UUID) ([]Monthl
 		})
 	}
 	return out, nil
+}
+
+// UnseenMonthly is the met months not yet celebrated, oldest first.
+func (s *Service) UnseenMonthly(ctx context.Context, userID uuid.UUID) ([]MonthlyMedal, error) {
+	rows, err := s.q.ListUnseenMonthlyMedals(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("awards: unseen monthly medals: %w", err)
+	}
+	out := make([]MonthlyMedal, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, MonthlyMedal{
+			AchievementID: r.ID, Key: r.SourceKey, Metric: MonthlyMetric(r.Metric),
+			Target: int(r.Target), At: r.OccurredAt,
+		})
+	}
+	return out, nil
+}
+
+// holdsMonthly is ErrValidation unless the person holds the medal of month key.
+func (s *Service) holdsMonthly(ctx context.Context, userID uuid.UUID, key string) error {
+	if _, err := s.q.GetMonthlyMetAt(ctx, awardsdb.GetMonthlyMetAtParams{UserID: userID, SourceKey: key}); err != nil {
+		if isNoRows(err) {
+			return apperr.ErrValidation
+		}
+		return fmt.Errorf("awards: monthly held: %w", err)
+	}
+	return nil
+}
+
+// MarkMonthlySeen records that the person was shown the medal of month key. It
+// is ErrNotFound unless they hold it; a repeat is fine.
+func (s *Service) MarkMonthlySeen(ctx context.Context, userID uuid.UUID, key string) error {
+	if _, err := s.q.GetMonthlyMetAt(ctx, awardsdb.GetMonthlyMetAtParams{UserID: userID, SourceKey: key}); err != nil {
+		if isNoRows(err) {
+			return apperr.ErrNotFound
+		}
+		return fmt.Errorf("awards: monthly held: %w", err)
+	}
+	if err := s.q.MarkMonthlySeen(ctx, awardsdb.MarkMonthlySeenParams{UserID: userID, SourceKey: key}); err != nil {
+		return fmt.Errorf("awards: mark monthly seen: %w", err)
+	}
+	return nil
 }
 
 // checkMonthly records the current month as met once its target is reached.

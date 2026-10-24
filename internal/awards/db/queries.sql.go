@@ -657,6 +657,49 @@ func (q *Queries) ListRarity(ctx context.Context) ([]ListRarityRow, error) {
 	return items, nil
 }
 
+const listUnseenMonthlyMedals = `-- name: ListUnseenMonthlyMedals :many
+SELECT a.id, a.source_key, a.occurred_at, c.metric, c.target
+FROM achievements a
+JOIN monthly_challenges c ON c.user_id = a.user_id AND c.month = (a.source_key || '-01')::date
+WHERE a.user_id = $1 AND a.kind = 'monthly_challenge_met' AND a.celebrated_at IS NULL
+ORDER BY a.source_key
+`
+
+type ListUnseenMonthlyMedalsRow struct {
+	ID         uuid.UUID
+	SourceKey  string
+	OccurredAt time.Time
+	Metric     string
+	Target     int32
+}
+
+// Met months not yet celebrated, oldest first.
+func (q *Queries) ListUnseenMonthlyMedals(ctx context.Context, userID uuid.UUID) ([]ListUnseenMonthlyMedalsRow, error) {
+	rows, err := q.db.Query(ctx, listUnseenMonthlyMedals, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnseenMonthlyMedalsRow{}
+	for rows.Next() {
+		var i ListUnseenMonthlyMedalsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceKey,
+			&i.OccurredAt,
+			&i.Metric,
+			&i.Target,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkSets = `-- name: ListWorkSets :many
 SELECT id, activity_session_id, log_date, exercise_slug, exercise_name, set_number,
        weight_kg, reps, performed_at, kind, rir
@@ -826,6 +869,21 @@ type MarkBadgeSeenParams struct {
 
 func (q *Queries) MarkBadgeSeen(ctx context.Context, arg MarkBadgeSeenParams) error {
 	_, err := q.db.Exec(ctx, markBadgeSeen, arg.UserID, arg.SourceKey)
+	return err
+}
+
+const markMonthlySeen = `-- name: MarkMonthlySeen :exec
+UPDATE achievements SET celebrated_at = now()
+WHERE user_id = $1 AND kind = 'monthly_challenge_met' AND source_key = $2 AND celebrated_at IS NULL
+`
+
+type MarkMonthlySeenParams struct {
+	UserID    uuid.UUID
+	SourceKey string
+}
+
+func (q *Queries) MarkMonthlySeen(ctx context.Context, arg MarkMonthlySeenParams) error {
+	_, err := q.db.Exec(ctx, markMonthlySeen, arg.UserID, arg.SourceKey)
 	return err
 }
 

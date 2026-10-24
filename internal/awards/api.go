@@ -31,6 +31,10 @@ func (a *API) Routes(r chi.Router) {
 type AwardsView struct {
 	Earned []award.View `json:"earned"`
 	Locked []award.View `json:"locked"`
+	// MonthlyChallenge is the current local month's challenge. Earned also
+	// carries the monthly medals, with the badges, newest first. A past
+	// month's unmet challenge is never sent.
+	MonthlyChallenge *award.MonthlyChallengeView `json:"monthlyChallenge,omitempty"`
 }
 
 // UnseenView is the badges not yet celebrated on any device.
@@ -61,12 +65,26 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Your awards could not be loaded.")
 		return
 	}
-	out := AwardsView{Earned: []award.View{}, Locked: []award.View{}}
+	medals, err := a.svc.MonthlyMedals(ctx, userID)
+	if err != nil {
+		httpx.Error(w, err, "Your awards could not be loaded.")
+		return
+	}
+	// The current month only: a past month's unmet challenge has no place here.
+	challenge, err := a.svc.Monthly(ctx, userID, a.svc.now())
+	if err != nil {
+		httpx.Error(w, err, "Your awards could not be loaded.")
+		return
+	}
+	cv := ProjectMonthlyChallenge(ctx, challenge)
+	out := AwardsView{Earned: []award.View{}, Locked: []award.View{}, MonthlyChallenge: &cv}
 	held := map[string]bool{}
+	badges := make([]award.View, 0, len(earned))
 	for _, e := range earned {
 		held[e.Badge.ID] = true
-		out.Earned = append(out.Earned, projectEarned(ctx, e, rarities))
+		badges = append(badges, projectEarned(ctx, e, rarities))
 	}
+	out.Earned = MergeEarned(badges, ProjectMonthlyMedals(ctx, medals))
 	for _, b := range award.Catalog() {
 		if held[b.ID] {
 			continue
@@ -89,10 +107,17 @@ func (a *API) unseen(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Your awards could not be loaded.")
 		return
 	}
-	out := UnseenView{Awards: make([]award.View, 0, len(unseen))}
+	medals, err := a.svc.UnseenMonthly(ctx, auth.MustUser(ctx).ID)
+	if err != nil {
+		httpx.Error(w, err, "Your awards could not be loaded.")
+		return
+	}
+	out := UnseenView{Awards: make([]award.View, 0, len(unseen)+len(medals))}
 	for _, e := range unseen {
 		out.Awards = append(out.Awards, projectEarned(ctx, e, rarities))
 	}
+	// Medals go after the badges, oldest first like the rest of the list.
+	out.Awards = append(out.Awards, ProjectMonthlyMedals(ctx, medals)...)
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -103,6 +128,14 @@ func (a *API) seen(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := auth.MustUser(ctx).ID
 	id := chi.URLParam(r, "badgeID")
+	if key, ok := award.ParseMonthlyID(id); ok {
+		if err := a.svc.MarkMonthlySeen(ctx, userID, key); err != nil {
+			httpx.Error(w, err, "Not found.")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if _, ok := award.ByID(id); !ok {
 		httpx.Error(w, apperr.ErrNotFound, "Not found.")
 		return

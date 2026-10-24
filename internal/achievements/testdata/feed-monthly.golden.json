@@ -1,0 +1,23 @@
+{
+  "items": [
+    {
+      "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "userId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "displayName": "Ana",
+      "handle": "ana_runs",
+      "category": "goals",
+      "kind": "monthly_challenge_met",
+      "title": "September 2026 challenge",
+      "detail": "Logged 12 workouts in September",
+      "occurredAt": "2026-10-01T07:30:00Z",
+      "kudos": 0,
+      "kudoed": false,
+      "mine": false,
+      "monthly": {
+        "month": "2026-09",
+        "metric": "workouts",
+        "target": 12
+      }
+    }
+  ]
+}
