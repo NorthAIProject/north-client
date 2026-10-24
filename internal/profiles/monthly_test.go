@@ -2,6 +2,8 @@ package profiles_test
 
 import (
 	"context"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,4 +77,44 @@ func TestProfileNeverShowsAMissedMonth(t *testing.T) {
 	if v.MonthlyChallenge == nil || v.MonthlyChallenge.Key != "2026-11" || len(v.Monthly) != 0 {
 		t.Fatalf("view = %+v, want November's challenge and no October trace", v)
 	}
+}
+
+func TestProfilePageMonthlyCardFollowsAwardsSwitch(t *testing.T) {
+	w := newWorld(t)
+	leo, ana := person(t, w.pool, "leo-mc@n.test", "Leo"), person(t, w.pool, "ana-mc@n.test", "Ana")
+	w.handle(t, leo, "leomc")
+	do := w.pageClient(t)
+	const card = `id="monthly-challenge"`
+
+	w.share(t, leo, achievements.Sharing{Training: true, Awards: true})
+	if body := do(ana, http.MethodGet, "/app/u/leomc").Body.String(); !strings.Contains(body, card) || !strings.Contains(body, "challenge") {
+		t.Error("a follower does not see a shared monthly card")
+	}
+	if !strings.Contains(do(leo, http.MethodGet, "/app/u/leomc").Body.String(), card) {
+		t.Error("the owner does not see their card")
+	}
+
+	w.share(t, leo, achievements.Sharing{Training: true, Awards: false})
+	if strings.Contains(do(ana, http.MethodGet, "/app/u/leomc").Body.String(), card) {
+		t.Error("the card shows with the awards switch off")
+	}
+	if !strings.Contains(do(leo, http.MethodGet, "/app/u/leomc").Body.String(), card) {
+		t.Error("the owner lost their card when the switch went off")
+	}
+}
+
+func TestProfileStripCarriesMonthlyMedals(t *testing.T) {
+	w := newWorld(t)
+	leo, ana := person(t, w.pool, "leo-ms@n.test", "Leo"), person(t, w.pool, "ana-ms@n.test", "Ana")
+	w.handle(t, leo, "leoms")
+	w.meetMonth(t, leo, "2026-09")
+	body := newWorldBody(t, w, ana, "/app/u/leoms")
+	if !strings.Contains(body, ">SEP<") {
+		t.Error("the strip lacks the September coin")
+	}
+}
+
+func newWorldBody(t *testing.T, w world, as users.User, path string) string {
+	t.Helper()
+	return w.pageClient(t)(as, http.MethodGet, path).Body.String()
 }

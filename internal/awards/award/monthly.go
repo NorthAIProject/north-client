@@ -3,6 +3,7 @@ package award
 import (
 	"context"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -91,4 +92,14 @@ func MonthlyChallenge(ctx context.Context, key, metric string, target, progress 
 		Goal:         i18n.Tf(ctx, "monthly.goal."+metric, target, month),
 		ProgressText: i18n.Tf(ctx, "monthly.progress."+metric, progress, target),
 	}
+}
+
+// MonthlyCoinMonth is the month as the monthly coin prints it: short, upper
+// case and in the request's locale ("OCT", "OUT"). Empty for a bad key.
+func MonthlyCoinMonth(ctx context.Context, key string) string {
+	t := monthOf(key)
+	if t.IsZero() {
+		return ""
+	}
+	return strings.ToUpper(i18n.Date(ctx, t, "Jan"))
 }

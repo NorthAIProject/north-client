@@ -21,6 +21,8 @@ type PageData struct {
 	Self   bool
 	Earned []award.View
 	Locked []award.View
+	// Monthly is the owner's current challenge; nil for anyone else's page.
+	Monthly *award.MonthlyChallengeView
 }
 
 // Page is /app/awards and /app/u/{handle}/awards.
@@ -41,6 +43,9 @@ templ Page(d PageData) {
 					}
 				}
 			</header>
+			if d.Monthly != nil {
+				@MonthlyCard(*d.Monthly)
+			}
 			if len(d.Earned) == 0 && len(d.Locked) == 0 {
 				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "awards.page.empty.other") }</p>
 			}
@@ -66,7 +71,7 @@ templ section(title string, views []award.View, locked bool) {
 				for _, v := range views {
 					<li class="flex items-center gap-3" data-badge={ v.ID }>
 						<span class="shrink-0">
-							@medal.Coin(coin(v, 56, locked))
+							@Coin(v, 56, locked)
 						</span>
 						<span class="min-w-0">
 							<span class="block text-sm font-medium">{ v.Name }</span>
@@ -101,7 +106,7 @@ templ Strip(handle string, views []award.View) {
 				<ul class="flex flex-wrap gap-3">
 					for _, v := range views {
 						<li title={ v.Name }>
-							@medal.Coin(coin(v, 44, false))
+							@Coin(v, 44, false)
 						</li>
 					}
 				</ul>
@@ -117,7 +122,7 @@ templ Strip(handle string, views []award.View) {
 
 // SummaryCard is the owner's shelf on the insights summary: how many medals
 // of how many, the newest few and a link to the page.
-templ SummaryCard(held, total int, recent []award.View) {
+templ SummaryCard(held, total int, recent []award.View, monthly *award.MonthlyChallengeView) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "insights-awards"}) {
 		@card.Header() {
 			@card.Title() {
@@ -128,13 +133,25 @@ templ SummaryCard(held, total int, recent []award.View) {
 			}
 		}
 		@card.Content() {
+			if monthly != nil {
+				<p class="mb-3 text-sm" data-monthly-summary>
+					<span class="font-medium">{ monthly.Title }</span>
+					<span class="text-muted-foreground tabular-nums">
+						if monthly.Met {
+							· { i18n.T(ctx, "monthly.met") }
+						} else {
+							· { monthly.ProgressText }
+						}
+					</span>
+				</p>
+			}
 			if len(recent) == 0 {
 				<p class="text-muted-foreground text-sm">{ i18n.T(ctx, "awards.card.empty") }</p>
 			} else {
 				<ul class="flex flex-wrap gap-3">
 					for _, v := range recent {
 						<li title={ v.Name }>
-							@medal.Coin(coin(v, 44, false))
+							@Coin(v, 44, false)
 						</li>
 					}
 				</ul>

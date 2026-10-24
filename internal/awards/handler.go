@@ -79,7 +79,12 @@ func (h *Handler) unseen(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	if len(unseen) == 0 {
+	medals, err := h.svc.UnseenMonthly(ctx, auth.MustUser(ctx).ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if len(unseen) == 0 && len(medals) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -88,6 +93,8 @@ func (h *Handler) unseen(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	// Medals go after the badges, oldest first like the rest of the list.
+	views = append(views, ProjectMonthlyMedals(ctx, medals)...)
 	h.render(w, r, pages.Unlock(views))
 }
 
@@ -203,11 +210,25 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request, p Person) {
 				shown = append(shown, e)
 			}
 		}
-		if d.Earned, err = h.views(ctx, shown); err != nil {
+		badges, err := h.views(ctx, shown)
+		if err != nil {
 			h.fail(w, r, err)
 			return
 		}
+		medals, err := h.svc.MonthlyMedals(ctx, p.ID)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		d.Earned = MergeEarned(badges, ProjectMonthlyMedals(ctx, medals))
 		if p.Self {
+			c, err := h.svc.Monthly(ctx, p.ID, h.svc.now())
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			cv := ProjectMonthlyChallenge(ctx, c)
+			d.Monthly = &cv
 			progress, err := h.svc.Progress(ctx, p.ID)
 			if err != nil {
 				h.fail(w, r, err)
