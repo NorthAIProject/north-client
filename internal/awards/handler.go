@@ -215,20 +215,20 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request, p Person) {
 			h.fail(w, r, err)
 			return
 		}
+		// Monthly is a bonus: a failed read hides the medals and the card.
 		medals, err := h.svc.MonthlyMedals(ctx, p.ID)
 		if err != nil {
-			h.fail(w, r, err)
-			return
+			h.svc.log.Warn("awards: monthly medals skipped", "user_id", p.ID, "error", err)
+			medals = nil
 		}
 		d.Earned = MergeEarned(badges, ProjectMonthlyMedals(ctx, medals))
 		if p.Self {
-			c, err := h.svc.Monthly(ctx, p.ID, h.svc.now())
-			if err != nil {
-				h.fail(w, r, err)
-				return
+			if c, err := h.svc.Monthly(ctx, p.ID, h.svc.now()); err != nil {
+				h.svc.log.Warn("awards: monthly challenge skipped", "user_id", p.ID, "error", err)
+			} else {
+				cv := ProjectMonthlyChallenge(ctx, c)
+				d.Monthly = &cv
 			}
-			cv := ProjectMonthlyChallenge(ctx, c)
-			d.Monthly = &cv
 			progress, err := h.svc.Progress(ctx, p.ID)
 			if err != nil {
 				h.fail(w, r, err)

@@ -12,6 +12,8 @@ func (s *Service) SetClock(now func() time.Time) { s.now = now }
 // MonthlyHistory and PickMonthly expose the pure picker to the external tests.
 type MonthlyHistory = monthlyHistory
 
-func PickMonthly(h monthlyHistory, monthStart time.Time, daysLeft int) (MonthlyMetric, int) {
-	return pickMonthly(h, monthStart, daysLeft)
+func PickMonthly(h monthlyHistory, monthStart time.Time) (MonthlyMetric, int) {
+	return pickMonthly(h, monthStart)
 }
+
+func ReachableTarget(target, done, daysLeft int) int { return reachableTarget(target, done, daysLeft) }

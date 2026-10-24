@@ -65,19 +65,20 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Your awards could not be loaded.")
 		return
 	}
+	// Monthly is a bonus: if it cannot be read, the badges still go out.
 	medals, err := a.svc.MonthlyMedals(ctx, userID)
 	if err != nil {
-		httpx.Error(w, err, "Your awards could not be loaded.")
-		return
+		a.svc.log.Warn("awards: monthly medals skipped", "user_id", userID, "error", err)
+		medals = nil
 	}
+	out := AwardsView{Earned: []award.View{}, Locked: []award.View{}}
 	// The current month only: a past month's unmet challenge has no place here.
-	challenge, err := a.svc.Monthly(ctx, userID, a.svc.now())
-	if err != nil {
-		httpx.Error(w, err, "Your awards could not be loaded.")
-		return
+	if challenge, err := a.svc.Monthly(ctx, userID, a.svc.now()); err != nil {
+		a.svc.log.Warn("awards: monthly challenge skipped", "user_id", userID, "error", err)
+	} else {
+		cv := ProjectMonthlyChallenge(ctx, challenge)
+		out.MonthlyChallenge = &cv
 	}
-	cv := ProjectMonthlyChallenge(ctx, challenge)
-	out := AwardsView{Earned: []award.View{}, Locked: []award.View{}, MonthlyChallenge: &cv}
 	held := map[string]bool{}
 	badges := make([]award.View, 0, len(earned))
 	for _, e := range earned {

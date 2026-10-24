@@ -9,6 +9,7 @@ package profiles
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -173,26 +174,9 @@ func (s *Service) View(ctx context.Context, viewer users.User, handle string, no
 		}
 	}
 	if shares.Awards && s.badges != nil {
-		medals, err := s.badges.MonthlyMedals(ctx, p.ID)
-		if err != nil {
-			return View{}, err
-		}
-		v.Monthly = medals
-		// Only the owner's own visit may create the row: it fixes the target
-		// for the month, and a viewer's clock must not decide that.
-		var c awards.MonthlyChallenge
-		ok := true
-		if p.Relationship.Self {
-			c, err = s.badges.Monthly(ctx, p.ID, now)
-		} else {
-			c, ok, err = s.badges.PeekMonthly(ctx, p.ID, now)
-		}
-		if err != nil {
-			return View{}, err
-		}
-		if ok {
-			v.MonthlyChallenge = &c
-		}
+		// Monthly is a bonus on the profile: a failed read hides it rather than
+		// taking the page down.
+		s.loadMonthly(ctx, &v, p, now)
 	}
 	if shares.Training {
 		n, err := s.sessions.CountCompleted(ctx, p.ID)
@@ -280,4 +264,31 @@ func (s *Service) Workout(ctx context.Context, viewer users.User, handle string,
 		return lift.Card{}, apperr.ErrNotFound
 	}
 	return c, nil
+}
+
+// loadMonthly fills the monthly medals and challenge, or leaves both empty and
+// logs when either cannot be read. Only the owner's own visit may create the
+// challenge row: it fixes the target for the month, and a viewer's clock must
+// not decide that.
+func (s *Service) loadMonthly(ctx context.Context, v *View, p social.Profile, now time.Time) {
+	medals, err := s.badges.MonthlyMedals(ctx, p.ID)
+	if err != nil {
+		slog.WarnContext(ctx, "profile: monthly medals skipped", slog.Any("error", err))
+		return
+	}
+	var c awards.MonthlyChallenge
+	ok := true
+	if p.Relationship.Self {
+		c, err = s.badges.Monthly(ctx, p.ID, now)
+	} else {
+		c, ok, err = s.badges.PeekMonthly(ctx, p.ID, now)
+	}
+	if err != nil {
+		slog.WarnContext(ctx, "profile: monthly challenge skipped", slog.Any("error", err))
+		return
+	}
+	v.Monthly = medals
+	if ok {
+		v.MonthlyChallenge = &c
+	}
 }

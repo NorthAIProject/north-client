@@ -68,8 +68,9 @@ type monthlyHistory struct {
 // never once logged: an empty past is a fresh start, not a target of 1.
 //
 // pickMonthly chooses the metric and target for the month starting monthStart,
-// created with daysLeft days remaining (that day included). It is pure.
-func pickMonthly(h monthlyHistory, monthStart time.Time, daysLeft int) (MonthlyMetric, int) {
+// It is pure; createMonthly then lowers a days-metric target to what is still
+// reachable (see reachableTarget).
+func pickMonthly(h monthlyHistory, monthStart time.Time) (MonthlyMetric, int) {
 	cap := daysIn(monthStart) - monthlyMarginDays
 	switch {
 	case h.Months > 0 && h.Workouts >= monthlyWorkoutsAvg*h.Months:
@@ -79,14 +80,21 @@ func pickMonthly(h monthlyHistory, monthStart time.Time, daysLeft int) (MonthlyM
 		if h.HabitDays > 0 {
 			t = stretch(h.HabitDays, h.Months)
 		}
-		return MetricHabitDays, clampTarget(t, min(cap, daysLeft))
+		return MetricHabitDays, clampTarget(t, cap)
 	default:
 		t := monthlyStarterDays
 		if h.CheckinDays > 0 {
 			t = stretch(h.CheckinDays, h.Months)
 		}
-		return MetricCheckinDays, clampTarget(t, min(cap, daysLeft))
+		return MetricCheckinDays, clampTarget(t, cap)
 	}
+}
+
+// reachableTarget lowers a days-metric target to what the month can still
+// deliver: the days already logged plus the days left. It only ever lowers, and
+// it wins over any floor, so the target stays reachable and never starts met.
+func reachableTarget(target, done, daysLeft int) int {
+	return max(1, min(target, done+daysLeft))
 }
 
 // stretch is ceil(total/months × 1.15), in integers so 4.0 never rounds up
@@ -150,7 +158,30 @@ func (s *Service) Monthly(ctx context.Context, userID uuid.UUID, now time.Time) 
 	if err != nil {
 		return MonthlyChallenge{}, fmt.Errorf("awards: monthly challenge: %w", err)
 	}
-	return s.liveMonthly(ctx, userID, tz, start, row)
+	c, err := s.liveMonthly(ctx, userID, tz, start, row)
+	if err != nil {
+		return MonthlyChallenge{}, err
+	}
+	// The owner path writes the medal as soon as the card would say "met", so
+	// the card and the medal never disagree.
+	if c.MetAt == nil && c.Progress >= c.Target {
+		if err := s.recordMonthlyMet(ctx, userID, c.Key, now); err != nil {
+			return MonthlyChallenge{}, err
+		}
+		c.MetAt = &now
+	}
+	return c, nil
+}
+
+// recordMonthlyMet writes the once-only met row; a repeat is a no-op.
+func (s *Service) recordMonthlyMet(ctx context.Context, userID uuid.UUID, key string, now time.Time) error {
+	_, err := s.q.InsertMonthlyMet(ctx, awardsdb.InsertMonthlyMetParams{
+		UserID: userID, Title: i18n.Translate("en", "monthly.met"), OccurredAt: now, SourceKey: key,
+	})
+	if err != nil && !isNoRows(err) {
+		return fmt.Errorf("awards: record monthly met: %w", err)
+	}
+	return nil
 }
 
 // PeekMonthly is Monthly without the lazy create: for someone looking at another
@@ -200,7 +231,17 @@ func (s *Service) createMonthly(ctx context.Context, userID uuid.UUID, tz string
 	metric, target := pickMonthly(monthlyHistory{
 		Months: int(h.Months), Workouts: int(h.Workouts), HabitDays: int(h.HabitDays),
 		CheckinDays: int(h.CheckinDays), ActiveHabit: h.ActiveHabit,
-	}, start, daysLeft)
+	}, start)
+	if metric != MetricWorkouts {
+		// Days already logged this month count toward the target, so a row
+		// created late must not start at or past it: that would hand out the
+		// medal for work done before the challenge existed.
+		done, err := s.monthlyProgress(ctx, userID, tz, start, metric)
+		if err != nil {
+			return err
+		}
+		target = reachableTarget(target, done, daysLeft)
+	}
 	if err := s.q.CreateMonthlyChallenge(ctx, awardsdb.CreateMonthlyChallengeParams{
 		UserID: userID, Month: pgDate(start), Metric: string(metric), Target: int32(target),
 	}); err != nil {
@@ -287,20 +328,12 @@ func (s *Service) MarkMonthlySeen(ctx context.Context, userID uuid.UUID, key str
 	return nil
 }
 
-// checkMonthly records the current month as met once its target is reached.
-// It only ever looks at the month of now, so an event backdated into an earlier
-// month cannot grant that month. Best effort, like Check.
+// checkMonthly records the current month as met once its target is reached:
+// Monthly writes the medal itself, and skips the write once it exists. It only
+// ever looks at the month of now, so an event backdated into an earlier month
+// cannot grant that month. Best effort, like Check.
 func (s *Service) checkMonthly(ctx context.Context, userID uuid.UUID, now time.Time) {
-	c, err := s.Monthly(ctx, userID, now)
-	if err == nil && c.Progress >= c.Target {
-		_, err = s.q.InsertMonthlyMet(ctx, awardsdb.InsertMonthlyMetParams{
-			UserID: userID, Title: i18n.Translate("en", "monthly.met"), OccurredAt: now, SourceKey: c.Key,
-		})
-		if isNoRows(err) {
-			err = nil
-		}
-	}
-	if err != nil {
+	if _, err := s.Monthly(ctx, userID, now); err != nil {
 		s.log.Warn("could not check monthly challenge", "user_id", userID, "error", err)
 	}
 }
