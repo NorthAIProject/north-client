@@ -68,7 +68,7 @@ func MonthlyMedalName(ctx context.Context, key string) string {
 // MonthlyMedalDescription is what the month's medal was for, such as "Logged 12
 // workouts in October".
 func MonthlyMedalDescription(ctx context.Context, key, metric string, target int) string {
-	return i18n.Tf(ctx, "monthly.medal.description."+metric, target, i18n.Date(ctx, monthOf(key), "January"))
+	return i18n.Tf(ctx, one("monthly.medal.description."+metric, target), target, i18n.Date(ctx, monthOf(key), "January"))
 }
 
 // MonthlyMedal is a met month as a View: an award whose id is monthly-YYYY-MM.
@@ -89,8 +89,8 @@ func MonthlyChallenge(ctx context.Context, key, metric string, target, progress 
 	return MonthlyChallengeView{
 		Month: key, Metric: metric, Target: target, Progress: progress, Met: met,
 		Title:        i18n.Tf(ctx, "monthly.title", month),
-		Goal:         i18n.Tf(ctx, "monthly.goal."+metric, target, month),
-		ProgressText: i18n.Tf(ctx, "monthly.progress."+metric, progress, target),
+		Goal:         i18n.Tf(ctx, one("monthly.goal."+metric, target), target, month),
+		ProgressText: i18n.Tf(ctx, one("monthly.progress."+metric, target), progress, target),
 	}
 }
 
@@ -102,4 +102,13 @@ func MonthlyCoinMonth(ctx context.Context, key string) string {
 		return ""
 	}
 	return strings.ToUpper(i18n.Date(ctx, t, "Jan"))
+}
+
+// one is the key's singular form when the target is 1: "1 day", not "1 days".
+// The progress line follows the target too, so "0 of 1 day".
+func one(key string, target int) string {
+	if target == 1 {
+		return key + ".one"
+	}
+	return key
 }

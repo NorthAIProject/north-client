@@ -150,6 +150,32 @@ func (s *Service) Monthly(ctx context.Context, userID uuid.UUID, now time.Time) 
 	if err != nil {
 		return MonthlyChallenge{}, fmt.Errorf("awards: monthly challenge: %w", err)
 	}
+	return s.liveMonthly(ctx, userID, tz, start, row)
+}
+
+// PeekMonthly is Monthly without the lazy create: for someone looking at another
+// person's page, which must never write their data or fix their target. ok is
+// false when the month has no row yet.
+func (s *Service) PeekMonthly(ctx context.Context, userID uuid.UUID, now time.Time) (MonthlyChallenge, bool, error) {
+	tz, loc, err := s.location(ctx, userID)
+	if err != nil {
+		return MonthlyChallenge{}, false, err
+	}
+	start := monthStartOf(now, loc)
+	row, err := s.q.GetMonthlyChallenge(ctx, awardsdb.GetMonthlyChallengeParams{UserID: userID, Month: pgDate(start)})
+	if isNoRows(err) {
+		return MonthlyChallenge{}, false, nil
+	}
+	if err != nil {
+		return MonthlyChallenge{}, false, fmt.Errorf("awards: monthly challenge: %w", err)
+	}
+	c, err := s.liveMonthly(ctx, userID, tz, start, row)
+	return c, err == nil, err
+}
+
+// liveMonthly adds live progress and the met state to a stored row.
+func (s *Service) liveMonthly(ctx context.Context, userID uuid.UUID, tz string, start time.Time, row awardsdb.MonthlyChallenge) (MonthlyChallenge, error) {
+	var err error
 	c := MonthlyChallenge{Month: start, Key: monthKey(start), Metric: MonthlyMetric(row.Metric), Target: int(row.Target)}
 	if c.Progress, err = s.monthlyProgress(ctx, userID, tz, start, c.Metric); err != nil {
 		return MonthlyChallenge{}, err

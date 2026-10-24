@@ -64,6 +64,9 @@ type Badges interface {
 	// month containing now, created on first use.
 	MonthlyMedals(ctx context.Context, userID uuid.UUID) ([]awards.MonthlyMedal, error)
 	Monthly(ctx context.Context, userID uuid.UUID, now time.Time) (awards.MonthlyChallenge, error)
+	// PeekMonthly reads the same without creating the row; ok is false when
+	// there is none. Everyone but the owner goes through it.
+	PeekMonthly(ctx context.Context, userID uuid.UUID, now time.Time) (awards.MonthlyChallenge, bool, error)
 }
 
 // Shares is what this viewer may see.
@@ -175,11 +178,21 @@ func (s *Service) View(ctx context.Context, viewer users.User, handle string, no
 			return View{}, err
 		}
 		v.Monthly = medals
-		c, err := s.badges.Monthly(ctx, p.ID, now)
+		// Only the owner's own visit may create the row: it fixes the target
+		// for the month, and a viewer's clock must not decide that.
+		var c awards.MonthlyChallenge
+		ok := true
+		if p.Relationship.Self {
+			c, err = s.badges.Monthly(ctx, p.ID, now)
+		} else {
+			c, ok, err = s.badges.PeekMonthly(ctx, p.ID, now)
+		}
 		if err != nil {
 			return View{}, err
 		}
-		v.MonthlyChallenge = &c
+		if ok {
+			v.MonthlyChallenge = &c
+		}
 	}
 	if shares.Training {
 		n, err := s.sessions.CountCompleted(ctx, p.ID)
