@@ -68,7 +68,10 @@ type Coin struct {
 
 // Monthly is the monthly challenge coin: a gold rim, a deep face and no glyph.
 // The month label sits above centre and the target number below it, both
-// centred and set in the system font. A target of three digits or more is drawn
+// centred. FontWeight is a numeric CSS weight. FontFamily is an intent: "rounded"
+// is the system rounded face (SF Rounded on iOS, ui-rounded then system-ui on
+// web). Anchor "middle" centres each line on x = ViewBox/2. Baseline true means
+// MonthY and NumberY are text baselines. A target of NumberWideFrom or more is drawn
 // at NumberSize * NumberWideScale so it stays inside the face.
 type Monthly struct {
 	Rim  string `json:"rim"`
@@ -79,7 +82,11 @@ type Monthly struct {
 		MonthY          float64 `json:"monthY"`
 		NumberSize      float64 `json:"numberSize"`
 		NumberY         float64 `json:"numberY"`
+		NumberWideFrom  int     `json:"numberWideFrom"`
 		NumberWideScale float64 `json:"numberWideScale"`
 		FontWeight      int     `json:"fontWeight"`
+		FontFamily      string  `json:"fontFamily"`
+		Anchor          string  `json:"anchor"`
+		Baseline        bool    `json:"baseline"`
 	} `json:"text"`
 }
