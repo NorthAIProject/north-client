@@ -71,7 +71,21 @@
   }
  },
  "monthly": {
-  "rim": "#D4A017"
+  "rim": "#D4A017",
+  "fill": "#1E3A5F",
+  "text": {
+   "color": "#FFFFFF",
+   "monthSize": 13,
+   "monthY": 40,
+   "numberSize": 34,
+   "numberY": 71,
+   "numberWideFrom": 100,
+   "numberWideScale": 0.75,
+   "fontWeight": 700,
+   "fontFamily": "rounded",
+   "anchor": "middle",
+   "baseline": true
+  }
  },
  "glyphs": {
   "workouts_1": [

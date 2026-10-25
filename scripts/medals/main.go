@@ -28,6 +28,14 @@ func coin(b award.Badge, size int, locked, monthly bool) string {
 	return buf.String()
 }
 
+func monthly(p medal.MonthlyProps) string {
+	var buf bytes.Buffer
+	if err := medal.MonthlyCoin(p).Render(context.Background(), &buf); err != nil {
+		log.Fatal(err)
+	}
+	return buf.String()
+}
+
 func card(b award.Badge, size int, locked, monthly bool) string {
 	name := html.EscapeString(i18n.Translate("en", "awards.badge."+b.ID+".name"))
 	desc := html.EscapeString(i18n.Translate("en", "awards.badge."+b.ID+".desc"))
@@ -64,7 +72,20 @@ func main() {
 	for _, x := range cat[:11] {
 		b.WriteString(coin(x, 40, false, true))
 	}
-	b.WriteString("</div></body></html>")
+	b.WriteString("</div><h2>Monthly challenge coin: OCT 18, NOV 5, DEC 27 earned, one locked; 96 px then 36 px</h2>")
+	months := []medal.MonthlyProps{
+		{Month: "OCT", Target: 18}, {Month: "NOV", Target: 5}, {Month: "DEC", Target: 27}, {Month: "JAN", Target: 100, Locked: true},
+	}
+	for _, size := range []int{96, 36} {
+		b.WriteString("<div class=row>")
+		for _, m := range months {
+			m.Size = size
+			m.Label = m.Month + " " + fmt.Sprint(m.Target)
+			b.WriteString(monthly(m))
+		}
+		b.WriteString("</div>")
+	}
+	b.WriteString("</body></html>")
 	if err := os.WriteFile(out, b.Bytes(), 0o644); err != nil {
 		log.Fatal(err)
 	}

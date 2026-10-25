@@ -272,6 +272,72 @@ func (q *Queries) CountMilestones(ctx context.Context, userID uuid.UUID) (int32,
 	return column_1, err
 }
 
+const countMonthlyCheckinDays = `-- name: CountMonthlyCheckinDays :one
+SELECT count(*)::int FROM check_ins
+WHERE user_id = $1::uuid
+  AND local_date >= $2::date AND local_date < $3::date
+`
+
+type CountMonthlyCheckinDaysParams struct {
+	UserID  uuid.UUID
+	FromDay pgtype.Date
+	ToDay   pgtype.Date
+}
+
+func (q *Queries) CountMonthlyCheckinDays(ctx context.Context, arg CountMonthlyCheckinDaysParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countMonthlyCheckinDays, arg.UserID, arg.FromDay, arg.ToDay)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countMonthlyHabitDays = `-- name: CountMonthlyHabitDays :one
+SELECT count(DISTINCT local_date)::int FROM habit_completions
+WHERE user_id = $1::uuid
+  AND local_date >= $2::date AND local_date < $3::date
+`
+
+type CountMonthlyHabitDaysParams struct {
+	UserID  uuid.UUID
+	FromDay pgtype.Date
+	ToDay   pgtype.Date
+}
+
+// Local days on which any habit was ticked, in [from_day, to_day).
+func (q *Queries) CountMonthlyHabitDays(ctx context.Context, arg CountMonthlyHabitDaysParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countMonthlyHabitDays, arg.UserID, arg.FromDay, arg.ToDay)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countMonthlyWorkouts = `-- name: CountMonthlyWorkouts :one
+SELECT count(*)::int FROM activity_sessions
+WHERE user_id = $1::uuid AND status = 'completed'
+  AND (ended_at AT TIME ZONE $2::text)::date >= $3::date
+  AND (ended_at AT TIME ZONE $2::text)::date <  $4::date
+`
+
+type CountMonthlyWorkoutsParams struct {
+	UserID  uuid.UUID
+	Tz      string
+	FromDay pgtype.Date
+	ToDay   pgtype.Date
+}
+
+// Completed sessions whose end falls on a local date in [from_day, to_day).
+func (q *Queries) CountMonthlyWorkouts(ctx context.Context, arg CountMonthlyWorkoutsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countMonthlyWorkouts,
+		arg.UserID,
+		arg.Tz,
+		arg.FromDay,
+		arg.ToDay,
+	)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countProteinDays = `-- name: CountProteinDays :one
 SELECT count(*)::int FROM (
     SELECT f.log_date FROM food_logs f
@@ -359,6 +425,71 @@ func (q *Queries) CountWorkouts(ctx context.Context, userID uuid.UUID) (int32, e
 	return column_1, err
 }
 
+const createMonthlyChallenge = `-- name: CreateMonthlyChallenge :exec
+INSERT INTO monthly_challenges (user_id, month, metric, target)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id, month) DO NOTHING
+`
+
+type CreateMonthlyChallengeParams struct {
+	UserID uuid.UUID
+	Month  pgtype.Date
+	Metric string
+	Target int32
+}
+
+// First writer wins; the loser reads the winner's row, so two first views
+// racing agree on one metric and one target.
+func (q *Queries) CreateMonthlyChallenge(ctx context.Context, arg CreateMonthlyChallengeParams) error {
+	_, err := q.db.Exec(ctx, createMonthlyChallenge,
+		arg.UserID,
+		arg.Month,
+		arg.Metric,
+		arg.Target,
+	)
+	return err
+}
+
+const getMonthlyChallenge = `-- name: GetMonthlyChallenge :one
+SELECT user_id, month, metric, target, created_at FROM monthly_challenges
+WHERE user_id = $1 AND month = $2
+`
+
+type GetMonthlyChallengeParams struct {
+	UserID uuid.UUID
+	Month  pgtype.Date
+}
+
+func (q *Queries) GetMonthlyChallenge(ctx context.Context, arg GetMonthlyChallengeParams) (MonthlyChallenge, error) {
+	row := q.db.QueryRow(ctx, getMonthlyChallenge, arg.UserID, arg.Month)
+	var i MonthlyChallenge
+	err := row.Scan(
+		&i.UserID,
+		&i.Month,
+		&i.Metric,
+		&i.Target,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getMonthlyMetAt = `-- name: GetMonthlyMetAt :one
+SELECT occurred_at FROM achievements
+WHERE user_id = $1 AND kind = 'monthly_challenge_met' AND source_key = $2
+`
+
+type GetMonthlyMetAtParams struct {
+	UserID    uuid.UUID
+	SourceKey string
+}
+
+func (q *Queries) GetMonthlyMetAt(ctx context.Context, arg GetMonthlyMetAtParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, getMonthlyMetAt, arg.UserID, arg.SourceKey)
+	var occurred_at time.Time
+	err := row.Scan(&occurred_at)
+	return occurred_at, err
+}
+
 const insertBadge = `-- name: InsertBadge :one
 INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key, private)
 VALUES ($1, 'awards', 'badge_earned', $2, '', $3, $4, $5)
@@ -382,6 +513,33 @@ func (q *Queries) InsertBadge(ctx context.Context, arg InsertBadgeParams) (uuid.
 		arg.OccurredAt,
 		arg.SourceKey,
 		arg.Private,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertMonthlyMet = `-- name: InsertMonthlyMet :one
+INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key, private)
+VALUES ($1, 'awards', 'monthly_challenge_met', $2, '', $3, $4, false)
+ON CONFLICT (user_id, kind, source_key) DO NOTHING
+RETURNING id
+`
+
+type InsertMonthlyMetParams struct {
+	UserID     uuid.UUID
+	Title      string
+	OccurredAt time.Time
+	SourceKey  string
+}
+
+// Once per person and month: the unique key is the dedupe.
+func (q *Queries) InsertMonthlyMet(ctx context.Context, arg InsertMonthlyMetParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, insertMonthlyMet,
+		arg.UserID,
+		arg.Title,
+		arg.OccurredAt,
+		arg.SourceKey,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -426,6 +584,49 @@ func (q *Queries) ListBadges(ctx context.Context, userID uuid.UUID) ([]ListBadge
 	return items, nil
 }
 
+const listMonthlyMedals = `-- name: ListMonthlyMedals :many
+SELECT a.id, a.source_key, a.occurred_at, c.metric, c.target
+FROM achievements a
+JOIN monthly_challenges c ON c.user_id = a.user_id AND c.month = (a.source_key || '-01')::date
+WHERE a.user_id = $1 AND a.kind = 'monthly_challenge_met'
+ORDER BY a.source_key DESC
+`
+
+type ListMonthlyMedalsRow struct {
+	ID         uuid.UUID
+	SourceKey  string
+	OccurredAt time.Time
+	Metric     string
+	Target     int32
+}
+
+// Met months, newest first, with the challenge each one answered.
+func (q *Queries) ListMonthlyMedals(ctx context.Context, userID uuid.UUID) ([]ListMonthlyMedalsRow, error) {
+	rows, err := q.db.Query(ctx, listMonthlyMedals, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMonthlyMedalsRow{}
+	for rows.Next() {
+		var i ListMonthlyMedalsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceKey,
+			&i.OccurredAt,
+			&i.Metric,
+			&i.Target,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRarity = `-- name: ListRarity :many
 SELECT badge_id, earned, active FROM badge_rarity
 `
@@ -446,6 +647,49 @@ func (q *Queries) ListRarity(ctx context.Context) ([]ListRarityRow, error) {
 	for rows.Next() {
 		var i ListRarityRow
 		if err := rows.Scan(&i.BadgeID, &i.Earned, &i.Active); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnseenMonthlyMedals = `-- name: ListUnseenMonthlyMedals :many
+SELECT a.id, a.source_key, a.occurred_at, c.metric, c.target
+FROM achievements a
+JOIN monthly_challenges c ON c.user_id = a.user_id AND c.month = (a.source_key || '-01')::date
+WHERE a.user_id = $1 AND a.kind = 'monthly_challenge_met' AND a.celebrated_at IS NULL
+ORDER BY a.source_key
+`
+
+type ListUnseenMonthlyMedalsRow struct {
+	ID         uuid.UUID
+	SourceKey  string
+	OccurredAt time.Time
+	Metric     string
+	Target     int32
+}
+
+// Met months not yet celebrated, oldest first.
+func (q *Queries) ListUnseenMonthlyMedals(ctx context.Context, userID uuid.UUID) ([]ListUnseenMonthlyMedalsRow, error) {
+	rows, err := q.db.Query(ctx, listUnseenMonthlyMedals, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnseenMonthlyMedalsRow{}
+	for rows.Next() {
+		var i ListUnseenMonthlyMedalsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceKey,
+			&i.OccurredAt,
+			&i.Metric,
+			&i.Target,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -626,6 +870,79 @@ type MarkBadgeSeenParams struct {
 func (q *Queries) MarkBadgeSeen(ctx context.Context, arg MarkBadgeSeenParams) error {
 	_, err := q.db.Exec(ctx, markBadgeSeen, arg.UserID, arg.SourceKey)
 	return err
+}
+
+const markMonthlySeen = `-- name: MarkMonthlySeen :exec
+UPDATE achievements SET celebrated_at = now()
+WHERE user_id = $1 AND kind = 'monthly_challenge_met' AND source_key = $2 AND celebrated_at IS NULL
+`
+
+type MarkMonthlySeenParams struct {
+	UserID    uuid.UUID
+	SourceKey string
+}
+
+func (q *Queries) MarkMonthlySeen(ctx context.Context, arg MarkMonthlySeenParams) error {
+	_, err := q.db.Exec(ctx, markMonthlySeen, arg.UserID, arg.SourceKey)
+	return err
+}
+
+const monthlyHistory = `-- name: MonthlyHistory :one
+WITH u AS (
+    SELECT created_at FROM users WHERE id = $1::uuid
+), m AS (
+    SELECT g::date AS from_day, (g + interval '1 month')::date AS to_day
+    FROM generate_series($2::date - interval '3 months',
+                         $2::date - interval '1 month',
+                         interval '1 month') g
+), counted AS (
+    SELECT
+        (SELECT count(*) FROM activity_sessions a WHERE a.user_id = $1::uuid AND a.status = 'completed'
+           AND (a.ended_at AT TIME ZONE $3::text)::date >= m.from_day
+           AND (a.ended_at AT TIME ZONE $3::text)::date <  m.to_day) AS workouts,
+        (SELECT count(DISTINCT h.local_date) FROM habit_completions h WHERE h.user_id = $1::uuid
+           AND h.local_date >= m.from_day AND h.local_date < m.to_day) AS habit_days,
+        (SELECT count(*) FROM check_ins c WHERE c.user_id = $1::uuid
+           AND c.local_date >= m.from_day AND c.local_date < m.to_day) AS checkin_days
+    FROM m, u
+    WHERE (m.to_day::timestamp AT TIME ZONE $3::text) > u.created_at
+)
+SELECT
+    (SELECT count(*) FROM counted)::int AS months,
+    COALESCE((SELECT sum(workouts) FROM counted), 0)::int AS workouts,
+    COALESCE((SELECT sum(habit_days) FROM counted), 0)::int AS habit_days,
+    COALESCE((SELECT sum(checkin_days) FROM counted), 0)::int AS checkin_days,
+    EXISTS (SELECT 1 FROM habits WHERE user_id = $1::uuid AND active) AS active_habit
+`
+
+type MonthlyHistoryParams struct {
+	UserID     uuid.UUID
+	MonthStart pgtype.Date
+	Tz         string
+}
+
+type MonthlyHistoryRow struct {
+	Months      int32
+	Workouts    int32
+	HabitDays   int32
+	CheckinDays int32
+	ActiveHabit bool
+}
+
+// What the person did in the three full local months before month_start, over
+// the months the account existed in (it was created before the month ended).
+// active_habit is whether they have a habit running now.
+func (q *Queries) MonthlyHistory(ctx context.Context, arg MonthlyHistoryParams) (MonthlyHistoryRow, error) {
+	row := q.db.QueryRow(ctx, monthlyHistory, arg.UserID, arg.MonthStart, arg.Tz)
+	var i MonthlyHistoryRow
+	err := row.Scan(
+		&i.Months,
+		&i.Workouts,
+		&i.HabitDays,
+		&i.CheckinDays,
+		&i.ActiveHabit,
+	)
+	return i, err
 }
 
 const progressCadence = `-- name: ProgressCadence :one

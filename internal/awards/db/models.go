@@ -3,3 +3,18 @@
 //   sqlc v1.31.1
 
 package awardsdb
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type MonthlyChallenge struct {
+	UserID    uuid.UUID
+	Month     pgtype.Date
+	Metric    string
+	Target    int32
+	CreatedAt time.Time
+}

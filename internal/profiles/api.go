@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
@@ -54,6 +55,9 @@ type ProfileView struct {
 	// Awards are the badges shown, absent when none are or the person keeps
 	// them to themselves.
 	Awards []award.View `json:"awards,omitempty"`
+	// MonthlyChallenge is the current month's challenge, only when the person
+	// shares awards. Their monthly medals are in Awards, with the badges.
+	MonthlyChallenge *award.MonthlyChallengeView `json:"monthlyChallenge,omitempty"`
 }
 
 // WorkoutsView is a page of someone's workouts.
@@ -79,9 +83,18 @@ func projectView(ctx context.Context, v View) ProfileView {
 	if v.Recent != nil {
 		out.RecentWorkouts = projectCards(v.Recent, 2)
 	}
+	var badges []award.View
 	for _, e := range v.Awards {
 		at := e.At
-		out.Awards = append(out.Awards, e.Badge.Project(ctx, &at, nil, ""))
+		badges = append(badges, e.Badge.Project(ctx, &at, nil, ""))
+	}
+	out.Awards = badges
+	if len(v.Monthly) > 0 {
+		out.Awards = awards.MergeEarned(badges, awards.ProjectMonthlyMedals(ctx, v.Monthly))
+	}
+	if v.MonthlyChallenge != nil {
+		c := awards.ProjectMonthlyChallenge(ctx, *v.MonthlyChallenge)
+		out.MonthlyChallenge = &c
 	}
 	return out
 }

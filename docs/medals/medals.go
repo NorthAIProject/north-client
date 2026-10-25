@@ -23,14 +23,12 @@ type Area struct {
 
 // Set is the decoded file. Glyphs are lucide 24x24 paths, stroked at Stroke.
 type Set struct {
-	License string          `json:"license"`
-	Coin    Coin            `json:"coin"`
-	Stroke  float64         `json:"stroke"`
-	Areas   map[string]Area `json:"areas"`
-	Monthly struct {
-		Rim string `json:"rim"`
-	} `json:"monthly"`
-	Glyphs map[string][]string `json:"glyphs"`
+	License string              `json:"license"`
+	Coin    Coin                `json:"coin"`
+	Stroke  float64             `json:"stroke"`
+	Areas   map[string]Area     `json:"areas"`
+	Monthly Monthly             `json:"monthly"`
+	Glyphs  map[string][]string `json:"glyphs"`
 }
 
 // Load decodes the embedded file.
@@ -66,4 +64,29 @@ type Coin struct {
 		Opacity   float64 `json:"opacity"`
 		Grayscale float64 `json:"grayscale"`
 	} `json:"locked"`
+}
+
+// Monthly is the monthly challenge coin: a gold rim, a deep face and no glyph.
+// The month label sits above centre and the target number below it, both
+// centred. FontWeight is a numeric CSS weight. FontFamily is an intent: "rounded"
+// is the system rounded face (SF Rounded on iOS, ui-rounded then system-ui on
+// web). Anchor "middle" centres each line on x = ViewBox/2. Baseline true means
+// MonthY and NumberY are text baselines. A target of NumberWideFrom or more is drawn
+// at NumberSize * NumberWideScale so it stays inside the face.
+type Monthly struct {
+	Rim  string `json:"rim"`
+	Fill string `json:"fill"`
+	Text struct {
+		Color           string  `json:"color"`
+		MonthSize       float64 `json:"monthSize"`
+		MonthY          float64 `json:"monthY"`
+		NumberSize      float64 `json:"numberSize"`
+		NumberY         float64 `json:"numberY"`
+		NumberWideFrom  int     `json:"numberWideFrom"`
+		NumberWideScale float64 `json:"numberWideScale"`
+		FontWeight      int     `json:"fontWeight"`
+		FontFamily      string  `json:"fontFamily"`
+		Anchor          string  `json:"anchor"`
+		Baseline        bool    `json:"baseline"`
+	} `json:"text"`
 }

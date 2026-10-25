@@ -46,6 +46,7 @@ type pageEnv struct {
 	r     chi.Router
 	owner users.User
 	other users.User
+	api   *apiEnv
 }
 
 func newPageEnv(t *testing.T, ownerShares bool) *pageEnv {
@@ -65,7 +66,7 @@ func newPageEnv(t *testing.T, ownerShares bool) *pageEnv {
 	}
 	r := chi.NewRouter()
 	r.Route("/app", awards.NewHandler(api.svc, people).Routes)
-	return &pageEnv{t: t, svc: api.svc, r: r, owner: api.user, other: otherUser}
+	return &pageEnv{t: t, svc: api.svc, r: r, owner: api.user, other: otherUser, api: api}
 }
 
 func (e *pageEnv) do(method, path string, as users.User, form url.Values) *httptest.ResponseRecorder {

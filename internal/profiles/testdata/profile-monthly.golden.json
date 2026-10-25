@@ -1,0 +1,50 @@
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "displayName": "Ana",
+  "handle": "ana_runs",
+  "followers": 12,
+  "following": 9,
+  "relationship": {
+    "following": "accepted",
+    "followsYou": true,
+    "self": false
+  },
+  "shares": {
+    "training": false,
+    "xp": false,
+    "awards": true
+  },
+  "awards": [
+    {
+      "id": "workouts_1",
+      "area": "training",
+      "name": "First Workout",
+      "description": "Finish your first workout.",
+      "earnedAt": "2026-10-17T18:30:00Z",
+      "target": 1
+    },
+    {
+      "id": "monthly-2026-09",
+      "area": "monthly",
+      "name": "September 2026 challenge",
+      "description": "Kept a habit on 12 days in September",
+      "earnedAt": "2026-10-19T18:30:00Z",
+      "target": 12,
+      "monthly": {
+        "month": "2026-09",
+        "metric": "habit_days",
+        "target": 12
+      }
+    }
+  ],
+  "monthlyChallenge": {
+    "month": "2026-10",
+    "metric": "workouts",
+    "target": 5,
+    "progress": 3,
+    "met": false,
+    "title": "October challenge",
+    "goal": "Log 5 workouts in October",
+    "progressText": "3 of 5 workouts"
+  }
+}

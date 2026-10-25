@@ -23,6 +23,9 @@ type View struct {
 	// Rarity is the share of active people who hold it, such as "12%" or
 	// "<1%"; absent when it is not known.
 	Rarity string `json:"rarity,omitempty"`
+	// Monthly is set on a monthly medal (area "monthly"), which is not a
+	// badge; clients draw its coin from this rather than from the area.
+	Monthly *MonthlyMedalView `json:"monthly,omitempty"`
 }
 
 // Name is the badge's name in the request's locale.

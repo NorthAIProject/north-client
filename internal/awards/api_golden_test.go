@@ -22,3 +22,21 @@ func TestAwardShapes(t *testing.T) {
 	apitest.AssertGolden(t, "awards.golden.json", AwardsView{Earned: []award.View{earned}, Locked: []award.View{locked}})
 	apitest.AssertGolden(t, "unseen.golden.json", UnseenView{Awards: []award.View{earned}})
 }
+
+func TestMonthlyShapes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	at := time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC)
+	b, _ := award.ByID("workouts_1")
+	badge := projectEarned(ctx, Earned{Badge: b, At: at.Add(-72 * time.Hour)}, nil)
+	medal := ProjectMonthlyMedal(ctx, MonthlyMedal{Key: "2026-09", Metric: MetricHabitDays, Target: 12, At: at.Add(-24 * time.Hour)})
+	current := ProjectMonthlyChallenge(ctx, MonthlyChallenge{
+		Key: "2026-10", Month: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), Metric: MetricWorkouts, Target: 5, Progress: 3,
+	})
+	apitest.AssertGolden(t, "awards-monthly.golden.json", AwardsView{
+		Earned:           MergeEarned([]award.View{badge}, []award.View{medal}),
+		Locked:           []award.View{},
+		MonthlyChallenge: &current,
+	})
+	apitest.AssertGolden(t, "unseen-monthly.golden.json", UnseenView{Awards: []award.View{badge, medal}})
+}

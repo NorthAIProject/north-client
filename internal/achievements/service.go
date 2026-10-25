@@ -175,6 +175,7 @@ func (s *Service) OwnBetween(ctx context.Context, userID uuid.UUID, since, until
 		out = append(out, Item{
 			ID: r.ID, UserID: userID, Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail,
 			OccurredAt: r.OccurredAt, Mine: true, SourceKey: r.SourceKey,
+			MonthlyMetric: util.Val(r.MonthlyMetric), MonthlyTarget: int(util.Val(r.MonthlyTarget)),
 		})
 	}
 	return foldMoments(ctx, out), nil
@@ -224,7 +225,7 @@ func (s *Service) FeedPage(ctx context.Context, viewerID uuid.UUID, before time.
 			ID: r.ID, UserID: r.UserID, DisplayName: r.DisplayName, Handle: util.Val(r.Handle),
 			Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail, OccurredAt: r.OccurredAt,
 			Kudos: int(r.Kudos), Kudoed: r.Kudoed, Mine: r.UserID == viewerID, SourceKey: r.SourceKey,
-			Private: r.Private,
+			Private: r.Private, MonthlyMetric: util.Val(r.MonthlyMetric), MonthlyTarget: int(util.Val(r.MonthlyTarget)),
 		})
 	}
 	out = foldMoments(ctx, out)
@@ -255,6 +256,12 @@ func foldMoments(ctx context.Context, items []Item) []Item {
 	items = known
 	for i := range items {
 		it := &items[i]
+		if it.Kind == achievement.KindMonthlyChallengeMet && it.MonthlyMetric != "" {
+			// Its own card: never merged with a badge, whatever the instant.
+			it.Title = award.MonthlyMedalName(ctx, it.SourceKey)
+			it.Detail = award.MonthlyMedalDescription(ctx, it.SourceKey, it.MonthlyMetric, it.MonthlyTarget)
+			continue
+		}
 		if it.Kind != achievement.KindBadgeEarned {
 			continue
 		}

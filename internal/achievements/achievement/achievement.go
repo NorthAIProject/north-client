@@ -55,6 +55,9 @@ const (
 	// KindBadgeEarned is a badge from internal/awards/award; the source key
 	// is the badge id.
 	KindBadgeEarned = "badge_earned"
+	// KindMonthlyChallengeMet is a month's challenge reached; the source key
+	// is the local month, "YYYY-MM".
+	KindMonthlyChallengeMet = "monthly_challenge_met"
 )
 
 // Item is one achievement in a feed.
@@ -78,6 +81,10 @@ type Item struct {
 	// were earned at once and collapsed into one card.
 	BadgeID string
 	Badges  []string
+	// MonthlyMetric and MonthlyTarget are the challenge a monthly_challenge_met
+	// item answered; empty when the item is another kind.
+	MonthlyMetric string
+	MonthlyTarget int
 	// Workout is the finished workout's card, set on a workout_completed
 	// item when it could be built.
 	Workout *lift.Card

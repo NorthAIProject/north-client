@@ -70,7 +70,7 @@ templ Unlock(awards []award.View) {
 					for _, a := range awards {
 						<li class="flex items-center gap-4">
 							<span class="awards-coin-turn shrink-0">
-								@medal.Coin(coin(a, 56, false))
+								@Coin(a, 56, false)
 							</span>
 							<span class="min-w-0">
 								<span class="block text-sm font-medium">{ a.Name }</span>
@@ -105,7 +105,7 @@ templ Unlock(awards []award.View) {
 templ hero(a award.View) {
 	<div class="flex flex-col items-center gap-3 py-2 text-center">
 		<span class="awards-coin-turn">
-			@medal.Coin(coin(a, 128, false))
+			@Coin(a, 128, false)
 		</span>
 		<p class="text-lg font-medium">{ a.Name }</p>
 		<p class="text-muted-foreground text-sm">{ a.Description }</p>
