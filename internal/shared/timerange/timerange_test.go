@@ -154,7 +154,8 @@ func TestDayBucketsTileTheWindowAcrossDST(t *testing.T) {
 
 func TestHourBucketsCoverASingleDay(t *testing.T) {
 	loc := mustLoad(t, "Europe/Lisbon")
-	r := Parse(KeyToday, loc)
+	// A fixed ordinary day: "today" fails twice a year when the clocks change.
+	r := ParseAt(KeyToday, loc, time.Date(2026, 10, 20, 12, 0, 0, 0, loc))
 
 	buckets := r.Buckets()
 	if len(buckets) != 24 {
@@ -162,6 +163,16 @@ func TestHourBucketsCoverASingleDay(t *testing.T) {
 	}
 	if buckets[0].Label != "00:00" {
 		t.Errorf("first label = %q, want %q", buckets[0].Label, "00:00")
+	}
+}
+
+func TestHourBucketsFollowTheClockChange(t *testing.T) {
+	loc := mustLoad(t, "Europe/Lisbon")
+	// The clocks go back on 25 Oct 2026, so that day has 25 hours.
+	r := ParseAt(KeyToday, loc, time.Date(2026, 10, 25, 12, 0, 0, 0, loc))
+
+	if got := len(r.Buckets()); got != 25 {
+		t.Fatalf("buckets = %d, want 25", got)
 	}
 }
 
