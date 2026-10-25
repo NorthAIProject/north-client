@@ -64,7 +64,11 @@ func (h *Handler) profile(w http.ResponseWriter, r *http.Request) {
 	}
 	d := h.data(r, v.Profile, v.Shares.Training)
 	d.Workouts, d.Recent = v.Workouts, v.Recent
-	d.Awards = newestAwards(r.Context(), v.Awards, stripCount)
+	d.Awards = newestAwards(r.Context(), v.Awards, v.Monthly, stripCount)
+	if v.MonthlyChallenge != nil {
+		c := awards.ProjectMonthlyChallenge(r.Context(), *v.MonthlyChallenge)
+		d.Monthly = &c
+	}
 	if v.Level != nil {
 		l := xp.ProjectLevel(r.Context(), *v.Level)
 		d.HasLevel, d.LevelNumber, d.LevelTitle = true, l.Number, l.Title
@@ -75,12 +79,18 @@ func (h *Handler) profile(w http.ResponseWriter, r *http.Request) {
 // stripCount is how many coins the profile shows before the link to all.
 const stripCount = 8
 
-// newestAwards is the last n badges, newest first.
-func newestAwards(ctx context.Context, held []awards.Earned, n int) []award.View {
+// newestAwards is the last n of the badges and monthly medals together,
+// newest first.
+func newestAwards(ctx context.Context, held []awards.Earned, medals []awards.MonthlyMedal, n int) []award.View {
+	var badges []award.View
+	for _, e := range held {
+		at := e.At
+		badges = append(badges, e.Badge.Project(ctx, &at, nil, ""))
+	}
+	all := awards.MergeEarned(badges, awards.ProjectMonthlyMedals(ctx, medals))
 	var out []award.View
-	for i := len(held) - 1; i >= 0 && len(out) < n; i-- {
-		at := held[i].At
-		out = append(out, held[i].Badge.Project(ctx, &at, nil, ""))
+	for i := len(all) - 1; i >= 0 && len(out) < n; i-- {
+		out = append(out, all[i])
 	}
 	return out
 }

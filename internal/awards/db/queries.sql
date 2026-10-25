@@ -228,3 +228,93 @@ ON CONFLICT (badge_id) DO UPDATE SET earned = EXCLUDED.earned, active = EXCLUDED
 
 -- name: ListRarity :many
 SELECT badge_id, earned, active FROM badge_rarity;
+
+-- name: CreateMonthlyChallenge :exec
+-- First writer wins; the loser reads the winner's row, so two first views
+-- racing agree on one metric and one target.
+INSERT INTO monthly_challenges (user_id, month, metric, target)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id, month) DO NOTHING;
+
+-- name: GetMonthlyChallenge :one
+SELECT user_id, month, metric, target, created_at FROM monthly_challenges
+WHERE user_id = $1 AND month = $2;
+
+-- name: CountMonthlyWorkouts :one
+-- Completed sessions whose end falls on a local date in [from_day, to_day).
+SELECT count(*)::int FROM activity_sessions
+WHERE user_id = sqlc.arg('user_id')::uuid AND status = 'completed'
+  AND (ended_at AT TIME ZONE sqlc.arg('tz')::text)::date >= sqlc.arg('from_day')::date
+  AND (ended_at AT TIME ZONE sqlc.arg('tz')::text)::date <  sqlc.arg('to_day')::date;
+
+-- name: CountMonthlyHabitDays :one
+-- Local days on which any habit was ticked, in [from_day, to_day).
+SELECT count(DISTINCT local_date)::int FROM habit_completions
+WHERE user_id = sqlc.arg('user_id')::uuid
+  AND local_date >= sqlc.arg('from_day')::date AND local_date < sqlc.arg('to_day')::date;
+
+-- name: CountMonthlyCheckinDays :one
+SELECT count(*)::int FROM check_ins
+WHERE user_id = sqlc.arg('user_id')::uuid
+  AND local_date >= sqlc.arg('from_day')::date AND local_date < sqlc.arg('to_day')::date;
+
+-- name: MonthlyHistory :one
+-- What the person did in the three full local months before month_start, over
+-- the months the account existed in (it was created before the month ended).
+-- active_habit is whether they have a habit running now.
+WITH u AS (
+    SELECT created_at FROM users WHERE id = sqlc.arg('user_id')::uuid
+), m AS (
+    SELECT g::date AS from_day, (g + interval '1 month')::date AS to_day
+    FROM generate_series(sqlc.arg('month_start')::date - interval '3 months',
+                         sqlc.arg('month_start')::date - interval '1 month',
+                         interval '1 month') g
+), counted AS (
+    SELECT
+        (SELECT count(*) FROM activity_sessions a WHERE a.user_id = sqlc.arg('user_id')::uuid AND a.status = 'completed'
+           AND (a.ended_at AT TIME ZONE sqlc.arg('tz')::text)::date >= m.from_day
+           AND (a.ended_at AT TIME ZONE sqlc.arg('tz')::text)::date <  m.to_day) AS workouts,
+        (SELECT count(DISTINCT h.local_date) FROM habit_completions h WHERE h.user_id = sqlc.arg('user_id')::uuid
+           AND h.local_date >= m.from_day AND h.local_date < m.to_day) AS habit_days,
+        (SELECT count(*) FROM check_ins c WHERE c.user_id = sqlc.arg('user_id')::uuid
+           AND c.local_date >= m.from_day AND c.local_date < m.to_day) AS checkin_days
+    FROM m, u
+    WHERE (m.to_day::timestamp AT TIME ZONE sqlc.arg('tz')::text) > u.created_at
+)
+SELECT
+    (SELECT count(*) FROM counted)::int AS months,
+    COALESCE((SELECT sum(workouts) FROM counted), 0)::int AS workouts,
+    COALESCE((SELECT sum(habit_days) FROM counted), 0)::int AS habit_days,
+    COALESCE((SELECT sum(checkin_days) FROM counted), 0)::int AS checkin_days,
+    EXISTS (SELECT 1 FROM habits WHERE user_id = sqlc.arg('user_id')::uuid AND active) AS active_habit;
+
+-- name: InsertMonthlyMet :one
+-- Once per person and month: the unique key is the dedupe.
+INSERT INTO achievements (user_id, category, kind, title, detail, occurred_at, source_key, private)
+VALUES ($1, 'awards', 'monthly_challenge_met', $2, '', $3, $4, false)
+ON CONFLICT (user_id, kind, source_key) DO NOTHING
+RETURNING id;
+
+-- name: GetMonthlyMetAt :one
+SELECT occurred_at FROM achievements
+WHERE user_id = $1 AND kind = 'monthly_challenge_met' AND source_key = $2;
+
+-- name: ListMonthlyMedals :many
+-- Met months, newest first, with the challenge each one answered.
+SELECT a.id, a.source_key, a.occurred_at, c.metric, c.target
+FROM achievements a
+JOIN monthly_challenges c ON c.user_id = a.user_id AND c.month = (a.source_key || '-01')::date
+WHERE a.user_id = $1 AND a.kind = 'monthly_challenge_met'
+ORDER BY a.source_key DESC;
+
+-- name: ListUnseenMonthlyMedals :many
+-- Met months not yet celebrated, oldest first.
+SELECT a.id, a.source_key, a.occurred_at, c.metric, c.target
+FROM achievements a
+JOIN monthly_challenges c ON c.user_id = a.user_id AND c.month = (a.source_key || '-01')::date
+WHERE a.user_id = $1 AND a.kind = 'monthly_challenge_met' AND a.celebrated_at IS NULL
+ORDER BY a.source_key;
+
+-- name: MarkMonthlySeen :exec
+UPDATE achievements SET celebrated_at = now()
+WHERE user_id = $1 AND kind = 'monthly_challenge_met' AND source_key = $2 AND celebrated_at IS NULL;

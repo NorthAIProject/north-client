@@ -33,10 +33,12 @@ type Service struct {
 	log *slog.Logger
 	// failMetric makes one metric error; set only by tests.
 	failMetric metric
+	// now is the clock; tests replace it.
+	now func() time.Time
 }
 
 func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{q: awardsdb.New(pool), log: slog.Default()}
+	return &Service{q: awardsdb.New(pool), log: slog.Default(), now: time.Now}
 }
 
 func isNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
@@ -47,6 +49,9 @@ func isNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
 func (s *Service) Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area) {
 	if _, err := s.Evaluate(ctx, userID, at, areas...); err != nil {
 		s.log.Warn("could not check awards", "user_id", userID, "error", err)
+	}
+	if monthlyAreas(areas) {
+		s.checkMonthly(ctx, userID, s.now())
 	}
 }
 

@@ -9,6 +9,7 @@ package profiles
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,6 +61,13 @@ type Cards interface {
 // Badges reads the badges a person holds, whoever asks.
 type Badges interface {
 	Earned(ctx context.Context, userID uuid.UUID) ([]awards.Earned, error)
+	// MonthlyMedals are the months met; Monthly is the challenge of the local
+	// month containing now, created on first use.
+	MonthlyMedals(ctx context.Context, userID uuid.UUID) ([]awards.MonthlyMedal, error)
+	Monthly(ctx context.Context, userID uuid.UUID, now time.Time) (awards.MonthlyChallenge, error)
+	// PeekMonthly reads the same without creating the row; ok is false when
+	// there is none. Everyone but the owner goes through it.
+	PeekMonthly(ctx context.Context, userID uuid.UUID, now time.Time) (awards.MonthlyChallenge, bool, error)
 }
 
 // Shares is what this viewer may see.
@@ -75,6 +83,11 @@ type View struct {
 	// Awards are the badges held, oldest first; nil unless Shares.Awards.
 	// Another person's never include a private one.
 	Awards []awards.Earned
+	// Monthly are the monthly medals held and MonthlyChallenge the current
+	// month's challenge; both nil unless Shares.Awards, like Awards. Unlike
+	// Awards, no part of them is private.
+	Monthly          []awards.MonthlyMedal
+	MonthlyChallenge *awards.MonthlyChallenge
 }
 
 // Page is one page of a person's workouts, newest first.
@@ -159,6 +172,11 @@ func (s *Service) View(ctx context.Context, viewer users.User, handle string, no
 				v.Awards = append(v.Awards, e)
 			}
 		}
+	}
+	if shares.Awards && s.badges != nil {
+		// Monthly is a bonus on the profile: a failed read hides it rather than
+		// taking the page down.
+		s.loadMonthly(ctx, &v, p, now)
 	}
 	if shares.Training {
 		n, err := s.sessions.CountCompleted(ctx, p.ID)
@@ -246,4 +264,31 @@ func (s *Service) Workout(ctx context.Context, viewer users.User, handle string,
 		return lift.Card{}, apperr.ErrNotFound
 	}
 	return c, nil
+}
+
+// loadMonthly fills the monthly medals and challenge, or leaves both empty and
+// logs when either cannot be read. Only the owner's own visit may create the
+// challenge row: it fixes the target for the month, and a viewer's clock must
+// not decide that.
+func (s *Service) loadMonthly(ctx context.Context, v *View, p social.Profile, now time.Time) {
+	medals, err := s.badges.MonthlyMedals(ctx, p.ID)
+	if err != nil {
+		slog.WarnContext(ctx, "profile: monthly medals skipped", slog.Any("error", err))
+		return
+	}
+	var c awards.MonthlyChallenge
+	ok := true
+	if p.Relationship.Self {
+		c, err = s.badges.Monthly(ctx, p.ID, now)
+	} else {
+		c, ok, err = s.badges.PeekMonthly(ctx, p.ID, now)
+	}
+	if err != nil {
+		slog.WarnContext(ctx, "profile: monthly challenge skipped", slog.Any("error", err))
+		return
+	}
+	v.Monthly = medals
+	if ok {
+		v.MonthlyChallenge = &c
+	}
 }

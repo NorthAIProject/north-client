@@ -79,7 +79,12 @@ func (h *Handler) unseen(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	if len(unseen) == 0 {
+	medals, err := h.svc.UnseenMonthly(ctx, auth.MustUser(ctx).ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if len(unseen) == 0 && len(medals) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -88,11 +93,21 @@ func (h *Handler) unseen(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	// Medals go after the badges, oldest first like the rest of the list.
+	views = append(views, ProjectMonthlyMedals(ctx, medals)...)
 	h.render(w, r, pages.Unlock(views))
 }
 
 func (h *Handler) seenOne(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "badgeID")
+	if key, ok := award.ParseMonthlyID(id); ok {
+		if err := h.svc.MarkMonthlySeen(r.Context(), auth.MustUser(r.Context()).ID, key); err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if _, ok := award.ByID(id); !ok {
 		h.fail(w, r, apperr.ErrNotFound)
 		return
@@ -116,12 +131,28 @@ func (h *Handler) seenBatch(w http.ResponseWriter, r *http.Request) {
 	user := auth.MustUser(ctx)
 	ids := r.PostForm["badge"]
 	for _, id := range ids {
+		if key, ok := award.ParseMonthlyID(id); ok {
+			// A month the caller does not hold is as bad as an unknown badge.
+			if err := h.svc.holdsMonthly(ctx, user.ID, key); err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			continue
+		}
 		if _, ok := award.ByID(id); !ok {
 			h.fail(w, r, apperr.ErrValidation)
 			return
 		}
 	}
 	for _, id := range ids {
+		if key, ok := award.ParseMonthlyID(id); ok {
+			err := h.svc.MarkMonthlySeen(ctx, user.ID, key)
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			continue
+		}
 		if err := h.svc.MarkSeen(ctx, user.ID, id); err != nil {
 			h.fail(w, r, err)
 			return
@@ -179,11 +210,25 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request, p Person) {
 				shown = append(shown, e)
 			}
 		}
-		if d.Earned, err = h.views(ctx, shown); err != nil {
+		badges, err := h.views(ctx, shown)
+		if err != nil {
 			h.fail(w, r, err)
 			return
 		}
+		// Monthly is a bonus: a failed read hides the medals and the card.
+		medals, err := h.svc.MonthlyMedals(ctx, p.ID)
+		if err != nil {
+			h.svc.log.Warn("awards: monthly medals skipped", "user_id", p.ID, "error", err)
+			medals = nil
+		}
+		d.Earned = MergeEarned(badges, ProjectMonthlyMedals(ctx, medals))
 		if p.Self {
+			if c, err := h.svc.Monthly(ctx, p.ID, h.svc.now()); err != nil {
+				h.svc.log.Warn("awards: monthly challenge skipped", "user_id", p.ID, "error", err)
+			} else {
+				cv := ProjectMonthlyChallenge(ctx, c)
+				d.Monthly = &cv
+			}
 			progress, err := h.svc.Progress(ctx, p.ID)
 			if err != nil {
 				h.fail(w, r, err)

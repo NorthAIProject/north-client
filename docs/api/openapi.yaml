@@ -3944,7 +3944,7 @@ paths:
   /awards/unseen:
     get:
       operationId: getUnseenAwards
-      summary: Badges earned but not yet celebrated on any device
+      summary: Badges and monthly medals earned but not yet celebrated on any device
       tags: [awards]
       responses:
         '200':
@@ -3965,7 +3965,7 @@ paths:
     post:
       operationId: markAwardSeen
       summary: Say a badge was celebrated
-      description: Repeating it is fine and still 204. An unknown badge, or one you have not earned, is 404.
+      description: Repeating it is fine and still 204. An unknown badge, or one you have not earned, is 404. A monthly medal id (`monthly-YYYY-MM`) is accepted only for a month you met.
       tags: [awards]
       responses:
         '204':
@@ -8274,6 +8274,47 @@ components:
           description: On a badge_earned item, every badge earned in the same moment, this one first.
           items:
             $ref: '#/components/schemas/AwardView'
+        monthly:
+          $ref: '#/components/schemas/MonthlyMedalView'
+          description: On a monthly_challenge_met item (category goals), the month and the challenge it met.
+    MonthlyMedalView:
+      type: object
+      required: [month, metric, target]
+      properties:
+        month:
+          type: string
+          description: The local month, "YYYY-MM".
+          example: "2026-10"
+        metric:
+          type: string
+          description: What the challenge counted, such as workouts, habit_days or checkin_days. Open; treat an unknown value as a plain medal.
+        target:
+          type: integer
+    MonthlyChallengeView:
+      type: object
+      description: The current local month's challenge. A past month's unmet challenge is never sent.
+      required: [month, metric, target, progress, met, title, goal, progressText]
+      properties:
+        month:
+          type: string
+          example: "2026-10"
+        metric:
+          type: string
+          description: Open string, as on MonthlyMedalView.
+        target:
+          type: integer
+        progress:
+          type: integer
+          description: Never above `target`.
+        met:
+          type: boolean
+          description: Live; may be true a moment before the medal exists in `earned`.
+        title:
+          type: string
+        goal:
+          type: string
+        progressText:
+          type: string
     AwardView:
       type: object
       required: [id, area, name, description, target]
@@ -8298,6 +8339,9 @@ components:
         rarity:
           type: string
           description: Share of active people who hold it, such as "12%" or "<1%"; absent when unknown.
+        monthly:
+          $ref: '#/components/schemas/MonthlyMedalView'
+          description: On a monthly medal (id `monthly-YYYY-MM`, area `monthly`), which is not a badge. It carries no progress or rarity.
     Awards:
       type: object
       required: [earned, locked]
@@ -8310,6 +8354,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AwardView'
+        monthlyChallenge:
+          $ref: '#/components/schemas/MonthlyChallengeView'
+          description: This local month's challenge, created on first view. `earned` also lists monthly medals, with the badges, oldest first; counts such as "N of 31" stay badges only.
     UnseenAwards:
       type: object
       required: [awards]
@@ -8628,9 +8675,11 @@ components:
                   type: boolean
             awards:
               type: array
-              description: Badges held, oldest first. For anyone but you, never private ones, and absent when the person keeps awards to themselves.
+              description: Badges held and monthly medals, oldest first. For anyone but you, never private ones, and absent when the person keeps awards to themselves.
               items:
                 $ref: '#/components/schemas/AwardView'
+            monthlyChallenge:
+              $ref: '#/components/schemas/MonthlyChallengeView'
             level:
               $ref: '#/components/schemas/LevelView'
             workouts:

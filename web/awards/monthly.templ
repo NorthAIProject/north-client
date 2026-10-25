@@ -1,0 +1,60 @@
+package awards
+
+import (
+	"context"
+
+	"github.com/NorthAIProject/north-client/internal/awards/award"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/web/shared/medal"
+	"github.com/NorthAIProject/north-client/web/shared/ui/card"
+	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
+)
+
+func monthlyProps(ctx context.Context, key string, target, size int, locked bool, label string) medal.MonthlyProps {
+	return medal.MonthlyProps{Month: award.MonthlyCoinMonth(ctx, key), Target: target, Size: size, Locked: locked, Label: label}
+}
+
+// Coin draws any award: a monthly medal as the gold month coin, a badge as its
+// glyph coin. locked greys it out.
+templ Coin(v award.View, size int, locked bool) {
+	if v.Monthly != nil {
+		@medal.MonthlyCoin(monthlyProps(ctx, v.Monthly.Month, v.Monthly.Target, size, locked, v.Name))
+	} else {
+		@medal.Coin(coin(v, size, locked))
+	}
+}
+
+// MonthlyCard is the month's challenge: the coin (locked until met), what to
+// do, and how far along. It says nothing of any month that went by.
+templ MonthlyCard(c award.MonthlyChallengeView) {
+	@progress.Script()
+	@card.Card(card.Props{Class: "border-hairline bg-surface", ID: "monthly-challenge"}) {
+		@card.Content(card.ContentProps{Class: "flex items-center gap-4 pt-6"}) {
+			<span class="shrink-0" data-monthly-coin>
+				@medal.MonthlyCoin(monthlyProps(ctx, c.Month, c.Target, 64, !c.Met, c.Title))
+			</span>
+			<div class="min-w-0 flex-1 space-y-2">
+				<p class="text-sm font-medium">{ c.Title }</p>
+				<p class="text-muted-foreground text-sm">{ c.Goal }</p>
+				@progress.Progress(progress.Props{Value: c.Progress, Max: c.Target})
+				<p class="text-muted-foreground text-xs tabular-nums" data-monthly-progress>
+					if c.Met {
+						{ i18n.T(ctx, "monthly.met") }
+					} else {
+						{ c.ProgressText }
+					}
+				</p>
+			</div>
+		}
+	}
+}
+
+// FeedMonthly is the coin and name on a feed card for a met month.
+templ FeedMonthly(key, name string, target int) {
+	<ul class="mt-1 flex flex-wrap gap-x-4 gap-y-2" data-feed-badges>
+		<li class="flex items-center gap-2">
+			@medal.MonthlyCoin(monthlyProps(ctx, key, target, 32, false, name))
+			<span class="text-sm">{ name }</span>
+		</li>
+	</ul>
+}
