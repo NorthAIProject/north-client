@@ -49,6 +49,7 @@ const (
 	CoachOutreach       = "coach_outreach.md"
 	DailyPost           = "daily_post.md"
 	DailyPostReview     = "daily_post_review.md"
+	CheckInReply        = "check_in_reply.md"
 )
 
 // Render executes a prompt template with the given data.

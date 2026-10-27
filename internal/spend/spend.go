@@ -74,6 +74,8 @@ const (
 	SurfaceEmbedding = "embedding"
 	// SurfaceInboxTriage is the coach suggesting where a captured item goes.
 	SurfaceInboxTriage = "inbox_triage"
+	// SurfaceCheckInReply is the coach's note under a saved check-in.
+	SurfaceCheckInReply = "check_in_reply"
 
 	// SurfaceUnknown labels a call that reached a provider without anyone
 	// saying what it was for. Recorded rather than guessed: an unlabelled call

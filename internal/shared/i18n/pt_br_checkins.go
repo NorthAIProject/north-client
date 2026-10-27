@@ -85,4 +85,5 @@ var portugueseBrazilianCheckins = map[string]string{
 	"checkins.streak.saved.many": "Sequência de %[1]d dias. Amanhã no mesmo horário.",
 	"checkins.meta.moodenergy":   "Humor %[1]d/5 · energia %[2]d/5",
 	"checkins.label":             "%[1]s — humor %[2]d · energia %[3]d",
+	"checkins.reply.pattern":     "Padrão descoberto",
 }

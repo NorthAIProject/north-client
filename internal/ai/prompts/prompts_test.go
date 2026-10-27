@@ -30,7 +30,7 @@ func TestAllPromptsParse(t *testing.T) {
 func TestNamedPromptsExist(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{CoachSystem, WorkoutPlan, FormAnalysis, ConversationTitle, ReflectionSession, PlanImportWorkout, PlanImportMeal, MealPlan, ProgressEstimate, ProgressCompare, CoachOutreach, DailyPost, DailyPostReview} {
+	for _, name := range []string{CoachSystem, WorkoutPlan, FormAnalysis, ConversationTitle, ReflectionSession, PlanImportWorkout, PlanImportMeal, MealPlan, ProgressEstimate, ProgressCompare, CoachOutreach, DailyPost, DailyPostReview, CheckInReply} {
 		body, err := Raw(name)
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
@@ -134,6 +134,34 @@ func TestReflectionPromptStatesTheSessionRules(t *testing.T) {
 	} {
 		if !strings.Contains(lower, phrase) {
 			t.Errorf("reflection prompt missing %q", phrase)
+		}
+	}
+}
+
+// The reply under a saved check-in is the reward for writing one honestly. The
+// rules that keep it from turning into pressure, flattery or advice it has no
+// standing to give must survive any edit.
+func TestCheckInReplyPromptStatesItsRules(t *testing.T) {
+	t.Parallel()
+
+	body, err := Raw(CheckInReply)
+	if err != nil {
+		t.Fatalf("read check-in reply prompt: %v", err)
+	}
+	lower := strings.ToLower(body)
+	for _, phrase := range []string{
+		"at most two sentences",
+		"200 characters",
+		"only what is in the check-ins below",
+		"never mention points, xp, levels, badges or the streak",
+		"no guilt",
+		"not medical advice",
+		"emergency services or a crisis line",
+		"{{.language}}",
+		"{{.pattern}}",
+	} {
+		if !strings.Contains(lower, phrase) {
+			t.Errorf("check-in reply prompt missing %q", phrase)
 		}
 	}
 }

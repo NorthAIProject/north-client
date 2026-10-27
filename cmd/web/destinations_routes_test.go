@@ -57,6 +57,7 @@ var knownNonDestinations = map[string]string{
 	"/app/insights/spend/body":     "insights range swap",
 	"/app/capture/panel":           "capture box embedded in My Day and the food log",
 	"/app/check-ins/live":          "check-ins history and charts refresh",
+	"/app/check-ins/today/reply":   "coach note loaded into the saved check-in panel",
 	"/app/overview/today":          "dashboard today card refresh",
 	"/app/day/checkin":             "My Day streak tile refresh",
 

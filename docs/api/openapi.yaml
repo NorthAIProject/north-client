@@ -1816,6 +1816,22 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /check-ins/today/reply:
+    post:
+      operationId: replyToTodayCheckIn
+      summary: The coach's short note under today's check-in
+      description: Written on the first ask after a save that changed the check-in, then stored, so asking again is free. May take a few seconds. 204 means there is nothing to show (no check-in yet, or the note could not be written); show nothing and do not retry.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInReply'
+        '204':
+          description: No note to show
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /check-ins/{checkInID}:
     parameters:
       - name: checkInID
@@ -12420,6 +12436,16 @@ components:
               type: boolean
             moment:
               $ref: '#/components/schemas/CheckInMoment'
+    CheckInReply:
+      type: object
+      required: [kind, text]
+      properties:
+        kind:
+          type: string
+          description: daily, or pattern when the note names a pattern in the person's check-ins. Open-ended; treat a value you do not know as daily.
+        text:
+          type: string
+          description: At most two sentences and 200 characters, plain text.
     CheckInMoment:
       type: object
       required: [kind, title, body]

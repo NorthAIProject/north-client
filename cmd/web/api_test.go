@@ -15,6 +15,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/capture"
 	"github.com/NorthAIProject/north-client/internal/care"
+	"github.com/NorthAIProject/north-client/internal/checkinreply"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
@@ -57,35 +58,36 @@ func apiRouter(t *testing.T) chi.Router {
 	sessions := resolverThatMustNotRun{t: t}
 	r := chi.NewRouter()
 	mountAPI(r, sessions, apiSet{
-		auth:       auth.NewAPI(sessions).WithAuthService(&auth.Service{}, &auth.Middleware{}),
-		capture:    capture.NewAPI(nil, nil, nil, nil),
-		onboarding: onboarding.NewAPI(nil),
-		dashboard:  dashboard.NewAPI(nil),
-		coach:      coach.NewAPI(nil, nil, nil),
-		exercises:  exercises.NewAPI(nil, nil),
-		settings:   settings.NewAPI(nil),
-		training:   workouts.NewAPI(nil),
-		activity:   activity.NewAPI(nil),
-		health:     health.NewAPI(nil),
-		fitness:    fitness.NewAPI(nil, ""),
-		insights:   insights.NewAPI(nil),
-		goals:      goals.NewAPI(nil),
-		checkins:   checkins.NewAPI(nil),
-		reports:    reports.NewAPI(nil),
-		memories:   memories.NewAPI(nil),
-		knowledge:  documents.NewAPI(nil, nil),
-		formChecks: media.NewAPI(nil, nil),
-		care:       care.NewAPI(care.Options{}),
-		mind:       mind.NewAPI(nil),
-		nutrition:  meals.NewAPI(meals.HandlerOptions{}),
-		planImport: planimport.NewAPI(nil, nil),
-		progress:   progresschecks.NewAPI(nil, nil, nil),
-		decisions:  decisions.NewAPI(nil),
-		nudges:     nudges.NewAPI(nil),
-		devices:    apns.NewAPI(nil),
-		export:     export.NewHandler(nil, nil, nil),
-		calculator: calculator.NewAPI(nil, nil),
-		news:       news.NewAPI(nil),
+		auth:         auth.NewAPI(sessions).WithAuthService(&auth.Service{}, &auth.Middleware{}),
+		capture:      capture.NewAPI(nil, nil, nil, nil),
+		onboarding:   onboarding.NewAPI(nil),
+		dashboard:    dashboard.NewAPI(nil),
+		coach:        coach.NewAPI(nil, nil, nil),
+		exercises:    exercises.NewAPI(nil, nil),
+		settings:     settings.NewAPI(nil),
+		training:     workouts.NewAPI(nil),
+		activity:     activity.NewAPI(nil),
+		health:       health.NewAPI(nil),
+		fitness:      fitness.NewAPI(nil, ""),
+		insights:     insights.NewAPI(nil),
+		goals:        goals.NewAPI(nil),
+		checkins:     checkins.NewAPI(nil),
+		checkinReply: checkinreply.NewAPI(nil),
+		reports:      reports.NewAPI(nil),
+		memories:     memories.NewAPI(nil),
+		knowledge:    documents.NewAPI(nil, nil),
+		formChecks:   media.NewAPI(nil, nil),
+		care:         care.NewAPI(care.Options{}),
+		mind:         mind.NewAPI(nil),
+		nutrition:    meals.NewAPI(meals.HandlerOptions{}),
+		planImport:   planimport.NewAPI(nil, nil),
+		progress:     progresschecks.NewAPI(nil, nil, nil),
+		decisions:    decisions.NewAPI(nil),
+		nudges:       nudges.NewAPI(nil),
+		devices:      apns.NewAPI(nil),
+		export:       export.NewHandler(nil, nil, nil),
+		calculator:   calculator.NewAPI(nil, nil),
+		news:         news.NewAPI(nil),
 	})
 	return r
 }

@@ -646,3 +646,13 @@ sql:
         package: awardsdb
         out: internal/awards/db
         overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/checkinreply/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: checkinreplydb
+        out: internal/checkinreply/db
+        overrides: *overrides

@@ -85,4 +85,5 @@ var spanishCheckins = map[string]string{
 	"checkins.streak.saved.many": "Racha de %[1]d días. Mañana a la misma hora.",
 	"checkins.meta.moodenergy":   "Ánimo %[1]d/5 · energía %[2]d/5",
 	"checkins.label":             "%[1]s — ánimo %[2]d · energía %[3]d",
+	"checkins.reply.pattern":     "Patrón descubierto",
 }

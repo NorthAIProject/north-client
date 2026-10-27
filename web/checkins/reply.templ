@@ -1,0 +1,17 @@
+package checkins
+
+import "github.com/NorthAIProject/north-client/internal/shared/i18n"
+
+// ReplyNote is the coach's note under a saved check-in. It is fetched after
+// the save so the panel never waits on the model. Empty text renders nothing,
+// which swaps the placeholder away.
+templ ReplyNote(text string, pattern bool) {
+	if text != "" {
+		<div class="border-border bg-muted/40 rounded-lg border px-4 py-3">
+			if pattern {
+				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">{ i18n.T(ctx, "checkins.reply.pattern") }</p>
+			}
+			<p class="mt-1 text-sm">{ text }</p>
+		</div>
+	}
+}
