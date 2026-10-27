@@ -92,7 +92,7 @@ func TestSavedPanelIsTranslated(t *testing.T) {
 	for locale, wants := range cases {
 		var b strings.Builder
 		ctx := i18n.WithLocale(context.Background(), string(locale))
-		if err := SavedPanel(c, 3, nil).Render(ctx, &b); err != nil {
+		if err := SavedPanel(SavedView{CheckIn: c, Run: checkin.Run{Current: 3}}).Render(ctx, &b); err != nil {
 			t.Fatalf("render %s: %v", locale, err)
 		}
 		html := b.String()

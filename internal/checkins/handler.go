@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -274,7 +275,13 @@ func (h *Handler) renderSaved(w http.ResponseWriter, r *http.Request, user users
 	}
 
 	announceSaved(w, r)
-	render(w, r, http.StatusOK, checkinpages.SavedPanel(saved.CheckIn, saved.Run.Current, h.momentFor(r, user, saved.Run, saved.Created)))
+	render(w, r, http.StatusOK, checkinpages.SavedPanel(checkinpages.SavedView{
+		CheckIn: saved.CheckIn,
+		Run:     saved.Run,
+		Moment:  h.momentFor(r, user, saved.Run, saved.Created),
+		// The coach's note is about today's check-in; an older day has none.
+		Reply: saved.LocalDate.Format("2006-01-02") == LocalDate(user, time.Now()).Format("2006-01-02"),
+	}))
 }
 
 // momentFor is the card a just-saved check-in earns, if any, and the funnel
