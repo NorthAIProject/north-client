@@ -39,7 +39,7 @@ var portugueseEuropeanSettings = map[string]string{
 
 	"settings.notif.title":          "Notificações",
 	"settings.notif.desc":           "Quando o Khepri fala primeiro. As horas de silêncio seguem o teu fuso horário.",
-	"settings.notif.missed":         "Avisa-me quando deixo de fazer registos",
+	"settings.notif.missed":         "Lembretes de registo",
 	"settings.notif.goal":           "Avisa-me antes do prazo de um objetivo",
 	"settings.notif.coach":          "Diz-me quando o treinador tem algo",
 	"settings.notif.coach.desc":     "Registos da primeira semana, uma resposta do Telegram, uma análise de técnica concluída.",

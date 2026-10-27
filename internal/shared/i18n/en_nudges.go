@@ -22,9 +22,14 @@ var englishNudges = map[string]string{
 	"nudges.week.body":             "Two minutes: how this week went, and up to three things for the next.",
 	"nudges.streak.title":          "Your %[1]d-day streak ends at midnight",
 	"nudges.streak.body":           "One check-in keeps it. Thirty seconds.",
-	"nudges.missed.title":          "Check in with yourself",
-	"nudges.missed.body.days":      "It has been %[1]d days since your last check-in.",
-	"nudges.missed.body.never":     "You have not checked in since joining.",
+	// The daily reminder, a little after the usual check-in time. Gain-framed:
+	// the loss-framed line above is the evening's alone.
+	"nudges.usual.title":       "Time for your check-in",
+	"nudges.usual.body":        "How is today going? Mood, then energy.",
+	"nudges.usual.body.run":    "Day %[1]d is waiting. Mood, then energy.",
+	"nudges.missed.title":      "Check in with yourself",
+	"nudges.missed.body.days":  "It has been %[1]d days since your last check-in.",
+	"nudges.missed.body.never": "You have not checked in since joining.",
 	// The goal's title, then the weekday it is due.
 	"nudges.goal.title":         "“%[1]s” is due %[2]s",
 	"nudges.goal.body.today":    "Due today.",

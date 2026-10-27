@@ -31,6 +31,9 @@ const (
 	// KindCrewCheckIn is the evening note that crewmates have checked in
 	// and you have not.
 	KindCrewCheckIn = "crew_checkin"
+	// KindUsualTime is the daily reminder, sent a little after the time the
+	// person usually checks in, on a day they have not yet.
+	KindUsualTime = "usual_time"
 
 	// KindWeekReview asks on Sunday evening for the weekly review: how the
 	// week went, and the focus for the next one.

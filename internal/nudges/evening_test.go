@@ -108,12 +108,41 @@ func TestEveningReflectionKeepsToItsHour(t *testing.T) {
 	}
 }
 
-// A streak about to break already asks for the same check-in, more urgently.
+// The streak warning already asked for the same check-in earlier in the
+// evening; one ask a day, so the reflection stands down.
 func TestEveningReflectionGivesWayToTheStreakWarning(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
+	warning := time.Date(2026, 9, 2, 19, 0, 0, 0, time.UTC)
 	evening := time.Date(2026, 9, 2, 21, 15, 0, 0, time.UTC)
 	user := streakUser(t, pool, "evening-streak@north.test", evening)
+	prefs := notifications.NewService(notifications.NewRepository(pool))
+	on, hour := true, 21
+	if _, err := prefs.Upsert(ctx, user.ID, notifications.Input{
+		NudgeMissedCheckIn: true, CoachActivity: true, QuietStart: "22:00", QuietEnd: "07:00",
+		EveningReflection: &on, EveningHour: &hour,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, at := range []time.Time{warning, evening} {
+		if _, err := evalService(pool, at).WithPrefs(prefs).Evaluate(ctx, user); err != nil {
+			t.Fatal(err)
+		}
+	}
+	kinds := openKinds(t, evalService(pool, evening), user)
+	if len(kinds) != 1 || kinds[0] != nudges.KindStreakAtRisk {
+		t.Fatalf("open = %v, want only the streak warning", kinds)
+	}
+}
+
+// After nine the warning is no longer sent, so the gentler reflection is the
+// evening's one ask, rather than nothing at all.
+func TestEveningReflectionAsksWhenTheWarningHasEnded(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	evening := time.Date(2026, 9, 2, 21, 15, 0, 0, time.UTC)
+	user := streakUser(t, pool, "evening-late@north.test", evening)
 	prefs := notifications.NewService(notifications.NewRepository(pool))
 	on, hour := true, 21
 	if _, err := prefs.Upsert(ctx, user.ID, notifications.Input{
@@ -127,8 +156,7 @@ func TestEveningReflectionGivesWayToTheStreakWarning(t *testing.T) {
 	if _, err := svc.Evaluate(ctx, user); err != nil {
 		t.Fatal(err)
 	}
-	kinds := openKinds(t, svc, user)
-	if len(kinds) != 1 || kinds[0] != nudges.KindStreakAtRisk {
-		t.Fatalf("open = %v, want only the streak warning", kinds)
+	if kinds := openKinds(t, svc, user); len(kinds) != 1 || kinds[0] != nudges.KindEveningReflection {
+		t.Fatalf("open = %v, want only the reflection", kinds)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/analytics"
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/decisions/decision"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -37,7 +38,30 @@ const (
 	// Evening, so there is still time to act; before the default quiet hours
 	// at 22:00, so the hourly sweep gets four chances.
 	streakAtRiskHour = 18
+	// streakAtRiskEnd is the hour it stops. Loss-framed copy is not sent late
+	// at night (docs/advanced-gamification.md); after nine, a gentler ask or
+	// nothing.
+	streakAtRiskEnd = 21
+
+	// The daily reminder is learned from when the person actually checks in:
+	// the median time of day of up to usualTimeSamples recent check-ins that
+	// were saved on their own day, needing usualTimeMin of them.
+	usualTimeSamples = 28
+	usualTimeMin     = 5
+	// usualTimeDelay is how long after the usual time it asks: late enough
+	// that a person running a little behind has not been nagged.
+	usualTimeDelay = 30 * time.Minute
+	// usualTimeWindow is how long the ask may still go out after that. The
+	// sweep is hourly, so it lands 30 to 90 minutes after the usual time.
+	usualTimeWindow = 2 * time.Hour
+	// usualTimeMaxGap is the longest silence, in local days since the last
+	// check-in, it reminds through. Past it the missed-check-in note speaks.
+	usualTimeMaxGap = 2
 )
+
+// checkInAsks are the nudges that ask for today's check-in. They share one
+// slot a day: whichever goes first, the others stand down.
+var checkInAsks = []string{KindUsualTime, KindStreakAtRisk, KindCrewCheckIn, KindEveningReflection}
 
 type accounts interface {
 	ByID(ctx context.Context, id uuid.UUID) (users.User, error)
@@ -49,6 +73,11 @@ type checkinDays interface {
 	// StreakAt is the check-in streak as of now, with the same one-day grace
 	// the check-in page shows: yesterday still counts until today is missed.
 	StreakAt(ctx context.Context, user users.User, now time.Time) (int, error)
+	// RunAt is the run behind the streak, with the rest days held.
+	RunAt(ctx context.Context, user users.User, now time.Time) (checkin.Run, error)
+	// List is the most recent check-ins, newest first, for when they were
+	// saved.
+	List(ctx context.Context, userID uuid.UUID, limit int) ([]checkin.CheckIn, error)
 }
 
 type activeGoals interface {
@@ -541,6 +570,16 @@ func (s *Service) Evaluate(ctx context.Context, user users.User) (int, error) {
 		return created, nil
 	}
 
+	// The daily reminder goes first: of the asks for today's check-in, which
+	// share one slot a day, it is the gentle one.
+	if prefs.AllowsNudge(KindUsualTime) {
+		n, err := s.evalUsualTime(ctx, user, today, now)
+		if err != nil {
+			return created, err
+		}
+		created += n
+	}
+
 	// The evening before a streak breaks, then the days after it did. The
 	// two share a switch on the settings page, so the same permission gates
 	// both.
@@ -612,9 +651,10 @@ const eveningReflectionWindow = 3
 // evalEveningReflection asks, once an evening, how the day went: a check-in if
 // there is none yet today, otherwise a line in the journal.
 //
-// It stays out of the way of the streak warning. When a streak is about to
-// break, that nudge already asks for the same check-in in stronger words, and
-// two notifications about one missing check-in is one too many.
+// Asking for the check-in, it stays out of the way of any ask already made
+// today — the reminder, the streak warning, the crew note — because two
+// notifications about one missing check-in is one too many. Pointing at the
+// journal after a check-in is not an ask, and the person opted into it.
 func (s *Service) evalEveningReflection(ctx context.Context, user users.User, prefs notifications.Prefs, today, now time.Time) (int, error) {
 	hour := now.In(user.Location()).Hour()
 	if hour < prefs.EveningHour || hour >= prefs.EveningHour+eveningReflectionWindow {
@@ -633,23 +673,10 @@ func (s *Service) evalEveningReflection(ctx context.Context, user users.User, pr
 			return 0, err
 		}
 		checkedIn = ok && daysBetween(last, today) == 0
-		// The crew note already asks for this check-in, by name.
-		if !checkedIn && s.crews != nil && prefs.AllowsNudge(KindCrewCheckIn) && hour >= streakAtRiskHour {
-			mates, err := s.crews.CheckedInCrewmates(ctx, user, now)
-			if err != nil {
-				return 0, err
-			}
-			if len(mates) > 0 {
-				return 0, nil
-			}
-		}
-		if !checkedIn && prefs.AllowsNudge(KindStreakAtRisk) && hour >= streakAtRiskHour {
-			streak, err := s.checkins.StreakAt(ctx, user, now)
-			if err != nil {
-				return 0, err
-			}
-			if streak >= streakAtRiskMin {
-				return 0, nil
+		if !checkedIn {
+			asked, askErr := s.askedForCheckInToday(ctx, user, today)
+			if askErr != nil || asked {
+				return 0, askErr
 			}
 		}
 	}
@@ -756,11 +783,17 @@ func (s *Service) prefsFor(ctx context.Context, user users.User) (notifications.
 // This is the gap the missed-check-in rule leaves: that one waits two quiet
 // days and so always arrives after the streak is already gone. Loss is a
 // stronger motive than absence, and it only works before the loss.
+//
+// It is the one loss-framed message the product sends, so it is held to the
+// evening before nine, stands down for any other ask already made today,
+// waits for the daily reminder when that is still due, and is not sent at
+// all while a rest day is held: a person with one in hand loses nothing at
+// midnight.
 func (s *Service) evalStreakAtRisk(ctx context.Context, user users.User, today, now time.Time) (int, error) {
 	if s.checkins == nil {
 		return 0, nil
 	}
-	if now.In(user.Location()).Hour() < streakAtRiskHour {
+	if hour := now.In(user.Location()).Hour(); hour < streakAtRiskHour || hour >= streakAtRiskEnd {
 		return 0, nil
 	}
 
@@ -773,12 +806,19 @@ func (s *Service) evalStreakAtRisk(ctx context.Context, user users.User, today, 
 		return 0, nil
 	}
 
-	streak, err := s.checkins.StreakAt(ctx, user, now)
+	run, err := s.checkins.RunAt(ctx, user, now)
 	if err != nil {
 		return 0, err
 	}
-	if streak < streakAtRiskMin {
+	streak := run.Current
+	if streak < streakAtRiskMin || run.RestsHeld > 0 {
 		return 0, nil
+	}
+	if asked, askErr := s.askedForCheckInToday(ctx, user, today); askErr != nil || asked {
+		return 0, askErr
+	}
+	if pending, dueErr := s.usualAskStillDue(ctx, user, today, now); dueErr != nil || pending {
+		return 0, dueErr
 	}
 
 	_, inserted, err := s.Raise(ctx, user, Draft{
@@ -934,8 +974,9 @@ func daysBetween(a, b time.Time) int {
 }
 
 // evalCrewCheckIn tells somebody, once an evening, that people in their crew
-// checked in today and they have not. It stands aside for the streak
-// warning, which asks for the same check-in more urgently.
+// checked in today and they have not. It stands aside for any ask already
+// made today: the reminder in the morning, or the streak warning that ran
+// before it in this sweep.
 func (s *Service) evalCrewCheckIn(ctx context.Context, user users.User, today, now time.Time) (int, error) {
 	if s.crews == nil || s.checkins == nil || now.In(user.Location()).Hour() < streakAtRiskHour {
 		return 0, nil
@@ -947,12 +988,10 @@ func (s *Service) evalCrewCheckIn(ctx context.Context, user users.User, today, n
 	if ok && daysBetween(last, today) == 0 {
 		return 0, nil
 	}
-	streak, err := s.checkins.StreakAt(ctx, user, now)
-	if err != nil {
-		return 0, err
-	}
-	if streak >= streakAtRiskMin {
-		return 0, nil
+	// One ask a day: the streak warning runs first in a sweep, so when it
+	// went out this stands down.
+	if asked, askErr := s.askedForCheckInToday(ctx, user, today); askErr != nil || asked {
+		return 0, askErr
 	}
 	names, err := s.crews.CheckedInCrewmates(ctx, user, now)
 	if err != nil || len(names) == 0 {

@@ -61,7 +61,7 @@ func TestOnCheckInSaved(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(fake.kinds) != 2 || fake.kinds[0] != nudges.KindMissedCheckIn || fake.kinds[1] != nudges.KindStreakAtRisk {
+	if len(fake.kinds) != 3 || fake.kinds[0] != nudges.KindMissedCheckIn || fake.kinds[1] != nudges.KindStreakAtRisk || fake.kinds[2] != nudges.KindUsualTime {
 		t.Fatalf("kinds = %v", fake.kinds)
 	}
 	if fake.texts[0] != "✅ Checked in today" {

@@ -26,6 +26,7 @@ const (
 	KindMealReminder      = nudge.KindMealReminder
 	KindEveningReflection = nudge.KindEveningReflection
 	KindCrewCheckIn       = nudge.KindCrewCheckIn
+	KindUsualTime         = nudge.KindUsualTime
 	KindWeekReview        = nudge.KindWeekReview
 	KindDecisionRevisit   = nudge.KindDecisionRevisit
 
@@ -58,7 +59,7 @@ const (
 // empty for a plain banner. Only the nudges that ask for a check-in get one.
 func PushCategory(kind string) string {
 	switch kind {
-	case KindMissedCheckIn, KindStreakAtRisk, KindCrewCheckIn, KindEveningReflection:
+	case KindMissedCheckIn, KindStreakAtRisk, KindCrewCheckIn, KindEveningReflection, KindUsualTime:
 		return CategoryCheckIn
 	case KindCoachLighter:
 		return CategoryCoachLighter

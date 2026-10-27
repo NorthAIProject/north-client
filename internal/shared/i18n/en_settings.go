@@ -38,7 +38,7 @@ var englishSettings = map[string]string{
 
 	"settings.notif.title":          "Notifications",
 	"settings.notif.desc":           "When Khepri speaks first. Quiet hours follow your timezone.",
-	"settings.notif.missed":         "Remind me when I stop checking in",
+	"settings.notif.missed":         "Check-in reminders",
 	"settings.notif.goal":           "Warn me before a goal is due",
 	"settings.notif.coach":          "Tell me when the coach has something",
 	"settings.notif.coach.desc":     "First-week check-ins, a reply from Telegram, a finished form check.",
