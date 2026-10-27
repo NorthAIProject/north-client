@@ -21,4 +21,11 @@ var portugueseBrazilianMoments = map[string]string{
 	"moments.milestone.body":        "“%[1]s”, rumo a “%[2]s”.",
 	"moments.firstweek.three.title": "3 de 3 dias",
 	"moments.firstweek.three.body":  "Três dias, três vezes. Faltam quatro.",
+
+	"moments.perfect_week.title": "Uma semana perfeita",
+	"moments.perfect_week.body":  "Sete dias, sete registros. A semana inteira.",
+	"moments.rest_earned.title":  "Dia de descanso conquistado",
+	"moments.rest_earned.body":   "Você ganhou um dia de descanso. Sua sequência pode tirar um dia de folga quando você precisar.",
+	"moments.comeback.title":     "Um novo começo",
+	"moments.comeback.body":      "Nova sequência. Sua melhor é de %d dias.",
 }

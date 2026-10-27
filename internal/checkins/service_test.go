@@ -403,3 +403,63 @@ func TestRecentForContextReturnsAFullFortnight(t *testing.T) {
 		t.Fatalf("14 consecutive days of check-ins should all reach the coach, got %d", len(list))
 	}
 }
+
+// The app and the web form celebrate only the save that created the day's
+// check-in. Filing it again is an edit, and must not fire the card twice.
+func TestUpsertTodayReportsWhetherItCreated(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "created@north.test", "Europe/Lisbon")
+	svc := checkins.NewService(checkins.NewRepository(pool), nil)
+
+	first, err := svc.UpsertToday(ctx, user, checkins.Input{Mood: 3, Energy: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Created || first.Run.Current != 1 {
+		t.Fatalf("first save: created=%v current=%d, want true and 1", first.Created, first.Run.Current)
+	}
+
+	second, err := svc.UpsertToday(ctx, user, checkins.Input{Mood: 4, Energy: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Created || second.Run.Current != 1 {
+		t.Fatalf("second save: created=%v current=%d, want false and 1", second.Created, second.Run.Current)
+	}
+}
+
+// RunAt and StreakAt read the same run, so every caller of the streak — the
+// nudges, the leaderboard, achievements — agrees with the rest days the
+// check-ins page shows.
+func TestRunAtBridgesAMissedDayWithARest(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	user := seedUser(t, pool, "rest@north.test", "Pacific/Auckland")
+	repo := checkins.NewRepository(pool)
+	svc := checkins.NewService(repo, nil)
+
+	// A clock well past checkin.RestsFrom, so the gap is one a rest may bridge.
+	now := time.Now().AddDate(0, 2, 0)
+	today := checkins.LocalDate(user, now)
+	for _, offset := range []int{8, 7, 6, 5, 4, 3, 2, 0} {
+		if _, err := repo.Upsert(ctx, user.ID, checkins.Write{LocalDate: today.AddDate(0, 0, -offset), Mood: 3, Energy: 3}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	run, err := svc.RunAt(ctx, user, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Current != 8 || run.RestsUsed != 1 || run.Best != 8 {
+		t.Fatalf("current/used/best = %d/%d/%d, want 8/1/8", run.Current, run.RestsUsed, run.Best)
+	}
+	streak, err := svc.StreakAt(ctx, user, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if streak != run.Current {
+		t.Fatalf("StreakAt = %d, want the run's %d", streak, run.Current)
+	}
+}

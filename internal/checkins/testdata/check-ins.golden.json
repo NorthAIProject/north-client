@@ -54,5 +54,39 @@
       "tags": []
     }
   ],
-  "streak": 6
+  "streak": 6,
+  "bestStreak": 23,
+  "restDaysHeld": 0,
+  "restDaysUsed": 1,
+  "perfectWeek": false,
+  "week": [
+    {
+      "date": "2026-09-21",
+      "state": "checked"
+    },
+    {
+      "date": "2026-09-22",
+      "state": "rest"
+    },
+    {
+      "date": "2026-09-23",
+      "state": "checked"
+    },
+    {
+      "date": "2026-09-24",
+      "state": "checked"
+    },
+    {
+      "date": "2026-09-25",
+      "state": "upcoming"
+    },
+    {
+      "date": "2026-09-26",
+      "state": "upcoming"
+    },
+    {
+      "date": "2026-09-27",
+      "state": "upcoming"
+    }
+  ]
 }

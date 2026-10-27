@@ -1131,7 +1131,7 @@ func routes(
 			fitness:      fitness.NewAPI(stravaSvc, cfg.BaseURL),
 			insights:     insights.NewAPI(insightsSvc).WithFocus(weeklySvc),
 			goals:        goals.NewAPI(goalSvc),
-			checkins:     checkins.NewAPI(checkinSvc),
+			checkins:     checkins.NewAPI(checkinSvc).WithFunnel(funnel),
 			reports:      reports.NewAPI(reportSvc),
 			memories:     memories.NewAPI(memorySvc),
 			knowledge:    documents.NewAPI(documentSvc, quotaSvc),

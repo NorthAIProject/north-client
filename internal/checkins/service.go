@@ -148,17 +148,26 @@ func LocalDate(user users.User, at time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 }
 
+// Saved is a check-in just stored, with what the save means for the run.
+type Saved struct {
+	CheckIn
+	// Created is true when this save made today's check-in, false when it
+	// replaced one. Only a creating save earns a moment.
+	Created bool
+	Run     checkin.Run
+}
+
 // UpsertToday creates or replaces today's check-in in the user's timezone.
 // Every content field is written as given: this is the full form (web or app),
 // where a field left blank is a deliberate clear. A writer that knows only some
 // fields uses MergeToday instead. The source is kept from the first save.
-func (s *Service) UpsertToday(ctx context.Context, user users.User, in Input) (CheckIn, error) {
+func (s *Service) UpsertToday(ctx context.Context, user users.User, in Input) (Saved, error) {
 	clean, err := Validate(in)
 	if err != nil {
-		return CheckIn{}, err
+		return Saved{}, err
 	}
 	if err = s.checkGoal(ctx, user.ID, clean.RelatedGoalID); err != nil {
-		return CheckIn{}, err
+		return Saved{}, err
 	}
 	return s.saveToday(ctx, user, clean)
 }
@@ -189,7 +198,8 @@ func (s *Service) MergeToday(ctx context.Context, user users.User, in Input) (Ch
 	if err != nil {
 		return CheckIn{}, err
 	}
-	return s.saveToday(ctx, user, clean)
+	saved, err := s.saveToday(ctx, user, clean)
+	return saved.CheckIn, err
 }
 
 // mergeInto lays a partial input over an existing check-in. Mood and energy
@@ -234,24 +244,30 @@ func mergeInto(base CheckIn, patch Input) Input {
 
 // saveToday stores an already validated check-in for today and tells the
 // hooks about it.
-func (s *Service) saveToday(ctx context.Context, user users.User, clean Input) (CheckIn, error) {
-	checkIn, err := s.repo.Upsert(ctx, user.ID, writeFrom(LocalDate(user, time.Now()), clean))
+func (s *Service) saveToday(ctx context.Context, user users.User, clean Input) (Saved, error) {
+	now := time.Now()
+	checkIn, err := s.repo.Upsert(ctx, user.ID, writeFrom(LocalDate(user, now), clean))
 	if err != nil {
-		return CheckIn{}, err
+		return Saved{}, err
 	}
+	// Both timestamps default to the insert's now(); a replacing save moves
+	// updated_at on, so equal means this save created the row.
+	saved := Saved{CheckIn: checkIn, Created: checkIn.CreatedAt.Equal(checkIn.UpdatedAt)}
 	if s.sync != nil {
 		_ = s.sync.OnCheckInSaved(ctx, user.ID)
 	}
 	if s.awards != nil {
-		s.awards.Check(ctx, user.ID, time.Now(), award.Consistency)
+		s.awards.Check(ctx, user.ID, now, award.Consistency)
 	}
-	if s.achievements != nil {
-		now := time.Now()
-		if streak, streakErr := s.StreakAt(ctx, user, now); streakErr == nil {
-			s.achievements.StreakReached(ctx, user.ID, streak, LocalDate(user, now).Format("2006-01-02"), now)
+	// The save already happened: a run that cannot be read leaves the
+	// response without its streak rather than failing it.
+	if run, runErr := s.RunAt(ctx, user, now); runErr == nil {
+		saved.Run = run
+		if s.achievements != nil {
+			s.achievements.StreakReached(ctx, user.ID, run.Current, LocalDate(user, now).Format("2006-01-02"), now)
 		}
 	}
-	return checkIn, nil
+	return saved, nil
 }
 
 func writeFrom(localDate time.Time, clean Input) Write {
@@ -389,38 +405,25 @@ func (s *Service) Streak(ctx context.Context, user users.User) (int, error) {
 
 // StreakAt is Streak as of a given instant. The nudge sweep passes its own
 // clock so "is the streak about to break tonight" can be tested without
-// waiting for tonight.
+// waiting for tonight. It is the run's current count, rest days included, so
+// every caller agrees with what the check-ins page shows.
 func (s *Service) StreakAt(ctx context.Context, user users.User, now time.Time) (int, error) {
+	run, err := s.RunAt(ctx, user, now)
+	return run.Current, err
+}
+
+// Run is the person's check-in run with its rest days, as of now.
+func (s *Service) Run(ctx context.Context, user users.User) (checkin.Run, error) {
+	return s.RunAt(ctx, user, time.Now())
+}
+
+// RunAt is Run as of a given instant. See checkin.ComputeRun for the rules.
+func (s *Service) RunAt(ctx context.Context, user users.User, now time.Time) (checkin.Run, error) {
 	dates, err := s.repo.Dates(ctx, user.ID, streakLook)
 	if err != nil {
-		return 0, err
+		return checkin.Run{}, err
 	}
-	if len(dates) == 0 {
-		return 0, nil
-	}
-
-	today := LocalDate(user, now)
-	// Normalise stored dates to comparable date-only in the same location.
-	have := make(map[string]bool, len(dates))
-	for _, d := range dates {
-		have[dateKey(d)] = true
-	}
-
-	start := today
-	if !have[dateKey(today)] {
-		// Allow the streak to end on yesterday if they have not checked in yet today.
-		yesterday := today.AddDate(0, 0, -1)
-		if !have[dateKey(yesterday)] {
-			return 0, nil
-		}
-		start = yesterday
-	}
-
-	streak := 0
-	for day := start; have[dateKey(day)]; day = day.AddDate(0, 0, -1) {
-		streak++
-	}
-	return streak, nil
+	return checkin.ComputeRun(dates, LocalDate(user, now), checkin.RestsFrom), nil
 }
 
 func (s *Service) checkGoal(ctx context.Context, userID uuid.UUID, goalID *uuid.UUID) error {
@@ -438,18 +441,6 @@ func (s *Service) checkGoal(ctx context.Context, userID uuid.UUID, goalID *uuid.
 		return apperr.FieldErrors{{Field: "related_goal_id", Message: "That goal is not available."}}
 	}
 	return nil
-}
-
-// dateKey identifies the calendar day a timestamp falls on, for comparing the
-// user's local days against stored check-in dates.
-//
-// Deliberately not .UTC(): the two sides arrive in different locations — stored
-// dates come back as midnight UTC, while LocalDate builds midnight in the user's
-// zone — and converting to UTC moves that local midnight onto the previous day
-// for every positive offset. Lisbon, Berlin, and Tokyo all reported a streak of
-// zero no matter how many days in a row the user checked in.
-func dateKey(t time.Time) string {
-	return t.Format("2006-01-02")
 }
 
 // Total is how many days this person has ever checked in. My Day turns it into

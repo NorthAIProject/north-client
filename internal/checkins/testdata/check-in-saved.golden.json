@@ -1,0 +1,22 @@
+{
+  "id": "e5e5e5e5-e5e5-e5e5-e5e5-e5e5e5e5e5e5",
+  "localDate": "2026-09-24",
+  "mood": 4,
+  "energy": 3,
+  "wins": "Long run done.",
+  "challenges": "",
+  "notes": "",
+  "updatedAt": "2026-09-24T07:30:00Z",
+  "createdAt": "2026-09-24T07:30:00Z",
+  "source": "ios",
+  "tags": [],
+  "created": true,
+  "streak": 6,
+  "restDaysHeld": 0,
+  "perfectWeek": false,
+  "moment": {
+    "kind": "comeback",
+    "title": "A fresh start",
+    "body": "New run. Your best is 23 days."
+  }
+}

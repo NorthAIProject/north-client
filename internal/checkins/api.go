@@ -8,8 +8,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
+	"github.com/NorthAIProject/north-client/internal/moments"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -18,10 +20,18 @@ import (
 // and editing, over the same service the web /check-ins page uses.
 type API struct {
 	svc *Service
+	// funnel reports moments shown, as the web handler does. Nil is a no-op.
+	funnel *analytics.Funnel
 }
 
 // NewAPI builds the routes; mount them behind auth.RequireBearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
+
+// WithFunnel reports the moments the app is sent.
+func (a *API) WithFunnel(f *analytics.Funnel) *API {
+	a.funnel = f
+	return a
+}
 
 func (a *API) Routes(r chi.Router) {
 	r.Get("/check-ins", a.list)
@@ -60,8 +70,82 @@ type CheckInList struct {
 	// Today is absent until today's check-in exists.
 	Today  *CheckInView  `json:"today,omitempty"`
 	Recent []CheckInView `json:"recent"`
-	// Streak is consecutive days with a check-in, ending today or yesterday.
+	// Streak is check-in days in the run ending today or yesterday. A rest
+	// day bridges a missed day without adding to it.
 	Streak int `json:"streak"`
+	// BestStreak is the longest run in the person's recent history.
+	BestStreak int `json:"bestStreak"`
+	// RestDaysHeld is 0 to 2: one is earned per seven check-in days.
+	RestDaysHeld int `json:"restDaysHeld"`
+	// RestDaysUsed is how many the current run has spent.
+	RestDaysUsed int `json:"restDaysUsed"`
+	// PerfectWeek is every day of this week so far checked in.
+	PerfectWeek bool `json:"perfectWeek"`
+	// Week is Monday to Sunday of the current week, always seven days.
+	Week []WeekDayView `json:"week"`
+}
+
+// WeekDayView is one day of the current week.
+type WeekDayView struct {
+	Date string `json:"date"`
+	// State is checked, rest, none, today or upcoming. Open-ended; clients
+	// must tolerate values they do not know.
+	State string `json:"state"`
+}
+
+// setRun fills the run fields from the person's run.
+func (l *CheckInList) setRun(run checkin.Run) {
+	l.Streak = run.Current
+	l.BestStreak = run.Best
+	l.RestDaysHeld = run.RestsHeld
+	l.RestDaysUsed = run.RestsUsed
+	l.PerfectWeek = run.PerfectWeek
+	l.Week = weekView(run.Week)
+}
+
+func weekView(week [7]checkin.WeekDay) []WeekDayView {
+	out := make([]WeekDayView, len(week))
+	for i, d := range week {
+		out[i] = WeekDayView{Date: d.Date.Format("2006-01-02"), State: string(d.State)}
+	}
+	return out
+}
+
+// SavedCheckInView is today's check-in as a save returns it: the check-in,
+// plus what the save meant for the run.
+type SavedCheckInView struct {
+	CheckInView
+	// Created is true when this save made today's check-in; false is an edit.
+	Created      bool `json:"created"`
+	Streak       int  `json:"streak"`
+	RestDaysHeld int  `json:"restDaysHeld"`
+	PerfectWeek  bool `json:"perfectWeek"`
+	// Moment is the recognition this save earned. Only ever on a creating
+	// save, and absent on most of those.
+	Moment *MomentView `json:"moment,omitempty"`
+}
+
+// MomentView is one recognition card.
+type MomentView struct {
+	// Kind is streak, perfect_week, rest_day_earned or comeback. Open-ended;
+	// clients must tolerate values they do not know.
+	Kind  string `json:"kind"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+func projectSaved(s Saved, m *moments.Moment) SavedCheckInView {
+	out := SavedCheckInView{
+		CheckInView:  project(s.CheckIn),
+		Created:      s.Created,
+		Streak:       s.Run.Current,
+		RestDaysHeld: s.Run.RestsHeld,
+		PerfectWeek:  s.Run.PerfectWeek,
+	}
+	if m != nil {
+		out.Moment = &MomentView{Kind: m.Kind, Title: m.Title, Body: m.Body}
+	}
+	return out
 }
 
 type CheckInRequest struct {
@@ -76,8 +160,9 @@ type CheckInRequest struct {
 	Stress       *int     `json:"stress,omitempty"`
 	SleepQuality *int     `json:"sleepQuality,omitempty"`
 	Tags         []string `json:"tags,omitempty"`
-	// Source is "ios" or "siri"; anything else is recorded as "ios". It is
-	// stored only when the request creates the day's check-in.
+	// Source is "ios", "siri", "widget" or "notification"; anything else is
+	// recorded as "ios". It is stored only when the request creates the day's
+	// check-in.
 	Source string `json:"source,omitempty"`
 }
 
@@ -85,8 +170,9 @@ type CheckInRequest struct {
 // sent it.
 func (req CheckInRequest) input() Input {
 	source := checkin.SourceIOS
-	if checkin.Source(req.Source) == checkin.SourceSiri {
-		source = checkin.SourceSiri
+	switch s := checkin.Source(req.Source); s {
+	case checkin.SourceSiri, checkin.SourceWidget, checkin.SourceNotification:
+		source = s
 	}
 	return Input{
 		Mood: req.Mood, Energy: req.Energy,
@@ -118,10 +204,12 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 	for _, c := range recent {
 		out.Recent = append(out.Recent, project(c))
 	}
-	if out.Streak, err = a.svc.Streak(r.Context(), user); err != nil {
+	run, err := a.svc.Run(r.Context(), user)
+	if err != nil {
 		httpx.Error(w, err, "Check-ins could not be loaded.")
 		return
 	}
+	out.setRun(run)
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -132,12 +220,18 @@ func (a *API) upsertToday(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	saved, err := a.svc.UpsertToday(r.Context(), auth.MustUser(r.Context()), req.input())
+	user := auth.MustUser(r.Context())
+	saved, err := a.svc.UpsertToday(r.Context(), user, req.input())
 	if err != nil {
 		httpx.Error(w, err, "The check-in could not be saved.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, project(saved))
+	var moment *moments.Moment
+	if m, ok := moments.ForCheckIn(r.Context(), saved.Run, saved.Created); ok {
+		a.funnel.MomentShown(r.Context(), user.ID, m.Kind)
+		moment = &m
+	}
+	httpx.WriteJSON(w, http.StatusOK, projectSaved(saved, moment))
 }
 
 func (a *API) update(w http.ResponseWriter, r *http.Request) {

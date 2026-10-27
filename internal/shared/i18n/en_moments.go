@@ -24,4 +24,13 @@ var englishMoments = map[string]string{
 	"moments.milestone.body":        "“%[1]s”, on the way to “%[2]s”.",
 	"moments.firstweek.three.title": "3 of 3 days",
 	"moments.firstweek.three.body":  "Three days, three times. Four to go.",
+
+	// A check-in can also earn one of these, rarest first; see moments.ForCheckIn.
+	"moments.perfect_week.title": "A perfect week",
+	"moments.perfect_week.body":  "Seven days, seven check-ins. That is the whole week.",
+	"moments.rest_earned.title":  "Rest day earned",
+	"moments.rest_earned.body":   "You've earned a rest day. Your streak can take a day off when you need one.",
+	// A new run after a long one names the best, never the gap.
+	"moments.comeback.title": "A fresh start",
+	"moments.comeback.body":  "New run. Your best is %d days.",
 }

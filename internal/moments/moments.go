@@ -23,16 +23,25 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
-// Kinds, as they reach the funnel (analytics.EventMomentShown).
+// Kinds, as they reach the funnel (analytics.EventMomentShown) and the app.
+// Open-ended on the wire: clients must tolerate kinds they do not know.
 const (
-	KindStreak    = "streak"
-	KindGoal      = "goal_achieved"
-	KindMilestone = "milestone_completed"
-	KindFirstWeek = "first_week_three"
+	KindStreak      = "streak"
+	KindGoal        = "goal_achieved"
+	KindMilestone   = "milestone_completed"
+	KindFirstWeek   = "first_week_three"
+	KindPerfectWeek = "perfect_week"
+	KindRestEarned  = "rest_day_earned"
+	KindComeback    = "comeback"
 )
+
+// comebackAfter is the shortest best run a new run is worth marking against.
+// Below it, "your best is 2 days" is not recognition.
+const comebackAfter = 3
 
 // Moment is one card: the mascot, a title, a line.
 type Moment struct {
@@ -55,6 +64,43 @@ func ForStreak(ctx context.Context, n int) (Moment, bool) {
 	}
 	key := fmt.Sprintf("moments.streak.%d", n)
 	return Moment{Kind: KindStreak, Title: i18n.T(ctx, key+".title"), Body: i18n.T(ctx, key+".body")}, true
+}
+
+// ForCheckIn is the one card a check-in save earns, if any. Only the save
+// that created today's check-in qualifies: filing it again is an edit, and
+// the card has been seen.
+//
+// One card per save, the rarest first: a streak mark, then a full Monday to
+// Sunday week, then a rest day earned, then the first day of a new run after
+// a long one. The last names the best run, never the gap before it.
+func ForCheckIn(ctx context.Context, run checkin.Run, created bool) (Moment, bool) {
+	if !created {
+		return Moment{}, false
+	}
+	if m, ok := ForStreak(ctx, run.Current); ok {
+		return m, true
+	}
+	switch {
+	case run.WeekComplete:
+		return Moment{
+			Kind:  KindPerfectWeek,
+			Title: i18n.T(ctx, "moments.perfect_week.title"),
+			Body:  i18n.T(ctx, "moments.perfect_week.body"),
+		}, true
+	case run.RestEarnedToday:
+		return Moment{
+			Kind:  KindRestEarned,
+			Title: i18n.T(ctx, "moments.rest_earned.title"),
+			Body:  i18n.T(ctx, "moments.rest_earned.body"),
+		}, true
+	case run.Current == 1 && run.Best >= comebackAfter:
+		return Moment{
+			Kind:  KindComeback,
+			Title: i18n.T(ctx, "moments.comeback.title"),
+			Body:  i18n.Tf(ctx, "moments.comeback.body", run.Best),
+		}, true
+	}
+	return Moment{}, false
 }
 
 // ForGoalAchieved is the card for a goal moved to achieved.
