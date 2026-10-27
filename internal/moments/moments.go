@@ -39,8 +39,9 @@ const (
 	KindComeback    = "comeback"
 )
 
-// comebackAfter is the shortest best run a new run is worth marking against.
-// Below it, "your best is 2 days" is not recognition.
+// comebackAfter is the shortest ended run a new run is worth marking after.
+// Below it, every other day would be a "fresh start", and "your best is 2
+// days" is not recognition.
 const comebackAfter = 3
 
 // Moment is one card: the mascot, a title, a line.
@@ -93,7 +94,7 @@ func ForCheckIn(ctx context.Context, run checkin.Run, created bool) (Moment, boo
 			Title: i18n.T(ctx, "moments.rest_earned.title"),
 			Body:  i18n.T(ctx, "moments.rest_earned.body"),
 		}, true
-	case run.Current == 1 && run.Best >= comebackAfter:
+	case run.Current == 1 && run.PreviousRun >= comebackAfter:
 		return Moment{
 			Kind:  KindComeback,
 			Title: i18n.T(ctx, "moments.comeback.title"),

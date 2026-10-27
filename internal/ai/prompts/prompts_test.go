@@ -159,6 +159,7 @@ func TestCheckInReplyPromptStatesItsRules(t *testing.T) {
 		"emergency services or a crisis line",
 		"{{.language}}",
 		"{{.pattern}}",
+		"unless rule 6 applies",
 	} {
 		if !strings.Contains(lower, phrase) {
 			t.Errorf("check-in reply prompt missing %q", phrase)

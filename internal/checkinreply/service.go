@@ -33,7 +33,7 @@ const (
 
 // Prompt is what the model is given to write one note.
 type Prompt struct {
-	// Today is today's check-in, as the coach's context summarises it.
+	// Today is today's check-in, every word of it.
 	Today string
 	// Recent are earlier check-ins, newest first.
 	Recent []string
@@ -157,7 +157,7 @@ func (s *Service) prompt(ctx context.Context, user users.User, today checkin.Che
 	if err != nil {
 		return Prompt{}, "", err
 	}
-	p := Prompt{Today: today.Summary()}
+	p := Prompt{Today: inFull(today)}
 	for _, c := range history {
 		if c.ID != today.ID && len(p.Recent) < recentShown {
 			p.Recent = append(p.Recent, c.Summary())

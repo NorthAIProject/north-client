@@ -49,6 +49,35 @@ func contentHash(c checkin.CheckIn) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// inFull is today's check-in with every word the person wrote. The coach's
+// context shortens each field to a line (checkin.Summary); the note must not,
+// because the end of a long note is where somebody may say the thing that
+// matters most.
+func inFull(c checkin.CheckIn) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s — mood %d/5, energy %d/5", c.LocalDate.Format("2 Jan"), c.Mood, c.Energy)
+	if c.Stress != nil {
+		fmt.Fprintf(&b, ", stress %d/5", *c.Stress)
+	}
+	if c.SleepQuality != nil {
+		fmt.Fprintf(&b, ", sleep quality %d/5", *c.SleepQuality)
+	}
+	if title := strings.TrimSpace(c.RelatedGoalTitle); title != "" {
+		fmt.Fprintf(&b, "\nAbout their goal: %s", title)
+	}
+	for _, field := range []struct{ label, text string }{
+		{"Wins", c.Wins}, {"Challenges", c.Challenges}, {"Notes", c.Notes},
+	} {
+		if text := strings.TrimSpace(field.text); text != "" {
+			fmt.Fprintf(&b, "\n%s: %s", field.label, text)
+		}
+	}
+	if len(c.Tags) > 0 {
+		fmt.Fprintf(&b, "\nTags: %s", strings.Join(c.Tags, ", "))
+	}
+	return b.String()
+}
+
 func optional(v *int) string {
 	if v == nil {
 		return "-"

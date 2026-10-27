@@ -114,16 +114,18 @@ func TestUsualTimeStaysQuiet(t *testing.T) {
 	}
 }
 
-// Check-ins the reminder itself prompted do not teach it a later hour, or it
-// would chase its own answers later every week.
-func TestUsualTimeIgnoresDaysItAskedOn(t *testing.T) {
+// Days the reminder asked on still count. Leaving them out keeps only the
+// days the person beat the reminder, so the median would slide earlier with
+// every ask. Answers to it land after the due time, above the median, so
+// counting them does not drag it later either.
+func TestUsualTimeCountsDaysItAskedOn(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	user := habitUser(t, pool, "drift@north.test", thursday, 8, 0, 1, 2, 3, 4, 5)
+	user := habitUser(t, pool, "late-habit@north.test", thursday, 7, 0, 1, 2, 3, 4, 5)
 	repo := nudges.NewRepository(pool)
-	for back := 6; back <= 10; back++ {
+	for back := 6; back <= 11; back++ {
 		d := thursday.AddDate(0, 0, -back)
-		writeCheckInAt(t, pool, user.ID, at(d, 10, 0))
+		writeCheckInAt(t, pool, user.ID, at(d, 9, 0))
 		if _, _, err := repo.Insert(ctx, user.ID, nudges.Draft{
 			Kind: nudges.KindUsualTime, DedupeKey: d.Format("2006-01-02"), Title: "t", Body: "b", Href: "/app/check-ins",
 		}); err != nil {
@@ -131,10 +133,10 @@ func TestUsualTimeIgnoresDaysItAskedOn(t *testing.T) {
 		}
 	}
 
-	// Counting the answered days, the median would be 10:00 and nothing would
-	// be due at nine.
-	if n, err := evalService(pool, at(thursday, 9, 0)).Evaluate(ctx, user); err != nil || n != 1 {
-		t.Fatalf("created %d, err %v; want today's reminder at the person's own hour", n, err)
+	// Most days are 09:00, so nothing is due at eight. Without the answered
+	// days the median would be 07:00 and the reminder would already be out.
+	if n, err := evalService(pool, at(thursday, 8, 0)).Evaluate(ctx, user); err != nil || n != 0 {
+		t.Fatalf("created %d, err %v; want nothing before the real habit", n, err)
 	}
 }
 

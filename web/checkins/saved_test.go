@@ -69,9 +69,13 @@ func TestSavedPanelMarksAPerfectWeek(t *testing.T) {
 // The first day of a new run names the best one, not the gap.
 func TestSavedPanelStartsANewRunWithTheBest(t *testing.T) {
 	t.Parallel()
-	html := renderSaved(t, SavedView{Run: checkin.Run{Current: 1, Best: 23}})
+	html := renderSaved(t, SavedView{Run: checkin.Run{Current: 1, Best: 23, PreviousRun: 6}})
 	if !strings.Contains(html, "Day one of a new run. Your best is 23 days.") {
 		t.Errorf("new run line missing: %s", html)
+	}
+	// Every other day is not a comeback each time.
+	if html := renderSaved(t, SavedView{Run: checkin.Run{Current: 1, Best: 23, PreviousRun: 1}}); strings.Contains(html, "new run") {
+		t.Error("a one-day run before this one is not worth the new-run line")
 	}
 }
 

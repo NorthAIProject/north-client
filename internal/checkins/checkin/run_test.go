@@ -89,6 +89,31 @@ func TestComputeRun(t *testing.T) {
 	}
 }
 
+// A new run is worth marking only after a run worth the name. Somebody who
+// checks in every other day starts a "new run" every time, and telling them
+// so each time is wallpaper pointing at what they lost.
+func TestComputeRunRemembersTheRunThatEnded(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		dates    []time.Time
+		previous int
+	}{
+		{"after a five-day run and a long gap", join(span(runToday, 30, 21), span(runToday, 12, 8), ago(runToday, 0)), 5},
+		{"every other day", ago(runToday, 4, 2, 0), 1},
+		{"no run before", ago(runToday, 0), 0},
+		{"the run is still going", span(runToday, 3, 0), 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := checkin.ComputeRun(tc.dates, runToday, restsOpen).PreviousRun; got != tc.previous {
+				t.Fatalf("previous run = %d, want %d", got, tc.previous)
+			}
+		})
+	}
+}
+
 func TestComputeRunMarksTheRestEarnedToday(t *testing.T) {
 	t.Parallel()
 	if got := checkin.ComputeRun(span(runToday, 6, 0), runToday, restsOpen); !got.RestEarnedToday {

@@ -67,11 +67,7 @@ func (s *Service) usualAskAt(ctx context.Context, user users.User, today time.Ti
 	if err != nil {
 		return time.Time{}, false, err
 	}
-	asked, err := s.repo.DaysSince(ctx, user.ID, KindUsualTime, today.AddDate(0, 0, -usualTimeSamples))
-	if err != nil {
-		return time.Time{}, false, err
-	}
-	minute, ok := usualMinute(list, user.Location(), asked)
+	minute, ok := usualMinute(list, user.Location())
 	if !ok {
 		return time.Time{}, false, nil
 	}
@@ -84,15 +80,15 @@ func (s *Service) usualAskAt(ctx context.Context, user users.User, today time.Ti
 // usualMinute is the median minute of the day check-ins are saved at.
 //
 // Only check-ins saved on the day they are for count: one filed late for
-// yesterday says nothing about the habit. Nor do days the reminder asked on,
-// or answering it would teach it a later hour every week until it chased the
-// person to midnight.
-func usualMinute(list []checkin.CheckIn, loc *time.Location, skip map[string]bool) (int, bool) {
+// yesterday says nothing about the habit. Days the reminder asked on do
+// count. Answers to it come after the due time, above the median, so they
+// cannot drag it later; leaving them out would keep only the days the person
+// beat the reminder and slide the median earlier with every ask.
+func usualMinute(list []checkin.CheckIn, loc *time.Location) (int, bool) {
 	var minutes []int
 	for _, c := range list {
-		day := c.LocalDate.Format("2006-01-02")
 		saved := c.CreatedAt.In(loc)
-		if saved.Format("2006-01-02") != day || skip[day] {
+		if saved.Format("2006-01-02") != c.LocalDate.Format("2006-01-02") {
 			continue
 		}
 		minutes = append(minutes, saved.Hour()*60+saved.Minute())

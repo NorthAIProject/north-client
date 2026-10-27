@@ -793,7 +793,7 @@ func streakSaved(ctx context.Context, streak int) string {
 // run names the best one rather than the gap; a run a rest day kept says so,
 // honestly, instead of pretending the day happened.
 func runLine(ctx context.Context, run checkin.Run) string {
-	if run.Current == 1 && run.Best >= 3 {
+	if run.Current == 1 && run.PreviousRun >= 3 {
 		return i18n.Tf(ctx, "checkins.streak.newrun", run.Best)
 	}
 	line := streakSaved(ctx, run.Current)

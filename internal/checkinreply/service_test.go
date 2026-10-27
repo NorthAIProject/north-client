@@ -229,6 +229,23 @@ func TestThePatternArrivesOnTheSeventhCheckIn(t *testing.T) {
 	}
 }
 
+// The coach's context shortens each field to a line; the note under today's
+// check-in must read all of it. The end of a long note is where somebody may
+// say the thing that matters most.
+func TestTheModelReadsAllOfToday(t *testing.T) {
+	f := setup(t)
+	long := strings.Repeat("Long day at work, gym was fine. ", 18) + "I don't see the point of any of it anymore."
+	f.checkIn(t, checkins.Input{Mood: 1, Energy: 1, Notes: long, Wins: strings.Repeat("walked ", 30) + "and called my sister"})
+	if _, _, err := f.svc.ForToday(context.Background(), f.user); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"I don't see the point of any of it anymore.", "and called my sister", "mood 1/5"} {
+		if !strings.Contains(f.writer.last.Today, want) {
+			t.Errorf("the model was not shown %q", want)
+		}
+	}
+}
+
 func TestNoPatternBeforeTheSeventh(t *testing.T) {
 	f := setup(t)
 	f.checkIn(t, checkins.Input{Mood: 3, Energy: 3})

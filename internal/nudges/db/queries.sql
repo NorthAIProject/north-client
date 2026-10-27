@@ -47,10 +47,3 @@ SELECT count(*)::int FROM user_nudges
 WHERE user_id = sqlc.arg(user_id)
   AND kind = ANY(sqlc.arg(kinds)::text[])
   AND dedupe_key = sqlc.arg(day)::text;
-
--- name: ListNudgeDaysSince :many
--- The local days a kind was raised on, for a kind keyed by its day.
-SELECT dedupe_key FROM user_nudges
-WHERE user_id = sqlc.arg(user_id)
-  AND kind = sqlc.arg(kind)
-  AND created_at >= sqlc.arg(since);
