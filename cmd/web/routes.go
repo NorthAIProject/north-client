@@ -27,6 +27,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/capture"
 	"github.com/NorthAIProject/north-client/internal/care"
+	"github.com/NorthAIProject/north-client/internal/checkinreply"
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/config"
@@ -242,6 +243,11 @@ func routes(
 			return quota.Identity{UserID: user.ID, Tier: string(user.Tier)}, ok
 		},
 	)
+
+	// The coach's note under a saved check-in: one fast-model call per
+	// check-in content, stored, and bounded by its own quota on a miss.
+	checkinReplySvc := checkinreply.NewService(checkinSvc, checkinreply.NewRepository(pool),
+		checkinreply.NewAIWriter(runner, cfg.AI.FastModel)).WithQuota(quotaSvc)
 
 	documentHandler := documents.NewHandler(documentSvc, quotaSvc)
 
@@ -793,6 +799,7 @@ func routes(
 		ContextBuilder: coach.NewContextBuilder(conversationSvc,
 			goals.NewContextSource(goalSvc),
 			checkins.NewContextSource(checkinSvc),
+			checkinreply.NewContextSource(checkinReplySvc),
 			memories.NewContextSource(memorySvc),
 			documents.NewContextSource(documentSvc),
 			workouts.NewContextSource(workoutSvc),
@@ -1132,6 +1139,7 @@ func routes(
 			insights:     insights.NewAPI(insightsSvc).WithFocus(weeklySvc),
 			goals:        goals.NewAPI(goalSvc),
 			checkins:     checkins.NewAPI(checkinSvc).WithFunnel(funnel),
+			checkinReply: checkinreply.NewAPI(checkinReplySvc),
 			reports:      reports.NewAPI(reportSvc),
 			memories:     memories.NewAPI(memorySvc),
 			knowledge:    documents.NewAPI(documentSvc, quotaSvc),
@@ -1314,6 +1322,7 @@ func routes(
 
 				coachHandler.Routes(r)
 				checkinHandler.Routes(r)
+				checkinreply.NewHandler(checkinReplySvc).Routes(r)
 				nudgeHandler.Routes(r)
 				pushHandler.Routes(r)
 				goalHandler.Routes(r)

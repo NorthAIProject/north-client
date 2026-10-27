@@ -92,4 +92,6 @@ var englishCheckins = map[string]string{
 	"checkins.streak.saved.many": "%[1]d-day streak. Same time tomorrow.",
 	"checkins.meta.moodenergy":   "Mood %[1]d/5 · energy %[2]d/5",
 	"checkins.label":             "%[1]s — mood %[2]d · energy %[3]d",
+	// The coach's note under a saved check-in, when it names a pattern.
+	"checkins.reply.pattern": "Pattern unlocked",
 }

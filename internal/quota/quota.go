@@ -39,6 +39,10 @@ const (
 
 	ProgressEstimate Action = "progress_estimate"
 	MealPlanGenerate Action = "meal_plan_generate"
+
+	// CheckInReply is the coach's note under a saved check-in. Only a note that
+	// has to be written spends one; a stored note is free.
+	CheckInReply Action = "check_in_reply"
 )
 
 // Limit is one account's allowance for one action.
