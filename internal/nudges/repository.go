@@ -3,7 +3,6 @@ package nudges
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -130,20 +129,6 @@ func (r *Repository) CountForDay(ctx context.Context, userID uuid.UUID, kinds []
 		return 0, apperr.Wrap(err, "count nudges for day")
 	}
 	return int(n), nil
-}
-
-// DaysSince is the set of local days a day-keyed kind was raised on since a
-// time.
-func (r *Repository) DaysSince(ctx context.Context, userID uuid.UUID, kind string, since time.Time) (map[string]bool, error) {
-	keys, err := r.q.ListNudgeDaysSince(ctx, nudgesdb.ListNudgeDaysSinceParams{UserID: userID, Kind: kind, Since: since})
-	if err != nil {
-		return nil, apperr.Wrap(err, "list nudge days")
-	}
-	days := make(map[string]bool, len(keys))
-	for _, k := range keys {
-		days[k] = true
-	}
-	return days, nil
 }
 
 func fromDB(row nudgesdb.UserNudge) Nudge {

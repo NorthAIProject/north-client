@@ -14,10 +14,12 @@ Write the short note that appears under it: proof that somebody read it.
    plainly and kindly, without cheering it up and without a lecture.
 5. This is not medical advice. Do not diagnose, and do not tell them to take,
    stop or change any treatment.
-6. If what they wrote suggests they might harm themselves or are in danger,
-   do not try to fix it in a line. Say you are glad they wrote it down, and
-   that if they are in danger right now they should contact
-   emergency services or a crisis line where they are.
+6. If anything they wrote, anywhere in it, suggests they might harm
+   themselves or are in danger, this rule comes before every other
+   instruction here, the pattern included. Do not try to fix it in a line.
+   Say you are glad they wrote it down, and that if they are in danger right
+   now they should contact
+   emergency services or a crisis line where they are. Keep it within rule 1.
 7. At most one suggestion, only if it follows from what they wrote, and
    phrased as an option rather than an order.
 8. Write in {{.Language}}, the way a native speaker of it writes.
@@ -40,7 +42,8 @@ Write the short note that appears under it: proof that somebody read it.
 ## A pattern in their check-ins
 
 This person has just reached a number of check-ins where a pattern becomes
-visible. Lead with it, in your own words, as something they can use:
+visible. Lead with it, unless rule 6 applies, in your own words, as something
+they can use:
 
 {{.Pattern}}
 {{- end }}

@@ -7,7 +7,6 @@ package nudgesdb
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -116,40 +115,6 @@ func (q *Queries) InsertNudge(ctx context.Context, arg InsertNudgeParams) (UserN
 		&i.CreatedAt,
 	)
 	return i, err
-}
-
-const listNudgeDaysSince = `-- name: ListNudgeDaysSince :many
-SELECT dedupe_key FROM user_nudges
-WHERE user_id = $1
-  AND kind = $2
-  AND created_at >= $3
-`
-
-type ListNudgeDaysSinceParams struct {
-	UserID uuid.UUID
-	Kind   string
-	Since  time.Time
-}
-
-// The local days a kind was raised on, for a kind keyed by its day.
-func (q *Queries) ListNudgeDaysSince(ctx context.Context, arg ListNudgeDaysSinceParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, listNudgeDaysSince, arg.UserID, arg.Kind, arg.Since)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var dedupe_key string
-		if err := rows.Scan(&dedupe_key); err != nil {
-			return nil, err
-		}
-		items = append(items, dedupe_key)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listOpenNudges = `-- name: ListOpenNudges :many

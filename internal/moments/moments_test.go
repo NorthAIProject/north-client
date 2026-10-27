@@ -104,8 +104,9 @@ func TestForCheckInPrecedence(t *testing.T) {
 		{"a mark beats everything", checkin.Run{Current: 7, Best: 7, WeekComplete: true, RestEarnedToday: true}, moments.KindStreak},
 		{"a full week", checkin.Run{Current: 9, Best: 9, WeekComplete: true, RestEarnedToday: true}, moments.KindPerfectWeek},
 		{"a rest earned", checkin.Run{Current: 28, Best: 28, RestEarnedToday: true}, moments.KindRestEarned},
-		{"a new run after a long one", checkin.Run{Current: 1, Best: 23}, moments.KindComeback},
-		{"no comeback after a short one", checkin.Run{Current: 1, Best: 2}, ""},
+		{"a new run after a long one", checkin.Run{Current: 1, Best: 23, PreviousRun: 23}, moments.KindComeback},
+		{"no comeback between single days", checkin.Run{Current: 1, Best: 10, PreviousRun: 1}, ""},
+		{"no comeback after a short one", checkin.Run{Current: 1, Best: 2, PreviousRun: 2}, ""},
 		{"an ordinary day", checkin.Run{Current: 5, Best: 5}, ""},
 	}
 	for _, tc := range cases {
@@ -130,7 +131,7 @@ func TestForCheckInPrecedence(t *testing.T) {
 func TestComebackNamesTheBestRun(t *testing.T) {
 	t.Parallel()
 
-	m, _ := moments.ForCheckIn(context.Background(), checkin.Run{Current: 1, Best: 23}, true)
+	m, _ := moments.ForCheckIn(context.Background(), checkin.Run{Current: 1, Best: 23, PreviousRun: 4}, true)
 	if !strings.Contains(m.Body, "23") {
 		t.Fatalf("comeback body %q should name the best run", m.Body)
 	}

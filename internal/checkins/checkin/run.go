@@ -50,7 +50,11 @@ type Run struct {
 	RestsHeld int
 	// RestsUsed is how many rest days the current run has spent.
 	RestsUsed int
-	Week      [7]WeekDay
+	// PreviousRun is the length of the run that ended before this one, 0
+	// when none has. A new run is only worth marking after one worth the
+	// name: somebody checking in every other day starts a new run each time.
+	PreviousRun int
+	Week        [7]WeekDay
 	// PerfectWeek is every day of this week so far checked in, today checked
 	// or still open, and at least one done. A rest day keeps the run, not the
 	// perfect week.
@@ -111,7 +115,12 @@ func ComputeRun(dates []time.Time, today, restsFrom time.Time) Run {
 			run.RestsUsed++
 			rested[day] = true
 		default:
-			run = Run{Best: run.Best}
+			// A second missed day in a row ends nothing new.
+			previous := run.PreviousRun
+			if run.Current > 0 {
+				previous = run.Current
+			}
+			run = Run{Best: run.Best, PreviousRun: previous}
 			sinceEarn = 0
 		}
 	}
