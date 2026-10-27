@@ -234,6 +234,53 @@ response. Every kind is in `earned[]`, whose `kind` is open-ended.
 Still not copied from Norviq: ranking by portfolio return (a wealth metric),
 and XP for pressing a check-in button.
 
+**Update, 2026-10-27 — the gate is overridden; check-ins that reward.** The
+product owner asked for check-ins people want to come back to, and chose to
+ship before the gate's three numbers were read: to everyone, with no
+per-account switch and no cohort rollout. The events below still say whether
+it worked; nothing turns it off but a revert. Built:
+
+- **Rest days, derived rather than logged.** `checkin.ComputeRun` walks the
+  check-in days forward: one rest earned per seven check-in days in a run,
+  at most two held, spent on a fully missed day. A rest bridges the day
+  without counting it ("12-day streak · 1 rest day used"). There is no
+  `streak_rests` table: the run is a pure function of the dates, like every
+  other total here. `checkin.RestsFrom` (ship day) is the one concession to
+  "no retroactive awards": rests may be *earned* from older days but only
+  *spent* on gaps from that day on, so nobody's history jumps overnight and
+  the marks in between are not skipped. `StreakAt` reads the run, so the
+  nudges, achievements, crews and the friends leaderboard agree with the page.
+- **XP stays strict.** `internal/xp`'s SQL streak does not see rest days: a
+  rest is not effort and pays nothing. Insights' consistency streaks are a
+  different count and are unchanged.
+- **Moments for a check-in**, `moments.ForCheckIn`, one per *creating* save,
+  rarest first: a streak mark, a full Monday–Sunday week, a rest day earned,
+  and a comeback ("New run. Your best is N days.") on the first day of a run
+  after one of three or more. Edits never fire a card. The app gets them in
+  the save response, and both surfaces record `moment_shown`.
+- **The week** is on the check-ins API and the saved panel. A past day with
+  neither a check-in nor a rest is `none`, never "missed".
+- **The coach's note** (`internal/checkinreply`): one fast-model call writes
+  at most two sentences about what the person actually wrote, stored per
+  check-in content. It is the reward that does not pay for logging, because it
+  is only as good as what was written. On the 7th, 14th and 30th check-in Go
+  finds the clearest pattern and the model only phrases it. No XP or streak
+  talk, no guilt, no medical advice, a crisis line. Any failure is no note.
+- **A daily reminder at the usual time** (`usual_time`), gain-framed, on by
+  default under the existing switch, now labelled "Check-in reminders". The
+  asks for a check-in — `usual_time`, `streak_at_risk`, `crew_checkin`, the
+  evening reflection — now share **one slot a day**.
+- **`streak_at_risk` is held to 18:00–21:00.** It had no upper hour and so
+  broke this document's own "no loss-framed copy after 21:00". It is also
+  suppressed while a rest day is held, as designed above, and waits when the
+  usual-time reminder is still due.
+- **Two-tap check-ins** from the widget and a notification's buttons record
+  sources `widget` and `notification`, so those surfaces can be measured.
+
+Still not built: badges as designed here (the awards in `internal/awards`
+are their own thing), the daily goal ring, the per-account switch and the
+`xp_earned`/`rest_day_used` events. The anti-patterns below all still hold.
+
 **Update, 2026-10-21 — open follow and awards.** The product owner asked for
 Strava-style following and Apple Fitness-style awards. The full design is
 `docs/superpowers/specs/2026-10-21-follow-awards-design.md`; what it changes

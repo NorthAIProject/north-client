@@ -94,4 +94,19 @@ var englishCheckins = map[string]string{
 	"checkins.label":             "%[1]s — mood %[2]d · energy %[3]d",
 	// The coach's note under a saved check-in, when it names a pattern.
 	"checkins.reply.pattern": "Pattern unlocked",
+	// The run under a saved check-in: rest days said plainly, a new run named
+	// against the best one, and the week, where a past empty day is "no
+	// check-in", never missed.
+	"checkins.streak.newrun":   "Day one of a new run. Your best is %[1]d days.",
+	"checkins.rests.used.one":  "1 rest day used",
+	"checkins.rests.used.many": "%[1]d rest days used",
+	"checkins.rests.held.one":  "1 rest day in hand",
+	"checkins.rests.held.many": "%[1]d rest days in hand",
+	"checkins.week.label":      "This week",
+	"checkins.week.perfect":    "Perfect week so far",
+	"checkins.week.checked":    "checked in",
+	"checkins.week.rest":       "rest day",
+	"checkins.week.none":       "no check-in",
+	"checkins.week.today":      "today",
+	"checkins.week.upcoming":   "still to come",
 }

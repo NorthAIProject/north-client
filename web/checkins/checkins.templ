@@ -25,6 +25,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/input"
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
+	"github.com/NorthAIProject/north-client/web/shared/ui/skeleton"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
 )
 
@@ -300,25 +301,42 @@ templ Panel(form CheckInForm, activeGoals []goal.Goal, first bool) {
 	</div>
 }
 
+// SavedView is what the panel shows after a save.
+type SavedView struct {
+	CheckIn checkin.CheckIn
+	Run     checkin.Run
+	Moment  *moments.Moment
+	// Reply loads the coach's note under the panel. Only for today's
+	// check-in: an edit of an older day has none.
+	Reply bool
+}
+
 // SavedPanel replaces the form once the check-in is stored. Same element id, so
-// it swaps into the same place. When the streak just landed on a threshold the
-// moment card comes first: the mascot celebrates once, above the receipt.
-templ SavedPanel(c checkin.CheckIn, streak int, m *moments.Moment) {
+// it swaps into the same place. When the save earned a moment the card comes
+// first: the mascot celebrates once, above the receipt. The coach's note is
+// fetched after the panel lands, so the receipt never waits on the model.
+templ SavedPanel(v SavedView) {
 	<div id={ PanelID } class="space-y-8">
-		if m != nil {
-			@moment.Card(*m)
+		if v.Moment != nil {
+			@moment.Card(*v.Moment)
 		}
 		@card.Card(card.Props{Class: "border-signal/30 bg-signal/5"}) {
 			@card.Content() {
 				<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-signal">{ i18n.T(ctx, "checkins.logged") }</p>
-				<p class="mt-2 text-lg font-medium tracking-tight">{ checkinLabel(ctx, c) }</p>
-				if c.RelatedGoalTitle != "" {
-					<p class="text-muted-foreground mt-1 text-sm">{ i18n.Tf(ctx, "checkins.related", c.RelatedGoalTitle) }</p>
+				<p class="mt-2 text-lg font-medium tracking-tight">{ checkinLabel(ctx, v.CheckIn) }</p>
+				if v.CheckIn.RelatedGoalTitle != "" {
+					<p class="text-muted-foreground mt-1 text-sm">{ i18n.Tf(ctx, "checkins.related", v.CheckIn.RelatedGoalTitle) }</p>
 				}
-				if streak > 0 {
+				if v.Run.Current > 0 {
 					<p class="text-muted-foreground mt-1 text-sm">
-						{ streakSaved(ctx, streak) }
+						{ runLine(ctx, v.Run) }
 					</p>
+				}
+				if v.Run.RestsHeld > 0 {
+					<p class="text-muted-foreground mt-1 text-xs">{ restsHeld(ctx, v.Run.RestsHeld) }</p>
+				}
+				if !v.Run.Week[0].Date.IsZero() {
+					@weekDots(v.Run)
 				}
 				<div class="mt-5 flex flex-col gap-2 sm:flex-row">
 					@button.Button(button.Props{
@@ -336,6 +354,31 @@ templ SavedPanel(c checkin.CheckIn, streak int, m *moments.Moment) {
 					}
 				</div>
 			}
+		}
+		if v.Reply {
+			<div hx-get="/app/check-ins/today/reply" hx-trigger="load" hx-swap="outerHTML">
+				@skeleton.Skeleton(skeleton.Props{Class: "h-14 w-full rounded-lg"})
+			</div>
+		}
+	</div>
+}
+
+// weekDots is Monday to Sunday of this week. Hand-rolled: no templUI
+// component draws a row of day states. A past day without a check-in is
+// "none", drawn like any empty day and never labelled as missed.
+templ weekDots(run checkin.Run) {
+	<div class="mt-4">
+		<ol class="flex gap-2" aria-label={ i18n.T(ctx, "checkins.week.label") }>
+			for _, d := range run.Week {
+				<li
+					data-day-state={ string(d.State) }
+					class={ "size-3 rounded-full", dotClass(d.State, run.PerfectWeek) }
+					aria-label={ i18n.Date(ctx, d.Date, "Mon") + ": " + dayStateLabel(ctx, d.State) }
+				></li>
+			}
+		</ol>
+		if run.PerfectWeek {
+			<p class="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-ember">{ i18n.T(ctx, "checkins.week.perfect") }</p>
 		}
 	</div>
 }
@@ -744,4 +787,56 @@ func streakSaved(ctx context.Context, streak int) string {
 		return i18n.T(ctx, "checkins.streak.saved.one")
 	}
 	return i18n.Tf(ctx, "checkins.streak.saved.many", streak)
+}
+
+// runLine is the streak line under a saved check-in. The first day of a new
+// run names the best one rather than the gap; a run a rest day kept says so,
+// honestly, instead of pretending the day happened.
+func runLine(ctx context.Context, run checkin.Run) string {
+	if run.Current == 1 && run.Best >= 3 {
+		return i18n.Tf(ctx, "checkins.streak.newrun", run.Best)
+	}
+	line := streakSaved(ctx, run.Current)
+	switch {
+	case run.RestsUsed == 1:
+		line += " · " + i18n.T(ctx, "checkins.rests.used.one")
+	case run.RestsUsed > 1:
+		line += " · " + i18n.Tf(ctx, "checkins.rests.used.many", run.RestsUsed)
+	}
+	return line
+}
+
+func restsHeld(ctx context.Context, n int) string {
+	if n == 1 {
+		return i18n.T(ctx, "checkins.rests.held.one")
+	}
+	return i18n.Tf(ctx, "checkins.rests.held.many", n)
+}
+
+func dayStateLabel(ctx context.Context, s checkin.DayState) string {
+	switch s {
+	case checkin.DayChecked, checkin.DayRest, checkin.DayToday, checkin.DayUpcoming:
+		return i18n.T(ctx, "checkins.week."+string(s))
+	default:
+		return i18n.T(ctx, "checkins.week.none")
+	}
+}
+
+// dotClass colours one day. A perfect week turns the checked days ember.
+func dotClass(s checkin.DayState, perfect bool) string {
+	switch s {
+	case checkin.DayChecked:
+		if perfect {
+			return "bg-ember"
+		}
+		return "bg-signal"
+	case checkin.DayRest:
+		return "border-2 border-signal"
+	case checkin.DayToday:
+		return "border-2 border-dashed border-muted-foreground"
+	case checkin.DayUpcoming:
+		return "bg-muted/40"
+	default:
+		return "bg-muted"
+	}
 }
