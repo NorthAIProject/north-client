@@ -1798,6 +1798,7 @@ paths:
     put:
       operationId: saveTodayCheckIn
       summary: File or replace today's check-in
+      description: Answers with the check-in and what the save meant for the run. A moment is present only on the save that created today's check-in, and absent on most of those.
       requestBody:
         required: true
         content:
@@ -1810,7 +1811,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CheckIn'
+                $ref: '#/components/schemas/SavedCheckIn'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '422':
@@ -12345,7 +12346,7 @@ components:
           format: date-time
         source:
           type: string
-          description: Where the check-in was filed - web, ios, siri, coach, mcp, capture or unknown. Open-ended; clients show values they do not know generically.
+          description: Where the check-in was filed - web, ios, siri, widget, notification, coach, mcp, capture or unknown. Open-ended; clients show values they do not know generically.
         stress:
           type: integer
           minimum: 1
@@ -12360,7 +12361,7 @@ components:
             type: string
     CheckInList:
       type: object
-      required: [recent, streak]
+      required: [recent, streak, bestStreak, restDaysHeld, restDaysUsed, perfectWeek, week]
       properties:
         today:
           $ref: '#/components/schemas/CheckIn'
@@ -12370,6 +12371,66 @@ components:
             $ref: '#/components/schemas/CheckIn'
         streak:
           type: integer
+          description: Check-in days in the run ending today or yesterday. A rest day bridges a missed day without adding to it.
+        bestStreak:
+          type: integer
+          description: The longest run in the person's recent history.
+        restDaysHeld:
+          type: integer
+          minimum: 0
+          maximum: 2
+          description: Rest days in hand. One is earned per seven check-in days in a run.
+        restDaysUsed:
+          type: integer
+          description: Rest days the current run has spent.
+        perfectWeek:
+          type: boolean
+          description: Every day of this week so far checked in, today checked or still open. A rest day keeps the run, not the perfect week.
+        week:
+          type: array
+          description: Monday to Sunday of the current week, always seven days.
+          items:
+            $ref: '#/components/schemas/CheckInWeekDay'
+    CheckInWeekDay:
+      type: object
+      required: [date, state]
+      properties:
+        date:
+          type: string
+          description: YYYY-MM-DD.
+        state:
+          type: string
+          description: checked, rest, none, today or upcoming. Open-ended; show a value you do not know as none. A past day with no check-in is none, never missed.
+    SavedCheckIn:
+      allOf:
+        - $ref: '#/components/schemas/CheckIn'
+        - type: object
+          required: [created, streak, restDaysHeld, perfectWeek]
+          properties:
+            created:
+              type: boolean
+              description: True when this save made today's check-in; false is an edit. Celebrate only a true one.
+            streak:
+              type: integer
+            restDaysHeld:
+              type: integer
+              minimum: 0
+              maximum: 2
+            perfectWeek:
+              type: boolean
+            moment:
+              $ref: '#/components/schemas/CheckInMoment'
+    CheckInMoment:
+      type: object
+      required: [kind, title, body]
+      properties:
+        kind:
+          type: string
+          description: streak, perfect_week, rest_day_earned or comeback. Open-ended; show a kind you do not know with a generic icon.
+        title:
+          type: string
+        body:
+          type: string
     CheckInRequest:
       type: object
       required: [mood, energy]
@@ -12397,7 +12458,7 @@ components:
             type: string
         source:
           type: string
-          description: Where the check-in was filed, e.g. ios or siri.
+          description: Where the check-in was filed - ios, siri, widget or notification. Anything else is recorded as ios.
     ReportSummary:
       type: object
       required: [id, kind, title, periodStart, periodEnd, status, archived]

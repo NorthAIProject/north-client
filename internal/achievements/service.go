@@ -95,7 +95,7 @@ func (s *Service) StreakReached(ctx context.Context, userID uuid.UUID, days int,
 	for _, mark := range StreakMarks {
 		if days == mark {
 			s.record(ctx, userID, achievement.CategoryStreaks, achievement.KindStreakReached,
-				fmt.Sprintf("checkin-%d-%s", days, localDate), fmt.Sprintf("%d days of check-ins in a row", days), "", at)
+				fmt.Sprintf("checkin-%d-%s", days, localDate), fmt.Sprintf("%d-day check-in streak", days), "", at)
 			return
 		}
 	}

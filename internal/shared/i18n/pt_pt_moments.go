@@ -21,4 +21,11 @@ var portugueseEuropeanMoments = map[string]string{
 	"moments.milestone.body":        "“%[1]s”, a caminho de “%[2]s”.",
 	"moments.firstweek.three.title": "3 de 3 dias",
 	"moments.firstweek.three.body":  "Três dias, três vezes. Faltam quatro.",
+
+	"moments.perfect_week.title": "Uma semana perfeita",
+	"moments.perfect_week.body":  "Sete dias, sete registos. A semana inteira.",
+	"moments.rest_earned.title":  "Dia de descanso conquistado",
+	"moments.rest_earned.body":   "Ganhaste um dia de descanso. A tua sequência pode tirar um dia de folga quando precisares.",
+	"moments.comeback.title":     "Um novo começo",
+	"moments.comeback.body":      "Nova sequência. A tua melhor é de %d dias.",
 }

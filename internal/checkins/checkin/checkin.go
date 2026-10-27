@@ -57,6 +57,10 @@ const (
 	SourceCoach   Source = "coach"
 	SourceMCP     Source = "mcp"
 	SourceCapture Source = "capture"
+	// SourceWidget and SourceNotification are the app's two-tap check-ins:
+	// mood then energy, from the home-screen widget or a reminder's buttons.
+	SourceWidget       Source = "widget"
+	SourceNotification Source = "notification"
 )
 
 // Tag limits. A tag is a label, not a sentence.

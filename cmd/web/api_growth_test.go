@@ -55,11 +55,23 @@ func TestGoalsAndCheckInsAPI(t *testing.T) {
 		t.Errorf("detail = %+v, want 1/1 milestones and a 40%% note", detail)
 	}
 
-	// Today's check-in, about the goal; filing again replaces it.
-	for _, mood := range []int{3, 4} {
+	// Today's check-in, about the goal; filing again replaces it. The save
+	// answers with the run, and says only the first one created the day.
+	for i, mood := range []int{3, 4} {
 		body := `{"mood":` + string(rune('0'+mood)) + `,"energy":3,"wins":"Long run","relatedGoalId":"` + goal.ID + `"}`
-		if r4 := api.call(http.MethodPut, "/api/v1/check-ins/today", body); r4.Code != http.StatusOK {
+		r4 := api.call(http.MethodPut, "/api/v1/check-ins/today", body)
+		if r4.Code != http.StatusOK {
 			t.Fatalf("check in: %d %s", r4.Code, r4.Body)
+		}
+		var saved struct {
+			Mood    int
+			Created bool
+			Streak  int
+			Moment  *struct{ Kind string }
+		}
+		_ = json.Unmarshal(r4.Body.Bytes(), &saved)
+		if saved.Mood != mood || saved.Created != (i == 0) || saved.Streak != 1 || saved.Moment != nil {
+			t.Errorf("save %d = %+v, want mood %d, created %v, streak 1, no moment", i, saved, mood, i == 0)
 		}
 	}
 	var list struct {
@@ -69,10 +81,14 @@ func TestGoalsAndCheckInsAPI(t *testing.T) {
 		}
 		Recent []struct{}
 		Streak int
+		Week   []struct{ Date, State string }
 	}
 	_ = json.Unmarshal(api.call(http.MethodGet, "/api/v1/check-ins", "").Body.Bytes(), &list)
 	if list.Today.Mood != 4 || list.Today.RelatedGoalTitle != "Run a half marathon" || len(list.Recent) != 1 || list.Streak != 1 {
 		t.Errorf("check-ins = %+v, want one of mood 4 about the goal, streak 1", list)
+	}
+	if len(list.Week) != 7 {
+		t.Errorf("week = %+v, want seven days", list.Week)
 	}
 
 	if r5 := api.call(http.MethodPut, "/api/v1/check-ins/today", `{"mood":9,"energy":3}`); r5.Code != http.StatusUnprocessableEntity {

@@ -156,6 +156,50 @@ func TestRenderSavedAnnouncesTheSave(t *testing.T) {
 	}
 }
 
+// The card belongs to the save that created the day. Saving again, or editing
+// an older day, swaps in the confirmation without it.
+func TestRenderSavedShowsAMomentOnlyWhenCreated(t *testing.T) {
+	pool := testdb.New(t)
+	user := handlerUser(t, pool)
+	h := newTestHandler(pool)
+
+	saved, err := h.svc.UpsertToday(context.Background(), user, Input{Mood: 4, Energy: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A day 3 run, so the creating save lands on a mark.
+	saved.Run = checkin.Run{Current: 3, Best: 3}
+
+	htmx := func(s Saved) string {
+		r := httptest.NewRequest(http.MethodPost, "/app/check-ins", nil)
+		r.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+		h.renderSaved(w, r, user, s)
+		return w.Body.String()
+	}
+	if body := htmx(saved); !strings.Contains(body, "Three days running") {
+		t.Error("the creating save on day 3 should show its card")
+	}
+	edit := saved
+	edit.Created = false
+	if body := htmx(edit); strings.Contains(body, "Three days running") {
+		t.Error("an edit should not show the card again")
+	}
+
+	// Without JavaScript the landing page decides, so the redirect says
+	// whether this save was the creating one.
+	for _, tc := range []struct {
+		s    Saved
+		want string
+	}{{saved, "/app/check-ins?saved=1&new=1"}, {edit, "/app/check-ins?saved=1"}} {
+		w := httptest.NewRecorder()
+		h.renderSaved(w, httptest.NewRequest(http.MethodPost, "/app/check-ins", nil), user, tc.s)
+		if got := w.Header().Get("Location"); got != tc.want {
+			t.Errorf("redirect = %q, want %q", got, tc.want)
+		}
+	}
+}
+
 // The live region polls every 20 seconds with the version it shows. Unchanged
 // must be a 204, which htmx does not swap; changed must redraw it.
 func TestLiveAnswers204UntilSomethingChanges(t *testing.T) {

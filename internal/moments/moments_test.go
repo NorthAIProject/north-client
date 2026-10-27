@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/moments"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
@@ -72,6 +73,70 @@ func TestMomentsSpeakTheRequestLanguage(t *testing.T) {
 		}
 		if m := moments.ForMilestoneCompleted(ctx, "Run a half marathon", "First 10k"); m.Body != c.milestone {
 			t.Errorf("%q milestone body = %q, want %q", c.locale, m.Body, c.milestone)
+		}
+	}
+}
+
+// A moment belongs to the save that made today's check-in. Filing it again is
+// an edit: the card has been seen.
+func TestForCheckInOnlyOnACreatingSave(t *testing.T) {
+	t.Parallel()
+
+	run := checkin.Run{Current: 7}
+	if _, ok := moments.ForCheckIn(context.Background(), run, false); ok {
+		t.Fatal("an edit should not earn a moment")
+	}
+	if m, ok := moments.ForCheckIn(context.Background(), run, true); !ok || m.Kind != moments.KindStreak {
+		t.Fatalf("a creating save on day 7 = %+v, %v; want the streak card", m, ok)
+	}
+}
+
+// One card per save, the rarest first: a streak mark, then a full week, then a
+// rest day earned, then a new run after a long one.
+func TestForCheckInPrecedence(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		run  checkin.Run
+		want string
+	}{
+		{"a mark beats everything", checkin.Run{Current: 7, Best: 7, WeekComplete: true, RestEarnedToday: true}, moments.KindStreak},
+		{"a full week", checkin.Run{Current: 9, Best: 9, WeekComplete: true, RestEarnedToday: true}, moments.KindPerfectWeek},
+		{"a rest earned", checkin.Run{Current: 28, Best: 28, RestEarnedToday: true}, moments.KindRestEarned},
+		{"a new run after a long one", checkin.Run{Current: 1, Best: 23}, moments.KindComeback},
+		{"no comeback after a short one", checkin.Run{Current: 1, Best: 2}, ""},
+		{"an ordinary day", checkin.Run{Current: 5, Best: 5}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			m, ok := moments.ForCheckIn(context.Background(), tc.run, true)
+			if tc.want == "" {
+				if ok {
+					t.Fatalf("unexpected moment %+v", m)
+				}
+				return
+			}
+			if !ok || m.Kind != tc.want || m.Title == "" || m.Body == "" {
+				t.Fatalf("moment = %+v, %v; want kind %s", m, ok, tc.want)
+			}
+		})
+	}
+}
+
+// A new run names the best one and never the lapse: pointing at a broken
+// streak is what drives people away.
+func TestComebackNamesTheBestRun(t *testing.T) {
+	t.Parallel()
+
+	m, _ := moments.ForCheckIn(context.Background(), checkin.Run{Current: 1, Best: 23}, true)
+	if !strings.Contains(m.Body, "23") {
+		t.Fatalf("comeback body %q should name the best run", m.Body)
+	}
+	for _, word := range []string{"broke", "lost", "missed", "failed"} {
+		if strings.Contains(strings.ToLower(m.Title+" "+m.Body), word) {
+			t.Fatalf("comeback copy %q/%q should not dwell on the lapse (%q)", m.Title, m.Body, word)
 		}
 	}
 }

@@ -115,7 +115,10 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderSaved(w, r, user, saved)
+	// An edit never creates today's check-in, so it earns no card; the run is
+	// read only for the streak line.
+	run, _ := h.svc.Run(r.Context(), user)
+	h.renderSaved(w, r, user, Saved{CheckIn: saved, Run: run})
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
@@ -245,11 +248,14 @@ func (h *Handler) renderForm(w http.ResponseWriter, r *http.Request, user users.
 	}
 
 	// Only the post-redirect landing carries saved=1. A rejected POST has no
-	// query string, so the confirmation cannot appear above an error.
+	// query string, so the confirmation cannot appear above an error. new=1
+	// marks the save that created the day, the only one that earns a card.
 	saved := r.URL.Query().Get("saved") == "1"
 	var moment *moments.Moment
-	if saved {
-		moment = h.momentFor(r, user, data.Streak)
+	if saved && r.URL.Query().Get("new") == "1" {
+		if run, runErr := h.svc.Run(r.Context(), user); runErr == nil {
+			moment = h.momentFor(r, user, run, true)
+		}
 	}
 	render(w, r, status, checkinpages.IndexPage(user, form, active, saved, moment, data))
 }
@@ -257,21 +263,24 @@ func (h *Handler) renderForm(w http.ResponseWriter, r *http.Request, user users.
 // renderSaved confirms a stored check-in in place for htmx, and falls back to
 // the post-redirect-get for a plain form post. Over htmx it also announces the
 // save, so the history, KPIs and charts below refresh themselves.
-func (h *Handler) renderSaved(w http.ResponseWriter, r *http.Request, user users.User, saved CheckIn) {
+func (h *Handler) renderSaved(w http.ResponseWriter, r *http.Request, user users.User, saved Saved) {
 	if !isHTMX(r) {
-		http.Redirect(w, r, "/app/check-ins?saved=1", http.StatusSeeOther)
+		target := "/app/check-ins?saved=1"
+		if saved.Created {
+			target += "&new=1"
+		}
+		http.Redirect(w, r, target, http.StatusSeeOther)
 		return
 	}
 
-	streak, _ := h.svc.Streak(r.Context(), user)
 	announceSaved(w, r)
-	render(w, r, http.StatusOK, checkinpages.SavedPanel(saved, streak, h.momentFor(r, user, streak)))
+	render(w, r, http.StatusOK, checkinpages.SavedPanel(saved.CheckIn, saved.Run.Current, h.momentFor(r, user, saved.Run, saved.Created)))
 }
 
-// momentFor is the card a just-saved check-in earns, if its streak landed on
-// a threshold, and the funnel event that says it was shown. Nil otherwise.
-func (h *Handler) momentFor(r *http.Request, user users.User, streak int) *moments.Moment {
-	m, ok := moments.ForStreak(r.Context(), streak)
+// momentFor is the card a just-saved check-in earns, if any, and the funnel
+// event that says it was shown. Nil otherwise.
+func (h *Handler) momentFor(r *http.Request, user users.User, run checkin.Run, created bool) *moments.Moment {
+	m, ok := moments.ForCheckIn(r.Context(), run, created)
 	if !ok {
 		return nil
 	}

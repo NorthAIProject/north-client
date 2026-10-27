@@ -21,4 +21,11 @@ var spanishMoments = map[string]string{
 	"moments.milestone.body":        "“%[1]s”, de camino a “%[2]s”.",
 	"moments.firstweek.three.title": "3 de 3 días",
 	"moments.firstweek.three.body":  "Tres días, tres veces. Quedan cuatro.",
+
+	"moments.perfect_week.title": "Una semana perfecta",
+	"moments.perfect_week.body":  "Siete días, siete registros. La semana entera.",
+	"moments.rest_earned.title":  "Día de descanso ganado",
+	"moments.rest_earned.body":   "Te has ganado un día de descanso. Tu racha puede tomarse un día libre cuando lo necesites.",
+	"moments.comeback.title":     "Un nuevo comienzo",
+	"moments.comeback.body":      "Nueva racha. Tu mejor marca es de %d días.",
 }
