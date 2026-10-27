@@ -7,9 +7,32 @@ package nudgesdb
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const countNudgesForDay = `-- name: CountNudgesForDay :one
+SELECT count(*)::int FROM user_nudges
+WHERE user_id = $1
+  AND kind = ANY($2::text[])
+  AND dedupe_key = $3::text
+`
+
+type CountNudgesForDayParams struct {
+	UserID uuid.UUID
+	Kinds  []string
+	Day    string
+}
+
+// How many nudges of these kinds were raised for one local day. The asks for
+// a check-in share one slot a day.
+func (q *Queries) CountNudgesForDay(ctx context.Context, arg CountNudgesForDayParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countNudgesForDay, arg.UserID, arg.Kinds, arg.Day)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
 
 const countUnreadNudges = `-- name: CountUnreadNudges :one
 SELECT count(*)::int FROM user_nudges
@@ -93,6 +116,40 @@ func (q *Queries) InsertNudge(ctx context.Context, arg InsertNudgeParams) (UserN
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listNudgeDaysSince = `-- name: ListNudgeDaysSince :many
+SELECT dedupe_key FROM user_nudges
+WHERE user_id = $1
+  AND kind = $2
+  AND created_at >= $3
+`
+
+type ListNudgeDaysSinceParams struct {
+	UserID uuid.UUID
+	Kind   string
+	Since  time.Time
+}
+
+// The local days a kind was raised on, for a kind keyed by its day.
+func (q *Queries) ListNudgeDaysSince(ctx context.Context, arg ListNudgeDaysSinceParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listNudgeDaysSince, arg.UserID, arg.Kind, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var dedupe_key string
+		if err := rows.Scan(&dedupe_key); err != nil {
+			return nil, err
+		}
+		items = append(items, dedupe_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listOpenNudges = `-- name: ListOpenNudges :many

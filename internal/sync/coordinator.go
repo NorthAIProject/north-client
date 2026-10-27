@@ -48,12 +48,14 @@ func (c *Coordinator) OnWorkoutCompleted(ctx context.Context, userID uuid.UUID, 
 	})
 }
 
-// OnCheckInSaved resolves missed check-in and streak warning nudges.
+// OnCheckInSaved resolves the missed check-in, streak warning and daily
+// reminder nudges.
 func (c *Coordinator) OnCheckInSaved(ctx context.Context, userID uuid.UUID) error {
 	checkedIn := func(_, _ string) string { return "✅ Checked in today" }
 	return errors.Join(
 		c.resolve(ctx, userID, nudges.KindMissedCheckIn, checkedIn),
 		c.resolve(ctx, userID, nudges.KindStreakAtRisk, checkedIn),
+		c.resolve(ctx, userID, nudges.KindUsualTime, checkedIn),
 	)
 }
 

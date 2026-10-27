@@ -76,9 +76,10 @@ type Prefs struct {
 // does not have to import this one to name its own kinds.
 func (p Prefs) AllowsNudge(kind string) bool {
 	switch kind {
-	case "missed_checkin", "streak_at_risk", "crew_checkin":
-		// One switch for both: "remind me when I stop checking in" covers the
-		// evening before a streak breaks as much as the days after it did.
+	case "missed_checkin", "streak_at_risk", "crew_checkin", "usual_time":
+		// One switch, "check-in reminders", for every ask about the check-in:
+		// the daily reminder at the usual time, the evening before a streak
+		// breaks, the crew note, and the days after a streak broke.
 		return p.NudgeMissedCheckIn
 	case "goal_deadline":
 		return p.NudgeGoalDeadline

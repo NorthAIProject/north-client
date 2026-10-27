@@ -42,7 +42,7 @@ var portugueseBrazilianSettings = map[string]string{
 
 	"settings.notif.title":          "Notificações",
 	"settings.notif.desc":           "Quando o Khepri fala primeiro. O horário de silêncio segue seu fuso horário.",
-	"settings.notif.missed":         "Me avise quando eu parar de fazer registros",
+	"settings.notif.missed":         "Lembretes de registro",
 	"settings.notif.goal":           "Me avise antes do prazo de um objetivo",
 	"settings.notif.coach":          "Me diga quando o treinador tiver algo",
 	"settings.notif.coach.desc":     "Registros da primeira semana, uma resposta do Telegram, uma análise de execução concluída.",

@@ -40,7 +40,7 @@ var spanishSettings = map[string]string{
 
 	"settings.notif.title":          "Notificaciones",
 	"settings.notif.desc":           "Cuándo habla Khepri primero. Las horas de silencio siguen tu zona horaria.",
-	"settings.notif.missed":         "Avísame cuando deje de registrar",
+	"settings.notif.missed":         "Recordatorios de registro",
 	"settings.notif.goal":           "Avísame antes de que venza un objetivo",
 	"settings.notif.coach":          "Dime cuando el entrenador tenga algo",
 	"settings.notif.coach.desc":     "Registros de la primera semana, una respuesta desde Telegram, una revisión de técnica terminada.",
