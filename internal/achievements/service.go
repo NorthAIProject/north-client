@@ -5,7 +5,6 @@ package achievements
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,11 +12,8 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
-	achievementsdb "github.com/NorthAIProject/north-client/internal/achievements/db"
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -51,14 +47,29 @@ var StreakMarks = []int{7, 30, 100, 365}
 const feedPage = 30
 
 type Service struct {
-	q     *achievementsdb.Queries
+	repo  Repository
 	inbox Inbox
 	cards WorkoutCards
 	log   *slog.Logger
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{q: achievementsdb.New(pool), log: slog.Default()}
+// Repository is the persistence Service depends on: the moments, who may see
+// them, the sharing switches and the kudos. NewRepository is what the process
+// wires, and a test can hand Service anything that keeps them.
+type Repository interface {
+	Record(ctx context.Context, userID uuid.UUID, category, kind, sourceKey, title, detail string, at time.Time) error
+	Post(ctx context.Context, userID uuid.UUID, category, kind, sourceKey, title, detail string, at time.Time) (Item, error)
+	OwnBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Item, error)
+	Feed(ctx context.Context, viewerID uuid.UUID, before time.Time, limit int) ([]Item, error)
+	Sharing(ctx context.Context, userID uuid.UUID) (map[string]bool, error)
+	SetSharing(ctx context.Context, userID uuid.UUID, category string, shared bool) error
+	Visible(ctx context.Context, achievementID, viewerID uuid.UUID) (Item, error)
+	GiveKudos(ctx context.Context, achievementID, giverID uuid.UUID) (bool, error)
+	TakeKudos(ctx context.Context, achievementID, giverID uuid.UUID) error
+}
+
+func NewService(repo Repository) *Service {
+	return &Service{repo: repo, log: slog.Default()}
 }
 
 func (s *Service) WithInbox(in Inbox) *Service { s.inbox = in; return s }
@@ -70,11 +81,7 @@ func (s *Service) WithWorkoutCards(w WorkoutCards) *Service { s.cards = w; retur
 // caller: an achievement is a side effect of the thing that happened, and the
 // thing that happened must not fail because of it.
 func (s *Service) record(ctx context.Context, userID uuid.UUID, category, kind, sourceKey, title, detail string, at time.Time) {
-	_, err := s.q.Record(ctx, achievementsdb.RecordParams{
-		UserID: userID, Category: category, Kind: kind, Title: title, Detail: detail,
-		OccurredAt: at, SourceKey: sourceKey,
-	})
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err := s.repo.Record(ctx, userID, category, kind, sourceKey, title, detail, at); err != nil {
 		s.log.Warn("could not record achievement", "kind", kind, "user_id", userID, "error", err)
 	}
 }
@@ -148,35 +155,15 @@ func (s *Service) CrewChallengeMet(ctx context.Context, userID, crewID uuid.UUID
 // above: it reports a failure, and posting the same sourceKey again refreshes
 // its title and detail in place.
 func (s *Service) Post(ctx context.Context, userID uuid.UUID, category, kind, sourceKey, title, detail string, at time.Time) (Item, error) {
-	row, err := s.q.Post(ctx, achievementsdb.PostParams{
-		UserID: userID, Category: category, Kind: kind, Title: title, Detail: detail,
-		OccurredAt: at, SourceKey: sourceKey,
-	})
-	if err != nil {
-		return Item{}, apperr.Wrap(err, "post achievement")
-	}
-	return Item{
-		ID: row.ID, UserID: userID, Category: category, Kind: kind, Title: title, Detail: detail,
-		OccurredAt: row.OccurredAt, Mine: true,
-	}, nil
+	return s.repo.Post(ctx, userID, category, kind, sourceKey, title, detail, at)
 }
 
 // OwnBetween is the person's own achievements in [since, until), newest
 // first, a badge in the request's locale and one card per moment.
 func (s *Service) OwnBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Item, error) {
-	rows, err := s.q.OwnAchievementsBetween(ctx, achievementsdb.OwnAchievementsBetweenParams{
-		UserID: userID, Since: since, Until: until,
-	})
+	out, err := s.repo.OwnBetween(ctx, userID, since, until)
 	if err != nil {
-		return nil, apperr.Wrap(err, "own achievements")
-	}
-	out := make([]Item, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, Item{
-			ID: r.ID, UserID: userID, Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail,
-			OccurredAt: r.OccurredAt, Mine: true, SourceKey: r.SourceKey,
-			MonthlyMetric: util.Val(r.MonthlyMetric), MonthlyTarget: int(util.Val(r.MonthlyTarget)),
-		})
+		return nil, err
 	}
 	return foldMoments(ctx, out), nil
 }
@@ -197,9 +184,9 @@ func (s *Service) FeedPage(ctx context.Context, viewerID uuid.UUID, before time.
 	if before.IsZero() {
 		before = time.Now().Add(time.Minute)
 	}
-	rows, err := s.q.Feed(ctx, achievementsdb.FeedParams{Viewer: viewerID, Before: before, Lim: feedPage})
+	rows, err := s.repo.Feed(ctx, viewerID, before, feedPage)
 	if err != nil {
-		return nil, nil, apperr.Wrap(err, "feed")
+		return nil, nil, err
 	}
 	// A moment's badges share one timestamp, and the next page starts strictly
 	// before the cursor. So on a full page the trailing rows of the last
@@ -219,16 +206,7 @@ func (s *Service) FeedPage(ctx context.Context, viewerID uuid.UUID, before time.
 			next = util.Ptr(last)
 		}
 	}
-	out := make([]Item, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, Item{
-			ID: r.ID, UserID: r.UserID, DisplayName: r.DisplayName, Handle: util.Val(r.Handle),
-			Category: r.Category, Kind: r.Kind, Title: r.Title, Detail: r.Detail, OccurredAt: r.OccurredAt,
-			Kudos: int(r.Kudos), Kudoed: r.Kudoed, Mine: r.UserID == viewerID, SourceKey: r.SourceKey,
-			Private: r.Private, MonthlyMetric: util.Val(r.MonthlyMetric), MonthlyTarget: int(util.Val(r.MonthlyTarget)),
-		})
-	}
-	out = foldMoments(ctx, out)
+	out := foldMoments(ctx, rows)
 	s.attachCards(ctx, out)
 	return out, next, nil
 }
@@ -331,9 +309,9 @@ func (s *Service) attachCards(ctx context.Context, items []Item) {
 
 // Sharing is which categories the person's followers may see.
 func (s *Service) Sharing(ctx context.Context, userID uuid.UUID) (Sharing, error) {
-	rows, err := s.q.ListSharing(ctx, userID)
+	set, err := s.repo.Sharing(ctx, userID)
 	if err != nil {
-		return Sharing{}, apperr.Wrap(err, "list sharing")
+		return Sharing{}, err
 	}
 	out := Sharing{
 		Training: achievement.DefaultShared(achievement.CategoryTraining),
@@ -342,18 +320,18 @@ func (s *Service) Sharing(ctx context.Context, userID uuid.UUID) (Sharing, error
 		XP:       achievement.DefaultShared(achievement.CategoryXP),
 		Awards:   achievement.DefaultShared(achievement.CategoryAwards),
 	}
-	for _, r := range rows {
-		switch r.Category {
+	for category, shared := range set {
+		switch category {
 		case achievement.CategoryTraining:
-			out.Training = r.Shared
+			out.Training = shared
 		case achievement.CategoryStreaks:
-			out.Streaks = r.Shared
+			out.Streaks = shared
 		case achievement.CategoryGoals:
-			out.Goals = r.Shared
+			out.Goals = shared
 		case achievement.CategoryXP:
-			out.XP = r.Shared
+			out.XP = shared
 		case achievement.CategoryAwards:
-			out.Awards = r.Shared
+			out.Awards = shared
 		}
 	}
 	return out, nil
@@ -367,8 +345,8 @@ func (s *Service) SetSharing(ctx context.Context, userID uuid.UUID, in Sharing) 
 		achievement.CategoryXP:       in.XP,
 		achievement.CategoryAwards:   in.Awards,
 	} {
-		if err := s.q.SetSharing(ctx, achievementsdb.SetSharingParams{UserID: userID, Category: category, Shared: shared}); err != nil {
-			return Sharing{}, apperr.Wrap(err, "set sharing")
+		if err := s.repo.SetSharing(ctx, userID, category, shared); err != nil {
+			return Sharing{}, err
 		}
 	}
 	return s.Sharing(ctx, userID)
@@ -377,21 +355,18 @@ func (s *Service) SetSharing(ctx context.Context, userID uuid.UUID, in Sharing) 
 // GiveKudos to an achievement the giver can see. One per person per
 // achievement; the owner hears about each once. Not on your own.
 func (s *Service) GiveKudos(ctx context.Context, giverID, achievementID uuid.UUID, giverName string) error {
-	target, err := s.q.Visible(ctx, achievementsdb.VisibleParams{ID: achievementID, Viewer: giverID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return apperr.ErrNotFound
-	}
+	target, err := s.repo.Visible(ctx, achievementID, giverID)
 	if err != nil {
-		return apperr.Wrap(err, "check achievement")
+		return err
 	}
 	if target.UserID == giverID {
 		return apperr.FieldErrors{}.Add("achievement", "Kudos are for other people's moments.")
 	}
-	added, err := s.q.GiveKudos(ctx, achievementsdb.GiveKudosParams{AchievementID: achievementID, UserID: giverID})
+	added, err := s.repo.GiveKudos(ctx, achievementID, giverID)
 	if err != nil {
-		return apperr.Wrap(err, "give kudos")
+		return err
 	}
-	if added > 0 && s.inbox != nil {
+	if added && s.inbox != nil {
 		_ = s.inbox.NoteWithPush(ctx, target.UserID, KindKudos, achievementID.String()+":"+giverID.String(),
 			giverName+" gave you kudos", target.Title, "/app/friends")
 	}
@@ -399,8 +374,5 @@ func (s *Service) GiveKudos(ctx context.Context, giverID, achievementID uuid.UUI
 }
 
 func (s *Service) TakeKudos(ctx context.Context, giverID, achievementID uuid.UUID) error {
-	if err := s.q.TakeKudos(ctx, achievementsdb.TakeKudosParams{AchievementID: achievementID, UserID: giverID}); err != nil {
-		return apperr.Wrap(err, "take kudos")
-	}
-	return nil
+	return s.repo.TakeKudos(ctx, achievementID, giverID)
 }

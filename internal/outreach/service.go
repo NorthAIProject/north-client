@@ -82,7 +82,7 @@ type Users interface {
 // Options are the service's collaborators. Lighter, Training and FirstWeek
 // may be nil, which turns their trigger off; the rest are needed.
 type Options struct {
-	Repository *Repository
+	Repository Repository
 	Prefs      Prefs
 	Lighter    Lighter
 	Training   Training
@@ -96,7 +96,7 @@ type Options struct {
 }
 
 type Service struct {
-	repo      *Repository
+	repo      Repository
 	prefs     Prefs
 	lighter   Lighter
 	training  Training
@@ -108,6 +108,18 @@ type Service struct {
 	users     Users
 	log       *slog.Logger
 	now       func() time.Time
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps coach outreach.
+type Repository interface {
+	Claim(ctx context.Context, userID uuid.UUID, day time.Time, trigger string, facts Facts) (Outreach, bool, error)
+	ForDay(ctx context.Context, userID uuid.UUID, day time.Time) (Outreach, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Outreach, error)
+	SetMessage(ctx context.Context, id, userID uuid.UUID, body string, messageID *uuid.UUID) error
+	RecordAction(ctx context.Context, id, userID uuid.UUID, action string) (Outreach, error)
 }
 
 func NewService(o Options) *Service {

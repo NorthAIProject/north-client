@@ -28,7 +28,7 @@ func TestFeedAttachesWorkoutCards(t *testing.T) {
 	ctx := context.Background()
 	acts := activity.NewService(activity.NewRepository(pool), bodyweight{})
 	liftSvc := lifts.NewService(lifts.NewRepository(pool), nil).WithRecaps(acts, nil)
-	ach := achievements.NewService(pool).WithWorkoutCards(liftSvc)
+	ach := achievements.NewService(achievements.NewRepository(pool)).WithWorkoutCards(liftSvc)
 	soc := social.NewService(social.NewRepository(pool))
 	ana := person(t, pool, "ana-wc@north.test", "Ana")
 	leo := person(t, pool, "leo-wc@north.test", "Leo")
@@ -74,7 +74,7 @@ func TestFeedSurvivesABrokenWorkoutReference(t *testing.T) {
 	ctx := context.Background()
 	acts := activity.NewService(activity.NewRepository(pool), bodyweight{})
 	liftSvc := lifts.NewService(lifts.NewRepository(pool), nil).WithRecaps(acts, nil)
-	ach := achievements.NewService(pool).WithWorkoutCards(liftSvc)
+	ach := achievements.NewService(achievements.NewRepository(pool)).WithWorkoutCards(liftSvc)
 	soc := social.NewService(social.NewRepository(pool))
 	ana := person(t, pool, "ana-bk@north.test", "Ana")
 	leo := person(t, pool, "leo-bk@north.test", "Leo")
@@ -107,7 +107,7 @@ func TestFeedSurvivesABrokenWorkoutReference(t *testing.T) {
 	}
 
 	// A card lookup that errors costs the cards, never the feed.
-	broken := achievements.NewService(pool).WithWorkoutCards(failingCards{})
+	broken := achievements.NewService(achievements.NewRepository(pool)).WithWorkoutCards(failingCards{})
 	items, err = broken.Feed(ctx, ana.ID, time.Time{})
 	if err != nil || len(items) != 2 {
 		t.Fatalf("feed with failing cards: %v, %d items", err, len(items))

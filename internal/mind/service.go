@@ -27,7 +27,7 @@ type MoodLookup interface {
 }
 
 type Service struct {
-	repo   *Repository
+	repo   Repository
 	moods  MoodLookup
 	awards Awards
 }
@@ -42,7 +42,17 @@ func (s *Service) WithAwards(a Awards) *Service {
 	return s
 }
 
-func NewService(repo *Repository, moods MoodLookup) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps journal entries.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, content string, mood *int) (JournalEntry, error)
+	Recent(ctx context.Context, userID uuid.UUID, limit int) ([]JournalEntry, error)
+	ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]JournalEntry, error)
+}
+
+func NewService(repo Repository, moods MoodLookup) *Service {
 	return &Service{repo: repo, moods: moods}
 }
 

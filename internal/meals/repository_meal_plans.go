@@ -58,7 +58,7 @@ type NewPortion struct {
 // CreatePlan writes a plan, its days and any meals, options and portions they
 // come with, all or nothing. The plan's total is summed once at the end: an
 // imported plan with every day filled is a couple of hundred meals.
-func (r *Repository) CreatePlan(ctx context.Context, userID uuid.UUID, plan NewPlan, days []NewDay) (uuid.UUID, error) {
+func (r *PostgresRepository) CreatePlan(ctx context.Context, userID uuid.UUID, plan NewPlan, days []NewDay) (uuid.UUID, error) {
 	var planID uuid.UUID
 	err := r.inTx(ctx, func(q *mealsdb.Queries) error {
 		row, err := q.CreateMealPlan(ctx, mealsdb.CreateMealPlanParams{
@@ -139,7 +139,7 @@ func (tx *PlanTx) createPortion(ctx context.Context, mealID uuid.UUID, p NewPort
 // GetPlan loads a plan with its days, their meals and each meal's
 // ingredients. A meal plan realistically has a handful of meals, so the one
 // query per meal here is not the hot path the coach's per-message reads are.
-func (r *Repository) GetPlan(ctx context.Context, id, userID uuid.UUID) (MealPlan, error) {
+func (r *PostgresRepository) GetPlan(ctx context.Context, id, userID uuid.UUID) (MealPlan, error) {
 	row, err := r.q.GetMealPlan(ctx, mealsdb.GetMealPlanParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -151,7 +151,7 @@ func (r *Repository) GetPlan(ctx context.Context, id, userID uuid.UUID) (MealPla
 }
 
 // ListPlans is the index view: plans with their days, but not the days' meals.
-func (r *Repository) ListPlans(ctx context.Context, userID uuid.UUID) ([]MealPlan, error) {
+func (r *PostgresRepository) ListPlans(ctx context.Context, userID uuid.UUID) ([]MealPlan, error) {
 	rows, err := r.q.ListMealPlans(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list meal plans")
@@ -173,7 +173,7 @@ func (r *Repository) ListPlans(ctx context.Context, userID uuid.UUID) ([]MealPla
 	return out, nil
 }
 
-func (r *Repository) DeletePlan(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) DeletePlan(ctx context.Context, id, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.DeleteMealPlan(ctx, mealsdb.DeleteMealPlanParams{ID: id, UserID: userID}), "delete meal plan")
 }
 
@@ -182,7 +182,7 @@ func (r *Repository) DeletePlan(ctx context.Context, id, userID uuid.UUID) error
 // not the meals' ingredients. Changes fn makes through tx commit together, or
 // not at all if fn returns an error. apperr.ErrNotFound if the plan is not
 // the user's.
-func (r *Repository) WithPlanLocked(ctx context.Context, planID, userID uuid.UUID, fn func(tx *PlanTx, plan MealPlan) error) error {
+func (r *PostgresRepository) WithPlanLocked(ctx context.Context, planID, userID uuid.UUID, fn func(tx *PlanTx, plan MealPlan) error) error {
 	return r.inTx(ctx, func(q *mealsdb.Queries) error {
 		row, err := q.LockMealPlan(ctx, mealsdb.LockMealPlanParams{ID: planID, UserID: userID})
 		if err != nil {
@@ -379,14 +379,14 @@ func (tx *PlanTx) SetSlotOptional(ctx context.Context, planID uuid.UUID, slot Me
 
 // PlanIDOfMeal resolves the plan a meal belongs to, so a change to the meal
 // can lock that plan. apperr.ErrNotFound if the meal is not the user's.
-func (r *Repository) PlanIDOfMeal(ctx context.Context, mealID, userID uuid.UUID) (uuid.UUID, error) {
+func (r *PostgresRepository) PlanIDOfMeal(ctx context.Context, mealID, userID uuid.UUID) (uuid.UUID, error) {
 	m, err := r.GetMeal(ctx, mealID, userID)
 	return m.MealPlanID, err
 }
 
 // PlanIDOfDay resolves the plan a day belongs to. apperr.ErrNotFound if the
 // day is not the user's.
-func (r *Repository) PlanIDOfDay(ctx context.Context, dayID, userID uuid.UUID) (uuid.UUID, error) {
+func (r *PostgresRepository) PlanIDOfDay(ctx context.Context, dayID, userID uuid.UUID) (uuid.UUID, error) {
 	row, err := r.q.GetMealPlanDayOwned(ctx, mealsdb.GetMealPlanDayOwnedParams{ID: dayID, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -399,14 +399,14 @@ func (r *Repository) PlanIDOfDay(ctx context.Context, dayID, userID uuid.UUID) (
 
 // PlanIDOfMealIngredient resolves the plan a meal's ingredient belongs to.
 // apperr.ErrNotFound if it is not the user's.
-func (r *Repository) PlanIDOfMealIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) (uuid.UUID, error) {
+func (r *PostgresRepository) PlanIDOfMealIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) (uuid.UUID, error) {
 	planID, _, err := r.LocateMealIngredient(ctx, mealIngredientID, userID)
 	return planID, err
 }
 
 // LocateMealIngredient resolves the plan and meal a meal's ingredient belongs
 // to. apperr.ErrNotFound if it is not the user's.
-func (r *Repository) LocateMealIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) (planID, mealID uuid.UUID, err error) {
+func (r *PostgresRepository) LocateMealIngredient(ctx context.Context, mealIngredientID, userID uuid.UUID) (planID, mealID uuid.UUID, err error) {
 	owned, err := r.q.GetMealIngredientOwned(ctx, mealsdb.GetMealIngredientOwnedParams{ID: mealIngredientID, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -421,7 +421,7 @@ func (r *Repository) LocateMealIngredient(ctx context.Context, mealIngredientID,
 // GetMeal loads a single meal, checking ownership via its parent plan.
 // Exported for FoodLogService, which needs a meal's name and total macros to
 // snapshot a log entry.
-func (r *Repository) GetMeal(ctx context.Context, mealID, userID uuid.UUID) (Meal, error) {
+func (r *PostgresRepository) GetMeal(ctx context.Context, mealID, userID uuid.UUID) (Meal, error) {
 	row, err := r.q.GetMealOwned(ctx, mealsdb.GetMealOwnedParams{ID: mealID, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -433,7 +433,7 @@ func (r *Repository) GetMeal(ctx context.Context, mealID, userID uuid.UUID) (Mea
 }
 
 // inTx runs fn in a transaction, committing only if it returns nil.
-func (r *Repository) inTx(ctx context.Context, fn func(q *mealsdb.Queries) error) error {
+func (r *PostgresRepository) inTx(ctx context.Context, fn func(q *mealsdb.Queries) error) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return apperr.Wrap(err, "begin transaction")

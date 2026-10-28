@@ -40,10 +40,24 @@ type Input struct {
 }
 
 type Service struct {
-	repo *Repository
+	repo Repository
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps decisions.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, title, options, rationale, outcome string) (Decision, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Decision, error)
+	List(ctx context.Context, userID uuid.UUID, limit int) ([]Decision, error)
+	Update(ctx context.Context, id, userID uuid.UUID, title, options, rationale, outcome, held string) (Decision, error)
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	DueRevisit(ctx context.Context, userID uuid.UUID, now, since time.Time) (Revisit, bool, error)
+	Calibration(ctx context.Context, userID uuid.UUID) (Calibration, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

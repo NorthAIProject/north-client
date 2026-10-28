@@ -49,7 +49,7 @@ func TestChallengeSweeperClosesTheWeek(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	cs := checkins.NewService(checkins.NewRepository(pool), nil)
-	svc := crews.NewService(pool, crews.CheckInsFrom(cs), nil)
+	svc := crews.NewService(crews.NewRepository(pool), crews.CheckInsFrom(cs), nil)
 
 	ana := person(t, pool, "ana@north.test", "Ana")
 	leo := person(t, pool, "leo@north.test", "Leo")
@@ -115,7 +115,7 @@ func TestChallengeSweeperSkipsAChallengeSetAfterTheWeek(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	cs := checkins.NewService(checkins.NewRepository(pool), nil)
-	svc := crews.NewService(pool, crews.CheckInsFrom(cs), nil)
+	svc := crews.NewService(crews.NewRepository(pool), crews.CheckInsFrom(cs), nil)
 	ana := person(t, pool, "ana@north.test", "Ana")
 
 	c, err := svc.Create(ctx, ana.ID, "Late starters")
@@ -158,7 +158,7 @@ func TestChallengeSweeperChecksSocialBadges(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	cs := checkins.NewService(checkins.NewRepository(pool), nil)
-	svc := crews.NewService(pool, crews.CheckInsFrom(cs), nil)
+	svc := crews.NewService(crews.NewRepository(pool), crews.CheckInsFrom(cs), nil)
 	ana := person(t, pool, "ana@north.test", "Ana")
 	c, err := svc.Create(ctx, ana.ID, "Runners")
 	if err != nil {

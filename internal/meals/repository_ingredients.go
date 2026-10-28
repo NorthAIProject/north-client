@@ -13,7 +13,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-func (r *Repository) CreateIngredient(ctx context.Context, userID uuid.UUID, in Ingredient) (Ingredient, error) {
+func (r *PostgresRepository) CreateIngredient(ctx context.Context, userID uuid.UUID, in Ingredient) (Ingredient, error) {
 	row, err := r.q.CreateIngredient(ctx, mealsdb.CreateIngredientParams{
 		UserID:               &userID,
 		Name:                 in.Name,
@@ -40,7 +40,7 @@ func (r *Repository) CreateIngredient(ctx context.Context, userID uuid.UUID, in 
 // GetIngredient reads one ingredient the user is allowed to see: their own, or
 // one from the shared library. A row belonging to somebody else reads as
 // ErrNotFound, which is what it is from here.
-func (r *Repository) GetIngredient(ctx context.Context, id, userID uuid.UUID) (Ingredient, error) {
+func (r *PostgresRepository) GetIngredient(ctx context.Context, id, userID uuid.UUID) (Ingredient, error) {
 	row, err := r.q.GetIngredient(ctx, mealsdb.GetIngredientParams{ID: id, UserID: &userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -53,7 +53,7 @@ func (r *Repository) GetIngredient(ctx context.Context, id, userID uuid.UUID) (I
 
 // SearchIngredients returns the shared/global set plus the user's own whose
 // name contains every word of query, in any order and any case.
-func (r *Repository) SearchIngredients(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Ingredient, error) {
+func (r *PostgresRepository) SearchIngredients(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Ingredient, error) {
 	rows, err := r.q.SearchIngredients(ctx, mealsdb.SearchIngredientsParams{
 		UserID:   &userID,
 		Patterns: wordPatterns(query),
@@ -71,7 +71,7 @@ func (r *Repository) SearchIngredients(ctx context.Context, userID uuid.UUID, qu
 }
 
 // SharedIngredientNames lists the shared catalog's names, A to Z.
-func (r *Repository) SharedIngredientNames(ctx context.Context) ([]string, error) {
+func (r *PostgresRepository) SharedIngredientNames(ctx context.Context) ([]string, error) {
 	names, err := r.q.ListSharedIngredientNames(ctx)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list shared ingredient names")
@@ -81,7 +81,7 @@ func (r *Repository) SharedIngredientNames(ctx context.Context) ([]string, error
 
 // UpdateIngredient only succeeds against an ingredient the user owns; shared
 // ingredients are read-only to everyone.
-func (r *Repository) UpdateIngredient(ctx context.Context, id, userID uuid.UUID, in Ingredient) (Ingredient, error) {
+func (r *PostgresRepository) UpdateIngredient(ctx context.Context, id, userID uuid.UUID, in Ingredient) (Ingredient, error) {
 	row, err := r.q.UpdateIngredient(ctx, mealsdb.UpdateIngredientParams{
 		ID:                   id,
 		UserID:               &userID,
@@ -112,7 +112,7 @@ func (r *Repository) UpdateIngredient(ctx context.Context, id, userID uuid.UUID,
 // foreignKeyViolation is Postgres' SQLSTATE for a FK constraint breach.
 const foreignKeyViolation = "23503"
 
-func (r *Repository) DeleteIngredient(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) DeleteIngredient(ctx context.Context, id, userID uuid.UUID) error {
 	err := r.q.DeleteIngredient(ctx, mealsdb.DeleteIngredientParams{ID: id, UserID: &userID})
 	if err != nil {
 		var pgErr *pgconn.PgError

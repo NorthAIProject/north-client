@@ -10,7 +10,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-func (r *Repository) InsertFoodLog(ctx context.Context, userID uuid.UUID, logDate time.Time, mealID, ingredientID *uuid.UUID, quantityGrams *float64, label string, macros Macros) (FoodLogEntry, error) {
+func (r *PostgresRepository) InsertFoodLog(ctx context.Context, userID uuid.UUID, logDate time.Time, mealID, ingredientID *uuid.UUID, quantityGrams *float64, label string, macros Macros) (FoodLogEntry, error) {
 	row, err := r.q.InsertFoodLog(ctx, mealsdb.InsertFoodLogParams{
 		UserID: userID, LogDate: toDate(logDate),
 		MealID: mealID, IngredientID: ingredientID, QuantityGrams: quantityGrams,
@@ -22,11 +22,11 @@ func (r *Repository) InsertFoodLog(ctx context.Context, userID uuid.UUID, logDat
 	return foodLogFromDB(row), nil
 }
 
-func (r *Repository) DeleteFoodLog(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) DeleteFoodLog(ctx context.Context, id, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.DeleteFoodLog(ctx, mealsdb.DeleteFoodLogParams{ID: id, UserID: userID}), "delete food log")
 }
 
-func (r *Repository) FoodLogsByDate(ctx context.Context, userID uuid.UUID, date time.Time) ([]FoodLogEntry, error) {
+func (r *PostgresRepository) FoodLogsByDate(ctx context.Context, userID uuid.UUID, date time.Time) ([]FoodLogEntry, error) {
 	rows, err := r.q.ListFoodLogsByDate(ctx, mealsdb.ListFoodLogsByDateParams{UserID: userID, LogDate: toDate(date)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list food logs by date")
@@ -34,7 +34,7 @@ func (r *Repository) FoodLogsByDate(ctx context.Context, userID uuid.UUID, date 
 	return foodLogsFromDB(rows), nil
 }
 
-func (r *Repository) FoodLogsByRange(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]FoodLogEntry, error) {
+func (r *PostgresRepository) FoodLogsByRange(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]FoodLogEntry, error) {
 	rows, err := r.q.ListFoodLogsByRange(ctx, mealsdb.ListFoodLogsByRangeParams{UserID: userID, LogDate: toDate(from), LogDate_2: toDate(to)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list food logs by range")
@@ -42,7 +42,7 @@ func (r *Repository) FoodLogsByRange(ctx context.Context, userID uuid.UUID, from
 	return foodLogsFromDB(rows), nil
 }
 
-func (r *Repository) DailyTotals(ctx context.Context, userID uuid.UUID, date time.Time) (Macros, error) {
+func (r *PostgresRepository) DailyTotals(ctx context.Context, userID uuid.UUID, date time.Time) (Macros, error) {
 	row, err := r.q.DailyFoodLogTotals(ctx, mealsdb.DailyFoodLogTotalsParams{UserID: userID, LogDate: toDate(date)})
 	if err != nil {
 		return Macros{}, apperr.Wrap(err, "daily food log totals")

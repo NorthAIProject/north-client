@@ -54,7 +54,7 @@ func input(tok string) apns.Input {
 	return apns.Input{Token: tok, Topic: topic, Environment: apns.EnvironmentProduction}
 }
 
-func newService(pool *pgxpool.Pool, sender apns.Sender) (*apns.Service, *apns.Repository) {
+func newService(pool *pgxpool.Pool, sender apns.Sender) (*apns.Service, apns.Repository) {
 	repo := apns.NewRepository(pool)
 	return apns.NewService(repo, sender, []string{topic}, nil), repo
 }

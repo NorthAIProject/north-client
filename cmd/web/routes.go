@@ -174,10 +174,10 @@ func routes(
 
 	// Moments worth showing friends, recorded by the services below as they
 	// happen. The bell is attached once nudges exist, for kudos.
-	achievementSvc := achievements.NewService(pool)
+	achievementSvc := achievements.NewService(achievements.NewRepository(pool))
 
 	// Badges, checked by every service below after the write they follow.
-	awardsSvc := awards.NewService(pool)
+	awardsSvc := awards.NewService(awards.NewRepository(pool))
 
 	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	goalHandler := goals.NewHandler(goalSvc).WithFunnel(funnel)
@@ -313,16 +313,16 @@ func routes(
 
 	// Crews read check-ins and finished sessions for their boards, and keep
 	// people out of crews whose owner they have a block with.
-	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)).
+	crewSvc := crews.NewService(crews.NewRepository(pool), crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)).
 		WithBlocks(social.NewRepository(pool))
 	// Moderation sits under everything people post to each other: the word
 	// filter, the terms, reports that hide, and the operators' queue. Crew
 	// chat registers its messages with it, so reports can hide them.
-	moderationSvc := moderation.NewService(pool).
+	moderationSvc := moderation.NewService(moderation.NewRepository(pool)).
 		WithOperators(cfg.OperatorUserIDs, apnsSvc, pushSvc).
 		WithLogger(slog.Default())
 	moderationHandler := moderation.NewHandler(moderationSvc)
-	crewChat := crews.NewChat(pool, moderationSvc, moderation.NewFilter(), queue)
+	crewChat := crews.NewChat(crews.NewRepository(pool), moderationSvc, moderation.NewFilter(), queue)
 	crewLive := live.NewHub()
 	moderationSvc.Register(crews.MessageSubject, crewChat.Hider())
 	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction()).WithLive(crewChat, crewLive)
@@ -346,7 +346,7 @@ func routes(
 
 	// XP is derived from what the slices above record; the leaderboard reads
 	// it and the check-in streak.
-	xpSvc := xp.NewService(pool, checkinSvc)
+	xpSvc := xp.NewService(xp.NewRepository(pool), checkinSvc)
 	xpHandler := xp.NewHandler(xpSvc)
 
 	// Preferences owns the units system, which the calculator renders in.
@@ -413,7 +413,7 @@ func routes(
 	recoverySrc := insights.NewRecoverySource(healthSvc, stats.NewService(stats.Sources{
 		Sleep: sleep.NewService(sleep.NewRepository(pool)), Health: healthSvc,
 	}))
-	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc).WithAwards(awardsSvc)
+	lighterSvc := lighterday.NewService(lighterday.NewRepository(pool), recoverySrc, workoutSvc).WithAwards(awardsSvc)
 	workoutSvc.WithLighter(lighterSvc)
 	// The coach speaking first (internal/outreach) is built once messaging
 	// exists, below; the lighter-day card asks it whether today's message
@@ -716,7 +716,7 @@ func routes(
 
 	// The weekly review reads goals and reports, and sets the week's training
 	// volume, so it is wired after both and handed back to workouts.
-	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
+	weeklySvc := weekly.NewService(weekly.NewRepository(pool), goalSvc, reportSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	workoutSvc.WithVolume(weeklySvc)
 	reportSvc.WithFocus(weeklySvc)
 	weeklyHandler := weekly.NewHandler(weeklySvc)
@@ -736,7 +736,7 @@ func routes(
 	dailyPostSvc := dailyposts.NewService(dailyposts.NewRepository(pool))
 
 	// The capture inbox saves here; the worker suggests where each item goes.
-	inboxSvc := inbox.NewService(pool, inbox.Options{
+	inboxSvc := inbox.NewService(inbox.NewRepository(pool), inbox.Options{
 		Queue: queue, Goals: goalSvc, Notes: documentSvc, Journal: mindSvc, Users: userSvc,
 	})
 	inboxHandler := inbox.NewHandler(inboxSvc)

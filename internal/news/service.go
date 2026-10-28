@@ -30,7 +30,7 @@ const (
 )
 
 type Service struct {
-	repo    *Repository
+	repo    Repository
 	agg     Aggregator
 	prefs   Preferences
 	curated []string
@@ -40,7 +40,22 @@ type Service struct {
 	MaxUserFeeds int
 }
 
-func NewService(repo *Repository, agg Aggregator, prefs Preferences, curated []string) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps news items and personal feeds.
+type Repository interface {
+	UpsertItems(ctx context.Context, items []Item) error
+	ListRecent(ctx context.Context, limit int) ([]Item, error)
+	Prune(ctx context.Context, before time.Time, keep int) error
+	ListUserFeeds(ctx context.Context, userID uuid.UUID) ([]UserFeed, error)
+	CountUserFeeds(ctx context.Context, userID uuid.UUID) (int, error)
+	CreateUserFeed(ctx context.Context, userID uuid.UUID, feedURL, title string) (UserFeed, error)
+	DeleteUserFeed(ctx context.Context, id, userID uuid.UUID) error
+	AllUserFeedURLs(ctx context.Context) ([]string, error)
+}
+
+func NewService(repo Repository, agg Aggregator, prefs Preferences, curated []string) *Service {
 	return &Service{repo: repo, agg: agg, prefs: prefs, curated: curated, MaxUserFeeds: 10}
 }
 

@@ -20,10 +20,33 @@ const (
 )
 
 type Service struct {
-	repo *Repository
+	repo Repository
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps memories.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, m NewMemory) (Memory, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Memory, error)
+	List(ctx context.Context, userID uuid.UUID, limit int) ([]Memory, error)
+	ListByStatus(ctx context.Context, userID uuid.UUID, status string, limit int) ([]Memory, error)
+	ForContext(ctx context.Context, userID uuid.UUID, limit int) ([]Memory, error)
+	SearchForContext(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Retrieved, error)
+	ExistingContents(ctx context.Context, userID uuid.UUID) (map[string]bool, error)
+	Update(ctx context.Context, id, userID uuid.UUID, category, content string) (Memory, error)
+	SetStatus(ctx context.Context, id, userID uuid.UUID, status string) (Memory, error)
+	SetPinned(ctx context.Context, id, userID uuid.UUID, pinned bool) (Memory, error)
+	SetExcluded(ctx context.Context, id, userID uuid.UUID, excluded bool) (Memory, error)
+	SoftDelete(ctx context.Context, id, userID uuid.UUID) error
+	CountPending(ctx context.Context, userID uuid.UUID) (int, error)
+	ListPendingForConversation(ctx context.Context, userID, conversationID uuid.UUID) ([]Memory, error)
+	Supersede(ctx context.Context, id, userID uuid.UUID) (Memory, bool, error)
+	ListCurrentForSupersession(ctx context.Context, userID uuid.UUID, limit int) ([]CurrentFact, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

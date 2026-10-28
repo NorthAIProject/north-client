@@ -62,7 +62,7 @@ func session(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID, end time.Time, 
 
 func newService(pool *pgxpool.Pool) *xp.Service {
 	goalSvc := goals.NewService(goals.NewRepository(pool))
-	return xp.NewService(pool, checkins.NewService(checkins.NewRepository(pool), goalSvc))
+	return xp.NewService(xp.NewRepository(pool), checkins.NewService(checkins.NewRepository(pool), goalSvc))
 }
 
 // Every rule in the table, counted once, in the week and all time.
@@ -195,7 +195,7 @@ func TestBoardShowsOnlyFriendsWhoShare(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	socialSvc := social.NewService(social.NewRepository(pool))
-	sharing := achievements.NewService(pool)
+	sharing := achievements.NewService(achievements.NewRepository(pool))
 
 	ana := person(t, pool, "ana@example.com", "Ana")
 	bo := person(t, pool, "bo@example.com", "Bo")

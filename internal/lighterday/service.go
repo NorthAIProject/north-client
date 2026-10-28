@@ -11,16 +11,11 @@ package lighterday
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/insights"
-	lighterdaydb "github.com/NorthAIProject/north-client/internal/lighterday/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -76,7 +71,7 @@ func (t Today) Offered() bool {
 func (t Today) Lighter() bool { return t.Choice == ChoiceLighter }
 
 type Service struct {
-	q        *lighterdaydb.Queries
+	repo     Repository
 	recovery Recovery
 	sessions SessionReader
 	awards   Awards
@@ -91,8 +86,16 @@ type Awards interface {
 
 func (s *Service) WithAwards(a Awards) *Service { s.awards = a; return s }
 
-func NewService(pool *pgxpool.Pool, r Recovery, s SessionReader) *Service {
-	return &Service{q: lighterdaydb.New(pool), recovery: r, sessions: s, now: time.Now}
+// Repository is the persistence Service depends on: the one answer a person
+// gives each day. NewRepository is what the process wires, and a test can
+// hand Service anything that keeps those answers.
+type Repository interface {
+	SetChoice(ctx context.Context, userID uuid.UUID, day time.Time, choice, source string) error
+	Choice(ctx context.Context, userID uuid.UUID, day time.Time) (choice, source string, err error)
+}
+
+func NewService(repo Repository, r Recovery, s SessionReader) *Service {
+	return &Service{repo: repo, recovery: r, sessions: s, now: time.Now}
 }
 
 // WithClock fixes now, for tests.
@@ -155,8 +158,8 @@ func (s *Service) ChooseAs(ctx context.Context, user users.User, choice, source 
 		return Today{}, apperr.FieldErrors{}.Add("choice", i18n.T(ctx, "lighterday.error.nosession"))
 	}
 	today := timerange.StartOfDay(s.now().In(user.Location()))
-	if err = s.q.SetChoice(ctx, lighterdaydb.SetChoiceParams{UserID: user.ID, Day: date(today), Choice: choice, Source: source}); err != nil {
-		return Today{}, apperr.Wrap(err, "save lighter day")
+	if err = s.repo.SetChoice(ctx, user.ID, today, choice, source); err != nil {
+		return Today{}, err
 	}
 	t.Choice, t.Source = choice, source
 	// Easing off on a low morning, by one's own choice, is the badge. The
@@ -175,16 +178,5 @@ func (s *Service) LighterOn(ctx context.Context, user users.User, at time.Time) 
 }
 
 func (s *Service) choice(ctx context.Context, user users.User, day time.Time) (choice, source string, err error) {
-	row, err := s.q.GetChoice(ctx, lighterdaydb.GetChoiceParams{UserID: user.ID, Day: date(day)})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", nil
-	}
-	if err != nil {
-		return "", "", apperr.Wrap(err, "load lighter day")
-	}
-	return row.Choice, row.Source, nil
-}
-
-func date(t time.Time) pgtype.Date {
-	return pgtype.Date{Time: time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), Valid: true}
+	return s.repo.Choice(ctx, user.ID, day)
 }

@@ -27,12 +27,14 @@ type Media struct {
 	CreatedAt    time.Time
 }
 
-type Repository struct {
+type PostgresRepository struct {
 	q *mediadb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: mediadb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: mediadb.New(pool)}
 }
 
 type NewMedia struct {
@@ -44,7 +46,7 @@ type NewMedia struct {
 	OriginalName string
 }
 
-func (r *Repository) CreateMedia(ctx context.Context, m NewMedia) (Media, error) {
+func (r *PostgresRepository) CreateMedia(ctx context.Context, m NewMedia) (Media, error) {
 	row, err := r.q.CreateMedia(ctx, mediadb.CreateMediaParams{
 		UserID:       m.UserID,
 		Kind:         m.Kind,
@@ -59,7 +61,7 @@ func (r *Repository) CreateMedia(ctx context.Context, m NewMedia) (Media, error)
 	return mediaFromDB(row), nil
 }
 
-func (r *Repository) CountByKind(ctx context.Context, userID uuid.UUID, kind string) (int, error) {
+func (r *PostgresRepository) CountByKind(ctx context.Context, userID uuid.UUID, kind string) (int, error) {
 	n, err := r.q.CountUserMediaByKind(ctx, mediadb.CountUserMediaByKindParams{
 		UserID: userID,
 		Kind:   kind,
@@ -70,7 +72,7 @@ func (r *Repository) CountByKind(ctx context.Context, userID uuid.UUID, kind str
 	return int(n), nil
 }
 
-func (r *Repository) LatestCreatedAt(ctx context.Context, userID uuid.UUID, kind string) (time.Time, bool, error) {
+func (r *PostgresRepository) LatestCreatedAt(ctx context.Context, userID uuid.UUID, kind string) (time.Time, bool, error) {
 	at, err := r.q.LatestUserMediaCreatedAt(ctx, mediadb.LatestUserMediaCreatedAtParams{
 		UserID: userID,
 		Kind:   kind,
@@ -84,7 +86,7 @@ func (r *Repository) LatestCreatedAt(ctx context.Context, userID uuid.UUID, kind
 	return at, true, nil
 }
 
-func (r *Repository) GetMedia(ctx context.Context, id, userID uuid.UUID) (Media, error) {
+func (r *PostgresRepository) GetMedia(ctx context.Context, id, userID uuid.UUID) (Media, error) {
 	row, err := r.q.GetMedia(ctx, mediadb.GetMediaParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -96,7 +98,7 @@ func (r *Repository) GetMedia(ctx context.Context, id, userID uuid.UUID) (Media,
 }
 
 // DeleteMedia removes a record this person owns and returns its storage key.
-func (r *Repository) DeleteMedia(ctx context.Context, id, userID uuid.UUID) (string, error) {
+func (r *PostgresRepository) DeleteMedia(ctx context.Context, id, userID uuid.UUID) (string, error) {
 	key, err := r.q.DeleteMedia(ctx, mediadb.DeleteMediaParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -109,7 +111,7 @@ func (r *Repository) DeleteMedia(ctx context.Context, id, userID uuid.UUID) (str
 
 // LatestOfKinds is the person's newest media of one of kinds, and with name
 // set, the newest whose original name matches it case-insensitively.
-func (r *Repository) LatestOfKinds(ctx context.Context, userID uuid.UUID, kinds []string, name string) (Media, error) {
+func (r *PostgresRepository) LatestOfKinds(ctx context.Context, userID uuid.UUID, kinds []string, name string) (Media, error) {
 	row, err := r.q.LatestUserMediaOfKinds(ctx, mediadb.LatestUserMediaOfKindsParams{
 		UserID: userID,
 		Kinds:  kinds,
@@ -126,7 +128,7 @@ func (r *Repository) LatestOfKinds(ctx context.Context, userID uuid.UUID, kinds 
 
 // GetMediaByID is unscoped, for the worker, which acts for the system rather
 // than a signed-in user. Handlers must use GetMedia.
-func (r *Repository) GetMediaByID(ctx context.Context, id uuid.UUID) (Media, error) {
+func (r *PostgresRepository) GetMediaByID(ctx context.Context, id uuid.UUID) (Media, error) {
 	row, err := r.q.GetMediaByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -137,7 +139,7 @@ func (r *Repository) GetMediaByID(ctx context.Context, id uuid.UUID) (Media, err
 	return mediaFromDB(row), nil
 }
 
-func (r *Repository) CreateAnalysis(ctx context.Context, mediaID, userID uuid.UUID) (analysis.Analysis, error) {
+func (r *PostgresRepository) CreateAnalysis(ctx context.Context, mediaID, userID uuid.UUID) (analysis.Analysis, error) {
 	row, err := r.q.CreateAnalysis(ctx, mediadb.CreateAnalysisParams{MediaID: mediaID, UserID: userID})
 	if err != nil {
 		return analysis.Analysis{}, apperr.Wrap(err, "create analysis")
@@ -145,7 +147,7 @@ func (r *Repository) CreateAnalysis(ctx context.Context, mediaID, userID uuid.UU
 	return analysisFromDB(row), nil
 }
 
-func (r *Repository) GetAnalysis(ctx context.Context, id, userID uuid.UUID) (analysis.Analysis, error) {
+func (r *PostgresRepository) GetAnalysis(ctx context.Context, id, userID uuid.UUID) (analysis.Analysis, error) {
 	row, err := r.q.GetAnalysis(ctx, mediadb.GetAnalysisParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -156,7 +158,7 @@ func (r *Repository) GetAnalysis(ctx context.Context, id, userID uuid.UUID) (ana
 	return analysisFromDB(row), nil
 }
 
-func (r *Repository) GetAnalysisByMedia(ctx context.Context, mediaID uuid.UUID) (analysis.Analysis, error) {
+func (r *PostgresRepository) GetAnalysisByMedia(ctx context.Context, mediaID uuid.UUID) (analysis.Analysis, error) {
 	row, err := r.q.GetAnalysisByMedia(ctx, mediaID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -167,7 +169,7 @@ func (r *Repository) GetAnalysisByMedia(ctx context.Context, mediaID uuid.UUID) 
 	return analysisFromDB(row), nil
 }
 
-func (r *Repository) ListAnalyses(ctx context.Context, userID uuid.UUID, limit int) ([]analysis.Analysis, error) {
+func (r *PostgresRepository) ListAnalyses(ctx context.Context, userID uuid.UUID, limit int) ([]analysis.Analysis, error) {
 	rows, err := r.q.ListAnalyses(ctx, mediadb.ListAnalysesParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list analyses")
@@ -180,11 +182,11 @@ func (r *Repository) ListAnalyses(ctx context.Context, userID uuid.UUID, limit i
 	return out, nil
 }
 
-func (r *Repository) StartAnalysis(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) StartAnalysis(ctx context.Context, id uuid.UUID) error {
 	return apperr.Wrap(r.q.StartAnalysis(ctx, id), "start analysis")
 }
 
-func (r *Repository) CompleteAnalysis(ctx context.Context, id uuid.UUID, result analysis.FormAnalysis, model, provider string) error {
+func (r *PostgresRepository) CompleteAnalysis(ctx context.Context, id uuid.UUID, result analysis.FormAnalysis, model, provider string) error {
 	body, err := json.Marshal(result)
 	if err != nil {
 		return apperr.Wrap(err, "encode analysis")
@@ -198,7 +200,7 @@ func (r *Repository) CompleteAnalysis(ctx context.Context, id uuid.UUID, result 
 	}), "complete analysis")
 }
 
-func (r *Repository) FailAnalysis(ctx context.Context, id uuid.UUID, reason string) error {
+func (r *PostgresRepository) FailAnalysis(ctx context.Context, id uuid.UUID, reason string) error {
 	return apperr.Wrap(r.q.FailAnalysis(ctx, mediadb.FailAnalysisParams{ID: id, Error: reason}), "fail analysis")
 }
 

@@ -20,7 +20,7 @@ func TestCrewCheckInNudge(t *testing.T) {
 	ana := mustOnboard(t, pool, seedUser(t, pool, "ana-crew@north.test"), evening.AddDate(0, 0, -30))
 	leo := mustOnboard(t, pool, seedUser(t, pool, "leo-crew@north.test"), evening.AddDate(0, 0, -30))
 
-	crewSvc := crews.NewService(pool, crews.CheckInsFrom(checkins.NewService(checkins.NewRepository(pool), nil)), nil)
+	crewSvc := crews.NewService(crews.NewRepository(pool), crews.CheckInsFrom(checkins.NewService(checkins.NewRepository(pool), nil)), nil)
 	c, err := crewSvc.Create(ctx, ana.ID, "Duo")
 	if err != nil {
 		t.Fatal(err)

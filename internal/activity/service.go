@@ -30,7 +30,7 @@ type SyncHook interface {
 }
 
 type Service struct {
-	repo         *Repository
+	repo         Repository
 	biometrics   BiometricsLookup
 	sync         SyncHook
 	achievements Achievements
@@ -94,7 +94,30 @@ func (s *Service) CheckAwards(ctx context.Context, userID uuid.UUID, source stri
 	s.awards.Check(ctx, userID, s.now(), areas...)
 }
 
-func NewService(repo *Repository, lookup BiometricsLookup) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps activity sessions.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, activityCode, planWeekday string, weightKg float64) (Session, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Session, error)
+	Active(ctx context.Context, userID uuid.UUID) (Session, bool, error)
+	SetPaused(ctx context.Context, id, userID uuid.UUID) (Session, error)
+	SetResumed(ctx context.Context, id, userID uuid.UUID, totalPausedSeconds int) (Session, error)
+	Complete(ctx context.Context, id, userID uuid.UUID, endedAt time.Time, calories float64) (Session, error)
+	Cancel(ctx context.Context, id, userID uuid.UUID) error
+	List(ctx context.Context, userID uuid.UUID, limit int) ([]Session, error)
+	SumCaloriesSince(ctx context.Context, userID uuid.UUID, since time.Time) (float64, error)
+	SumCaloriesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) (float64, error)
+	ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Session, error)
+	CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]Session, error)
+	ListCompleted(ctx context.Context, userID uuid.UUID, before time.Time, limit int) ([]Session, error)
+	CountCompleted(ctx context.Context, userID uuid.UUID) (int, error)
+	Import(ctx context.Context, in ImportInput) (Session, bool, error)
+	Log(ctx context.Context, userID uuid.UUID, in LogInput, weightKg, calories float64) (Session, error)
+}
+
+func NewService(repo Repository, lookup BiometricsLookup) *Service {
 	return &Service{repo: repo, biometrics: lookup, now: time.Now}
 }
 

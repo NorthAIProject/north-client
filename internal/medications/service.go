@@ -15,11 +15,27 @@ import (
 )
 
 type Service struct {
-	repo *Repository
+	repo Repository
 	now  func() time.Time
 }
 
-func NewService(repo *Repository) *Service { return &Service{repo: repo, now: time.Now} }
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps medications and their doses.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, in Input) (Medication, error)
+	Update(ctx context.Context, id, userID uuid.UUID, in Input) (Medication, error)
+	Stop(ctx context.Context, id, userID uuid.UUID, at time.Time) (Medication, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Medication, error)
+	List(ctx context.Context, userID uuid.UUID, activeOnly bool) ([]Medication, error)
+	LogDose(ctx context.Context, userID, medID uuid.UUID, date time.Time, slot *string, status string, at time.Time) (Dose, error)
+	DeleteDose(ctx context.Context, id, userID uuid.UUID) error
+	DosesOn(ctx context.Context, userID uuid.UUID, date time.Time) ([]Dose, error)
+	AllDoses(ctx context.Context, userID uuid.UUID) ([]Dose, error)
+}
+
+func NewService(repo Repository) *Service { return &Service{repo: repo, now: time.Now} }
 
 // WithClock fixes now so tests can stand at a given minute of a given day.
 func (s *Service) WithClock(now func() time.Time) *Service {

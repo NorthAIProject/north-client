@@ -15,18 +15,20 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	pool *pgxpool.Pool
 	q    *firstweekdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, q: firstweekdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool, q: firstweekdb.New(pool)}
 }
 
 // Begin starts (or restarts) a person's week: the days of any earlier week
 // are cleared and the programme row replaced, in one transaction.
-func (r *Repository) Begin(ctx context.Context, p Programme) (Programme, error) {
+func (r *PostgresRepository) Begin(ctx context.Context, p Programme) (Programme, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return Programme{}, apperr.Wrap(err, "begin first week")
@@ -51,7 +53,7 @@ func (r *Repository) Begin(ctx context.Context, p Programme) (Programme, error) 
 }
 
 // Get is the person's programme, ErrNotFound when they never had one.
-func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Programme, error) {
+func (r *PostgresRepository) Get(ctx context.Context, userID uuid.UUID) (Programme, error) {
 	row, err := r.q.GetProgramme(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Programme{}, apperr.ErrNotFound
@@ -64,7 +66,7 @@ func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Programme, erro
 
 // End moves a running week to status. changed is false when the week was not
 // running, so a second skip or finish does nothing.
-func (r *Repository) End(ctx context.Context, userID uuid.UUID, status string) (Programme, bool, error) {
+func (r *PostgresRepository) End(ctx context.Context, userID uuid.UUID, status string) (Programme, bool, error) {
 	row, err := r.q.SetProgrammeStatus(ctx, firstweekdb.SetProgrammeStatusParams{UserID: userID, Status: status})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Programme{}, false, nil
@@ -76,7 +78,7 @@ func (r *Repository) End(ctx context.Context, userID uuid.UUID, status string) (
 }
 
 // ListActive pages the running weeks, by user id after `after`.
-func (r *Repository) ListActive(ctx context.Context, after uuid.UUID, limit int) ([]Programme, error) {
+func (r *PostgresRepository) ListActive(ctx context.Context, after uuid.UUID, limit int) ([]Programme, error) {
 	rows, err := r.q.ListActiveProgrammes(ctx, firstweekdb.ListActiveProgrammesParams{UserID: after, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list first weeks")
@@ -89,7 +91,7 @@ func (r *Repository) ListActive(ctx context.Context, after uuid.UUID, limit int)
 }
 
 // Complete records a day done. inserted is false when it already was.
-func (r *Repository) Complete(ctx context.Context, userID uuid.UUID, day int, localDate time.Time, via string) (Completion, bool, error) {
+func (r *PostgresRepository) Complete(ctx context.Context, userID uuid.UUID, day int, localDate time.Time, via string) (Completion, bool, error) {
 	row, err := r.q.InsertDay(ctx, firstweekdb.InsertDayParams{
 		UserID: userID, Day: int16(day), LocalDate: date(localDate), Via: via,
 	})
@@ -103,7 +105,7 @@ func (r *Repository) Complete(ctx context.Context, userID uuid.UUID, day int, lo
 }
 
 // Completions are the days done so far, in order.
-func (r *Repository) Completions(ctx context.Context, userID uuid.UUID) ([]Completion, error) {
+func (r *PostgresRepository) Completions(ctx context.Context, userID uuid.UUID) ([]Completion, error) {
 	rows, err := r.q.ListDays(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list first week days")
@@ -117,7 +119,7 @@ func (r *Repository) Completions(ctx context.Context, userID uuid.UUID) ([]Compl
 
 // SetReview stores the week's review unless one is already there, and
 // returns the programme with whichever review it now holds.
-func (r *Repository) SetReview(ctx context.Context, userID uuid.UUID, review Review) (Programme, error) {
+func (r *PostgresRepository) SetReview(ctx context.Context, userID uuid.UUID, review Review) (Programme, error) {
 	body, err := json.Marshal(review)
 	if err != nil {
 		return Programme{}, apperr.Wrap(err, "encode first week review")

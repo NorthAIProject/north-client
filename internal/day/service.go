@@ -148,7 +148,7 @@ var vitaminMetrics = map[string]string{
 // Options keeps the constructor readable. Every field but Rules is optional:
 // a nil slice is an empty card, never a failed page.
 type Options struct {
-	Rules      *Repository
+	Rules      Repository
 	Hydration  Hydration
 	Sleep      Sleep
 	Food       Food
@@ -174,7 +174,7 @@ type Options struct {
 }
 
 type Service struct {
-	rules      *Repository
+	rules      Repository
 	hydration  Hydration
 	sleep      Sleep
 	food       Food
@@ -195,6 +195,16 @@ type Service struct {
 	preferences   Preferences
 	checkInTotals CheckInTotals
 	checkIns      CheckIns
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps day rules.
+type Repository interface {
+	ListRules(ctx context.Context, userID uuid.UUID) ([]day.Rule, error)
+	UpsertRule(ctx context.Context, userID uuid.UUID, rule day.Rule) (day.Rule, error)
+	DeleteRule(ctx context.Context, userID uuid.UUID, kind day.RuleKind) error
 }
 
 func NewService(opts Options) *Service {

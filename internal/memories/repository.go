@@ -14,12 +14,14 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *memoriesdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: memoriesdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: memoriesdb.New(pool)}
 }
 
 // NewMemory is a row to insert.
@@ -37,7 +39,7 @@ type NewMemory struct {
 	SupersedesID *uuid.UUID
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, m NewMemory) (Memory, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, m NewMemory) (Memory, error) {
 	var conf *float32
 	if m.Confidence != nil {
 		conf = util.Ptr(float32(*m.Confidence))
@@ -60,7 +62,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, m NewMemory) 
 	return fromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
 	row, err := r.q.GetMemory(ctx, memoriesdb.GetMemoryParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -71,7 +73,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Memory, err
 	return fromDB(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Memory, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Memory, error) {
 	rows, err := r.q.ListMemories(ctx, memoriesdb.ListMemoriesParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -82,7 +84,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]M
 	return fromDBList(rows), nil
 }
 
-func (r *Repository) ListByStatus(ctx context.Context, userID uuid.UUID, status string, limit int) ([]Memory, error) {
+func (r *PostgresRepository) ListByStatus(ctx context.Context, userID uuid.UUID, status string, limit int) ([]Memory, error) {
 	rows, err := r.q.ListMemoriesByStatus(ctx, memoriesdb.ListMemoriesByStatusParams{
 		UserID: userID,
 		Status: status,
@@ -94,7 +96,7 @@ func (r *Repository) ListByStatus(ctx context.Context, userID uuid.UUID, status 
 	return fromDBList(rows), nil
 }
 
-func (r *Repository) ForContext(ctx context.Context, userID uuid.UUID, limit int) ([]Memory, error) {
+func (r *PostgresRepository) ForContext(ctx context.Context, userID uuid.UUID, limit int) ([]Memory, error) {
 	rows, err := r.q.ListApprovedForContext(ctx, memoriesdb.ListApprovedForContextParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -124,7 +126,7 @@ type Retrieved struct {
 // SearchForContext returns approved memories ranked against query.
 //
 // Pinned facts come back whether or not they match; see the query for why.
-func (r *Repository) SearchForContext(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Retrieved, error) {
+func (r *PostgresRepository) SearchForContext(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Retrieved, error) {
 	rows, err := r.q.SearchApprovedForContext(ctx, memoriesdb.SearchApprovedForContextParams{
 		UserID:      userID,
 		Query:       query,
@@ -161,7 +163,7 @@ func (r *Repository) SearchForContext(ctx context.Context, userID uuid.UUID, que
 	return out, nil
 }
 
-func (r *Repository) ExistingContents(ctx context.Context, userID uuid.UUID) (map[string]bool, error) {
+func (r *PostgresRepository) ExistingContents(ctx context.Context, userID uuid.UUID) (map[string]bool, error) {
 	rows, err := r.q.ListActiveContents(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list memory contents")
@@ -175,7 +177,7 @@ func (r *Repository) ExistingContents(ctx context.Context, userID uuid.UUID) (ma
 	return out, nil
 }
 
-func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, category, content string) (Memory, error) {
+func (r *PostgresRepository) Update(ctx context.Context, id, userID uuid.UUID, category, content string) (Memory, error) {
 	row, err := r.q.UpdateMemory(ctx, memoriesdb.UpdateMemoryParams{
 		ID:       id,
 		UserID:   userID,
@@ -191,7 +193,7 @@ func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, category,
 	return fromDB(row), nil
 }
 
-func (r *Repository) SetStatus(ctx context.Context, id, userID uuid.UUID, status string) (Memory, error) {
+func (r *PostgresRepository) SetStatus(ctx context.Context, id, userID uuid.UUID, status string) (Memory, error) {
 	row, err := r.q.SetMemoryStatus(ctx, memoriesdb.SetMemoryStatusParams{
 		ID:     id,
 		UserID: userID,
@@ -206,7 +208,7 @@ func (r *Repository) SetStatus(ctx context.Context, id, userID uuid.UUID, status
 	return fromDB(row), nil
 }
 
-func (r *Repository) SetPinned(ctx context.Context, id, userID uuid.UUID, pinned bool) (Memory, error) {
+func (r *PostgresRepository) SetPinned(ctx context.Context, id, userID uuid.UUID, pinned bool) (Memory, error) {
 	row, err := r.q.SetMemoryPinned(ctx, memoriesdb.SetMemoryPinnedParams{
 		ID:     id,
 		UserID: userID,
@@ -221,7 +223,7 @@ func (r *Repository) SetPinned(ctx context.Context, id, userID uuid.UUID, pinned
 	return fromDB(row), nil
 }
 
-func (r *Repository) SetExcluded(ctx context.Context, id, userID uuid.UUID, excluded bool) (Memory, error) {
+func (r *PostgresRepository) SetExcluded(ctx context.Context, id, userID uuid.UUID, excluded bool) (Memory, error) {
 	row, err := r.q.SetMemoryExcluded(ctx, memoriesdb.SetMemoryExcludedParams{
 		ID:       id,
 		UserID:   userID,
@@ -236,7 +238,7 @@ func (r *Repository) SetExcluded(ctx context.Context, id, userID uuid.UUID, excl
 	return fromDB(row), nil
 }
 
-func (r *Repository) SoftDelete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) SoftDelete(ctx context.Context, id, userID uuid.UUID) error {
 	n, err := r.q.SoftDeleteMemory(ctx, memoriesdb.SoftDeleteMemoryParams{
 		ID:     id,
 		UserID: userID,
@@ -250,7 +252,7 @@ func (r *Repository) SoftDelete(ctx context.Context, id, userID uuid.UUID) error
 	return nil
 }
 
-func (r *Repository) CountPending(ctx context.Context, userID uuid.UUID) (int, error) {
+func (r *PostgresRepository) CountPending(ctx context.Context, userID uuid.UUID) (int, error) {
 	n, err := r.q.CountPendingMemories(ctx, userID)
 	if err != nil {
 		return 0, apperr.Wrap(err, "count pending memories")
@@ -258,7 +260,7 @@ func (r *Repository) CountPending(ctx context.Context, userID uuid.UUID) (int, e
 	return int(n), nil
 }
 
-func (r *Repository) ListPendingForConversation(ctx context.Context, userID, conversationID uuid.UUID) ([]Memory, error) {
+func (r *PostgresRepository) ListPendingForConversation(ctx context.Context, userID, conversationID uuid.UUID) ([]Memory, error) {
 	rows, err := r.q.ListPendingForConversation(ctx, memoriesdb.ListPendingForConversationParams{
 		UserID:               userID,
 		SourceConversationID: &conversationID,
@@ -276,7 +278,7 @@ func (r *Repository) ListPendingForConversation(ctx context.Context, userID, con
 // approval, or pinned. Pinned is the interesting one — the query refuses it on
 // purpose, because a pinned fact is one the person said always matters and a
 // model's suggestion is not enough to overrule that.
-func (r *Repository) Supersede(ctx context.Context, id, userID uuid.UUID) (Memory, bool, error) {
+func (r *PostgresRepository) Supersede(ctx context.Context, id, userID uuid.UUID) (Memory, bool, error) {
 	row, err := r.q.SupersedeMemory(ctx, memoriesdb.SupersedeMemoryParams{ID: id, UserID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Memory{}, false, nil
@@ -298,7 +300,7 @@ type CurrentFact struct {
 
 // ListCurrentForSupersession returns the facts an extraction may propose
 // replacing, oldest-updated last within each category.
-func (r *Repository) ListCurrentForSupersession(ctx context.Context, userID uuid.UUID, limit int) ([]CurrentFact, error) {
+func (r *PostgresRepository) ListCurrentForSupersession(ctx context.Context, userID uuid.UUID, limit int) ([]CurrentFact, error) {
 	rows, err := r.q.ListCurrentForSupersession(ctx, memoriesdb.ListCurrentForSupersessionParams{
 		UserID: userID,
 		Limit:  int32(limit),

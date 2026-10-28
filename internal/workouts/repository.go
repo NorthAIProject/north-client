@@ -64,15 +64,17 @@ type StoredPlan struct {
 	CreatedAt time.Time
 }
 
-type Repository struct {
+type PostgresRepository struct {
 	q *workoutsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: workoutsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: workoutsdb.New(pool)}
 }
 
-func (r *Repository) CreateIntake(ctx context.Context, userID uuid.UUID, in Intake) (StoredIntake, error) {
+func (r *PostgresRepository) CreateIntake(ctx context.Context, userID uuid.UUID, in Intake) (StoredIntake, error) {
 	row, err := r.q.CreateIntake(ctx, workoutsdb.CreateIntakeParams{
 		UserID:         userID,
 		Goal:           in.Goal,
@@ -94,7 +96,7 @@ func (r *Repository) CreateIntake(ctx context.Context, userID uuid.UUID, in Inta
 // and the rest are the column defaults or the smallest values the CHECKs
 // allow. Nothing reads them: LatestIntake skips imported rows and
 // PlanForDisplay does not validate against one.
-func (r *Repository) CreateImportedIntake(ctx context.Context, userID uuid.UUID, daysPerWeek int) (StoredIntake, error) {
+func (r *PostgresRepository) CreateImportedIntake(ctx context.Context, userID uuid.UUID, daysPerWeek int) (StoredIntake, error) {
 	row, err := r.q.CreateIntake(ctx, workoutsdb.CreateIntakeParams{
 		UserID:         userID,
 		Goal:           "",
@@ -119,7 +121,7 @@ const importedSessionMinutes = 10
 // what it no longer satisfies. The plan's own intake rather than the newest:
 // "this no longer matches what you asked for" is only true against the answers
 // it was actually built from.
-func (r *Repository) GetIntake(ctx context.Context, id, userID uuid.UUID) (StoredIntake, error) {
+func (r *PostgresRepository) GetIntake(ctx context.Context, id, userID uuid.UUID) (StoredIntake, error) {
 	row, err := r.q.GetIntake(ctx, workoutsdb.GetIntakeParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -130,7 +132,7 @@ func (r *Repository) GetIntake(ctx context.Context, id, userID uuid.UUID) (Store
 	return intakeFromDB(row), nil
 }
 
-func (r *Repository) LatestIntake(ctx context.Context, userID uuid.UUID) (StoredIntake, error) {
+func (r *PostgresRepository) LatestIntake(ctx context.Context, userID uuid.UUID) (StoredIntake, error) {
 	row, err := r.q.LatestIntake(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -141,7 +143,7 @@ func (r *Repository) LatestIntake(ctx context.Context, userID uuid.UUID) (Stored
 	return intakeFromDB(row), nil
 }
 
-func (r *Repository) CreatePlan(ctx context.Context, p StoredPlan) (StoredPlan, error) {
+func (r *PostgresRepository) CreatePlan(ctx context.Context, p StoredPlan) (StoredPlan, error) {
 	body, err := json.Marshal(p.Plan)
 	if err != nil {
 		return StoredPlan{}, apperr.Wrap(err, "encode plan")
@@ -171,7 +173,7 @@ func (r *Repository) CreatePlan(ctx context.Context, p StoredPlan) (StoredPlan, 
 	return planFromDB(row)
 }
 
-func (r *Repository) GetPlan(ctx context.Context, id, userID uuid.UUID) (StoredPlan, error) {
+func (r *PostgresRepository) GetPlan(ctx context.Context, id, userID uuid.UUID) (StoredPlan, error) {
 	row, err := r.q.GetPlan(ctx, workoutsdb.GetPlanParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -182,7 +184,7 @@ func (r *Repository) GetPlan(ctx context.Context, id, userID uuid.UUID) (StoredP
 	return planFromDB(row)
 }
 
-func (r *Repository) LatestPlan(ctx context.Context, userID uuid.UUID) (StoredPlan, error) {
+func (r *PostgresRepository) LatestPlan(ctx context.Context, userID uuid.UUID) (StoredPlan, error) {
 	row, err := r.q.LatestPlan(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -194,7 +196,7 @@ func (r *Repository) LatestPlan(ctx context.Context, userID uuid.UUID) (StoredPl
 }
 
 // LatestPlanForIntake is the newest version of one plan, for the edit guard.
-func (r *Repository) LatestPlanForIntake(ctx context.Context, userID, intakeID uuid.UUID) (StoredPlan, error) {
+func (r *PostgresRepository) LatestPlanForIntake(ctx context.Context, userID, intakeID uuid.UUID) (StoredPlan, error) {
 	row, err := r.q.LatestPlanForIntake(ctx, workoutsdb.LatestPlanForIntakeParams{UserID: userID, IntakeID: intakeID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -207,7 +209,7 @@ func (r *Repository) LatestPlanForIntake(ctx context.Context, userID, intakeID u
 
 // ListCurrentPlans returns one row per plan — the version being followed —
 // where ListPlans returns every version of every plan.
-func (r *Repository) ListCurrentPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error) {
+func (r *PostgresRepository) ListCurrentPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error) {
 	rows, err := r.q.ListCurrentPlans(ctx, workoutsdb.ListCurrentPlansParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list current plans")
@@ -224,7 +226,7 @@ func (r *Repository) ListCurrentPlans(ctx context.Context, userID uuid.UUID, lim
 	return out, nil
 }
 
-func (r *Repository) ListPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error) {
+func (r *PostgresRepository) ListPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error) {
 	rows, err := r.q.ListPlans(ctx, workoutsdb.ListPlansParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list plans")
@@ -284,7 +286,7 @@ func planFromDB(row workoutsdb.WorkoutPlan) (StoredPlan, error) {
 // with plans but no recorded choice — one that predates the choice, or whose
 // chosen plan was deleted — follows its newest plan, which is what "active"
 // meant before it was a choice.
-func (r *Repository) ActivePlan(ctx context.Context, userID uuid.UUID) (StoredPlan, error) {
+func (r *PostgresRepository) ActivePlan(ctx context.Context, userID uuid.UUID) (StoredPlan, error) {
 	row, err := r.q.GetActivePlan(ctx, userID)
 	if err == nil {
 		return planFromDB(row)
@@ -295,7 +297,7 @@ func (r *Repository) ActivePlan(ctx context.Context, userID uuid.UUID) (StoredPl
 	return r.LatestPlan(ctx, userID)
 }
 
-func (r *Repository) SetActivePlan(ctx context.Context, userID, intakeID uuid.UUID) error {
+func (r *PostgresRepository) SetActivePlan(ctx context.Context, userID, intakeID uuid.UUID) error {
 	if err := r.q.SetActivePlan(ctx, workoutsdb.SetActivePlanParams{UserID: userID, IntakeID: intakeID}); err != nil {
 		return apperr.Wrap(err, "set active plan")
 	}
@@ -310,7 +312,7 @@ type StoredWeek struct {
 }
 
 // GetWeek is the recorded week starting on start; ok is false when none is.
-func (r *Repository) GetWeek(ctx context.Context, userID uuid.UUID, start time.Time) (StoredWeek, bool, error) {
+func (r *PostgresRepository) GetWeek(ctx context.Context, userID uuid.UUID, start time.Time) (StoredWeek, bool, error) {
 	row, err := r.q.GetWeek(ctx, workoutsdb.GetWeekParams{UserID: userID, WeekStart: dateOf(start)})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -323,7 +325,7 @@ func (r *Repository) GetWeek(ctx context.Context, userID uuid.UUID, start time.T
 }
 
 // InsertWeekIfAbsent records a default week unless one is already recorded.
-func (r *Repository) InsertWeekIfAbsent(ctx context.Context, userID uuid.UUID, start time.Time, slots []Slot) error {
+func (r *PostgresRepository) InsertWeekIfAbsent(ctx context.Context, userID uuid.UUID, start time.Time, slots []Slot) error {
 	raw, err := encodeSlots(slots)
 	if err != nil {
 		return err
@@ -334,7 +336,7 @@ func (r *Repository) InsertWeekIfAbsent(ctx context.Context, userID uuid.UUID, s
 	return nil
 }
 
-func (r *Repository) UpsertWeek(ctx context.Context, userID uuid.UUID, week StoredWeek) error {
+func (r *PostgresRepository) UpsertWeek(ctx context.Context, userID uuid.UUID, week StoredWeek) error {
 	raw, err := encodeSlots(week.Slots)
 	if err != nil {
 		return err
@@ -347,7 +349,7 @@ func (r *Repository) UpsertWeek(ctx context.Context, userID uuid.UUID, week Stor
 	return nil
 }
 
-func (r *Repository) DeleteWeek(ctx context.Context, userID uuid.UUID, start time.Time) error {
+func (r *PostgresRepository) DeleteWeek(ctx context.Context, userID uuid.UUID, start time.Time) error {
 	if err := r.q.DeleteWeek(ctx, workoutsdb.DeleteWeekParams{UserID: userID, WeekStart: dateOf(start)}); err != nil {
 		return apperr.Wrap(err, "delete week")
 	}
@@ -356,7 +358,7 @@ func (r *Repository) DeleteWeek(ctx context.Context, userID uuid.UUID, start tim
 
 // PreviousWeekWithIntake is the latest recorded week before start that had
 // any of intake's sessions; ok is false when none did.
-func (r *Repository) PreviousWeekWithIntake(ctx context.Context, userID uuid.UUID, start time.Time, intakeID uuid.UUID) (StoredWeek, bool, error) {
+func (r *PostgresRepository) PreviousWeekWithIntake(ctx context.Context, userID uuid.UUID, start time.Time, intakeID uuid.UUID) (StoredWeek, bool, error) {
 	row, err := r.q.PreviousWeekWithIntake(ctx, workoutsdb.PreviousWeekWithIntakeParams{
 		UserID: userID, WeekStart: dateOf(start), IntakeID: intakeID.String(),
 	})
@@ -371,7 +373,7 @@ func (r *Repository) PreviousWeekWithIntake(ctx context.Context, userID uuid.UUI
 }
 
 // WeeksBetween are the recorded weeks starting in [since, until).
-func (r *Repository) WeeksBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]StoredWeek, error) {
+func (r *PostgresRepository) WeeksBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]StoredWeek, error) {
 	rows, err := r.q.ListWeeksBetween(ctx, workoutsdb.ListWeeksBetweenParams{
 		UserID: userID, WeekStart: dateOf(since), WeekStart_2: dateOf(until),
 	})

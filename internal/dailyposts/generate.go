@@ -43,14 +43,14 @@ type Generator interface {
 // Writer publishes the day's post. Every run checks first, so the hourly job
 // is a no-op once the day has one, and a failed hour is retried by the next.
 type Writer struct {
-	repo   *Repository
+	repo   Repository
 	client Generator
 	model  string
 	now    func() time.Time
 	log    *slog.Logger
 }
 
-func NewWriter(repo *Repository, client Generator, model string, log *slog.Logger) *Writer {
+func NewWriter(repo Repository, client Generator, model string, log *slog.Logger) *Writer {
 	if log == nil {
 		log = slog.Default()
 	}

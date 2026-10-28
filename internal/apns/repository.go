@@ -10,16 +10,18 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *apnsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: apnsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: apnsdb.New(pool)}
 }
 
 // Upsert stores a device, moving it to this person if another held it.
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Device, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Device, error) {
 	row, err := r.q.UpsertAPNsDevice(ctx, apnsdb.UpsertAPNsDeviceParams{
 		UserID:      userID,
 		Token:       in.Token,
@@ -32,7 +34,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (De
 	return fromDB(row), nil
 }
 
-func (r *Repository) ListByUser(ctx context.Context, userID uuid.UUID) ([]Device, error) {
+func (r *PostgresRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]Device, error) {
 	rows, err := r.q.ListAPNsDevices(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list apns devices")
@@ -46,22 +48,22 @@ func (r *Repository) ListByUser(ctx context.Context, userID uuid.UUID) ([]Device
 
 // DeleteByToken removes the person's own device. Scoped to the user so nobody
 // can silence an install that is not theirs.
-func (r *Repository) DeleteByToken(ctx context.Context, userID uuid.UUID, token string) error {
+func (r *PostgresRepository) DeleteByToken(ctx context.Context, userID uuid.UUID, token string) error {
 	if _, err := r.q.DeleteAPNsDeviceByToken(ctx, apnsdb.DeleteAPNsDeviceByTokenParams{UserID: userID, Token: token}); err != nil {
 		return apperr.Wrap(err, "delete apns device")
 	}
 	return nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return apperr.Wrap(r.q.DeleteAPNsDevice(ctx, id), "delete gone apns device")
 }
 
-func (r *Repository) MarkUsed(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) MarkUsed(ctx context.Context, id uuid.UUID) error {
 	return apperr.Wrap(r.q.MarkAPNsDeviceUsed(ctx, id), "mark apns device used")
 }
 
-func (r *Repository) MarkFailed(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) MarkFailed(ctx context.Context, id uuid.UUID) error {
 	return apperr.Wrap(r.q.MarkAPNsDeviceFailed(ctx, id), "mark apns device failed")
 }
 

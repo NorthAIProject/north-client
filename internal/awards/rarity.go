@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/awards/award"
-	awardsdb "github.com/NorthAIProject/north-client/internal/awards/db"
 )
 
 // activeWindow is how recently someone must have logged to count as active.
@@ -48,37 +47,23 @@ func (r Rarity) Label() string {
 
 // Rarities is the last computed rarity of every badge that has one.
 func (s *Service) Rarities(ctx context.Context) (map[string]Rarity, error) {
-	rows, err := s.q.ListRarity(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("awards: list rarity: %w", err)
-	}
-	out := make(map[string]Rarity, len(rows))
-	for _, r := range rows {
-		out[r.BadgeID] = Rarity{BadgeID: r.BadgeID, Earned: int(r.Earned), Active: int(r.Active)}
-	}
-	return out, nil
+	return s.repo.Rarities(ctx)
 }
 
 // ComputeRarity recounts, at now, who is active and who holds each badge, and
 // stores one row for every badge in the catalog. It is a count over the whole
 // table, so it runs daily rather than per request.
 func (s *Service) ComputeRarity(ctx context.Context, now time.Time) error {
-	active, err := s.q.CountActiveUsers(ctx, now.Add(-activeWindow))
+	active, err := s.repo.CountActiveUsers(ctx, now.Add(-activeWindow))
 	if err != nil {
 		return fmt.Errorf("awards: count active: %w", err)
 	}
-	rows, err := s.q.CountBadgeEarners(ctx)
+	earned, err := s.repo.CountBadgeEarners(ctx)
 	if err != nil {
 		return fmt.Errorf("awards: count earners: %w", err)
 	}
-	earned := make(map[string]int32, len(rows))
-	for _, r := range rows {
-		earned[r.SourceKey] = r.Earned
-	}
 	for _, b := range award.Catalog() {
-		if err := s.q.UpsertRarity(ctx, awardsdb.UpsertRarityParams{
-			BadgeID: b.ID, Earned: earned[b.ID], Active: active, ComputedAt: now,
-		}); err != nil {
+		if err := s.repo.UpsertRarity(ctx, Rarity{BadgeID: b.ID, Earned: earned[b.ID], Active: active}, now); err != nil {
 			return fmt.Errorf("awards: store rarity %s: %w", b.ID, err)
 		}
 	}

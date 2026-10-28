@@ -20,11 +20,11 @@ import (
 // MealPlanService owns meal plans and holds every change to them to the
 // person's current macro target (see meal/plan_rules.go for the rules).
 type MealPlanService struct {
-	repo  *Repository
+	repo  Repository
 	goals MacroGoalLookup
 }
 
-func NewMealPlanService(repo *Repository, goals MacroGoalLookup) *MealPlanService {
+func NewMealPlanService(repo Repository, goals MacroGoalLookup) *MealPlanService {
 	return &MealPlanService{repo: repo, goals: goals}
 }
 

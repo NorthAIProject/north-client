@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/NorthAIProject/north-client/internal/screentime/screen"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -11,11 +13,21 @@ import (
 )
 
 type Service struct {
-	repo *Repository
+	repo Repository
 	now  func() time.Time
 }
 
-func NewService(repo *Repository) *Service { return &Service{repo: repo, now: time.Now} }
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps screen-time days.
+type Repository interface {
+	Upsert(ctx context.Context, userID uuid.UUID, date time.Time, minutes int, source string) (Day, error)
+	ForDate(ctx context.Context, userID uuid.UUID, date time.Time) (Day, bool, error)
+	Between(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Day, error)
+}
+
+func NewService(repo Repository) *Service { return &Service{repo: repo, now: time.Now} }
 
 // Set records a day's total. Date nil is today; a Shortcut run after midnight
 // can name yesterday.

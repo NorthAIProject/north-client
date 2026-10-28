@@ -33,12 +33,56 @@ const (
 )
 
 type Service struct {
-	repo     *Repository
+	repo     Repository
 	inbox    Inbox
 	funnel   Funnel
 	verifier phone.Verifier
 	facebook Facebook
 	awards   Awards
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps handles, follows, blocks, Facebook links and verified phones.
+type Repository interface {
+	SetHandle(ctx context.Context, userID uuid.UUID, handle *string) error
+	Handle(ctx context.Context, userID uuid.UUID) (string, error)
+	PersonByHandle(ctx context.Context, handle string) (Person, error)
+	PersonByID(ctx context.Context, id uuid.UUID) (Person, error)
+	InviteFor(ctx context.Context, inviterID uuid.UUID, channel, newCode string) (Invite, error)
+	InviteByCode(ctx context.Context, code string) (InvitePreview, error)
+	Redeem(ctx context.Context, inviteeID uuid.UUID, code string, inviterID uuid.UUID) (Redemption, error)
+	Joined(ctx context.Context, inviterID uuid.UUID) (int, error)
+	Follow(ctx context.Context, followerID, followeeID uuid.UUID, status string) (string, error)
+	FollowStatus(ctx context.Context, followerID, followeeID uuid.UUID) (string, error)
+	Accept(ctx context.Context, followerID, followeeID uuid.UUID) (bool, error)
+	Unfollow(ctx context.Context, followerID, followeeID uuid.UUID) error
+	Followers(ctx context.Context, userID uuid.UUID) ([]Connection, error)
+	Following(ctx context.Context, userID uuid.UUID) ([]Connection, error)
+	Counts(ctx context.Context, userID uuid.UUID) (followers, following int, err error)
+	Block(ctx context.Context, blockerID, blockedID uuid.UUID) error
+	Unblock(ctx context.Context, blockerID, blockedID uuid.UUID) error
+	Blocked(ctx context.Context, a, b uuid.UUID) (bool, error)
+	BlockedList(ctx context.Context, blockerID uuid.UUID) ([]Person, error)
+	MatchContacts(ctx context.Context, viewerID uuid.UUID, emailHashes, phoneHashes []string) ([]Connection, error)
+	SaveFacebookState(ctx context.Context, stateHash []byte, userID uuid.UUID, expiresAt time.Time) error
+	TakeFacebookState(ctx context.Context, stateHash []byte) (uuid.UUID, error)
+	LinkFacebook(ctx context.Context, userID uuid.UUID, subject string) error
+	UnlinkFacebook(ctx context.Context, userID uuid.UUID) error
+	FacebookConnected(ctx context.Context, userID uuid.UUID) (bool, error)
+	FacebookFriendsHere(ctx context.Context, viewerID uuid.UUID, subjects []string) ([]uuid.UUID, error)
+	SaveFacebookImport(ctx context.Context, userID uuid.UUID, people []uuid.UUID, expiresAt time.Time) error
+	FacebookImport(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, time.Time, error)
+	PeopleByIDs(ctx context.Context, viewerID uuid.UUID, ids []uuid.UUID) ([]Connection, error)
+	VerifiedPhone(ctx context.Context, userID uuid.UUID) (string, time.Time, error)
+	PendingVerification(ctx context.Context, userID uuid.UUID, since time.Time) (pendingVerification, error)
+	ReserveVerification(ctx context.Context, userID uuid.UUID, number string, byUser, byNumber StartLimit, pruneBefore time.Time) (uuid.UUID, error)
+	CloseVerification(ctx context.Context, id uuid.UUID) error
+	CloseVerifications(ctx context.Context, userID uuid.UUID) error
+	CountCheck(ctx context.Context, id uuid.UUID) (int, error)
+	VerifyPhone(ctx context.Context, userID, verificationID uuid.UUID, number string) error
+	ClearPhone(ctx context.Context, userID uuid.UUID) error
 }
 
 // Awards checks a person's badges after a write. awards.Service satisfies it.
@@ -48,7 +92,7 @@ type Awards interface {
 
 func (s *Service) WithAwards(a Awards) *Service { s.awards = a; return s }
 
-func NewService(repo *Repository) *Service { return &Service{repo: repo} }
+func NewService(repo Repository) *Service { return &Service{repo: repo} }
 
 func (s *Service) WithInbox(in Inbox) *Service { s.inbox = in; return s }
 

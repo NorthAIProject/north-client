@@ -45,9 +45,9 @@ func newWorld(t *testing.T) world {
 	acts := activity.NewService(activity.NewRepository(pool), bodyweight{})
 	liftSvc := lifts.NewService(lifts.NewRepository(pool), nil).WithRecaps(acts, nil)
 	soc := social.NewService(social.NewRepository(pool))
-	ach := achievements.NewService(pool)
-	xpSvc := xp.NewService(pool, checkins.NewService(checkins.NewRepository(pool), goals.NewService(goals.NewRepository(pool))))
-	return world{svc: profiles.NewService(soc, ach, xpSvc, acts, liftSvc).WithAwards(awards.NewService(pool)), soc: soc, ach: ach, acts: acts, pool: pool}
+	ach := achievements.NewService(achievements.NewRepository(pool))
+	xpSvc := xp.NewService(xp.NewRepository(pool), checkins.NewService(checkins.NewRepository(pool), goals.NewService(goals.NewRepository(pool))))
+	return world{svc: profiles.NewService(soc, ach, xpSvc, acts, liftSvc).WithAwards(awards.NewService(awards.NewRepository(pool))), soc: soc, ach: ach, acts: acts, pool: pool}
 }
 
 func person(t *testing.T, pool *pgxpool.Pool, email, name string) users.User {
@@ -269,7 +269,7 @@ func TestWorkoutsPageByEndedAt(t *testing.T) {
 func TestProfileBadges(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
-	aw := awards.NewService(w.pool)
+	aw := awards.NewService(awards.NewRepository(w.pool))
 	leo, ana := person(t, w.pool, "leo-bd@n.test", "Leo"), person(t, w.pool, "ana-bd@n.test", "Ana")
 	w.handle(t, leo, "leobd")
 	w.handle(t, ana, "anabd")

@@ -15,18 +15,20 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	pool *pgxpool.Pool
 	q    *progresschecksdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, q: progresschecksdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool, q: progresschecksdb.New(pool)}
 }
 
 // Create stores a check and its photos in one transaction, so a check never
 // exists with half its photos.
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, in Input, weightCarried bool, photos []Photo) (Check, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, in Input, weightCarried bool, photos []Photo) (Check, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return Check{}, apperr.Wrap(err, "begin progress check")
@@ -62,7 +64,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, in Input, wei
 	return check, nil
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Check, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Check, error) {
 	row, err := r.q.GetCheck(ctx, progresschecksdb.GetCheckParams{ID: id, UserID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Check{}, apperr.ErrNotFound
@@ -78,7 +80,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Check, erro
 }
 
 // List is the newest checks first, each with its photos.
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Check, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Check, error) {
 	rows, err := r.q.ListChecks(ctx, progresschecksdb.ListChecksParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list progress checks")
@@ -90,7 +92,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]C
 	return r.withPhotos(ctx, userID, out)
 }
 
-func (r *Repository) withPhotos(ctx context.Context, userID uuid.UUID, checks []Check) ([]Check, error) {
+func (r *PostgresRepository) withPhotos(ctx context.Context, userID uuid.UUID, checks []Check) ([]Check, error) {
 	if len(checks) == 0 {
 		return checks, nil
 	}
@@ -113,7 +115,7 @@ func (r *Repository) withPhotos(ctx context.Context, userID uuid.UUID, checks []
 	return checks, nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	n, err := r.q.DeleteCheck(ctx, progresschecksdb.DeleteCheckParams{ID: id, UserID: userID})
 	if err != nil {
 		return apperr.Wrap(err, "delete progress check")
@@ -125,7 +127,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 }
 
 // Schedule is the person's cadence; the zero Schedule when none was set.
-func (r *Repository) Schedule(ctx context.Context, userID uuid.UUID) (Schedule, error) {
+func (r *PostgresRepository) Schedule(ctx context.Context, userID uuid.UUID) (Schedule, error) {
 	row, err := r.q.GetSchedule(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Schedule{}, nil
@@ -136,7 +138,7 @@ func (r *Repository) Schedule(ctx context.Context, userID uuid.UUID) (Schedule, 
 	return Schedule{Cadence: progresscheck.Cadence(row.Cadence), NextDueOn: row.NextDueOn.Time}, nil
 }
 
-func (r *Repository) SetSchedule(ctx context.Context, userID uuid.UUID, s Schedule) (Schedule, error) {
+func (r *PostgresRepository) SetSchedule(ctx context.Context, userID uuid.UUID, s Schedule) (Schedule, error) {
 	row, err := r.q.UpsertSchedule(ctx, progresschecksdb.UpsertScheduleParams{
 		UserID: userID, Cadence: string(s.Cadence), NextDueOn: date(s.NextDueOn),
 	})
@@ -146,7 +148,7 @@ func (r *Repository) SetSchedule(ctx context.Context, userID uuid.UUID, s Schedu
 	return Schedule{Cadence: progresscheck.Cadence(row.Cadence), NextDueOn: row.NextDueOn.Time}, nil
 }
 
-func (r *Repository) ClearSchedule(ctx context.Context, userID uuid.UUID) error {
+func (r *PostgresRepository) ClearSchedule(ctx context.Context, userID uuid.UUID) error {
 	if err := r.q.DeleteSchedule(ctx, userID); err != nil {
 		return apperr.Wrap(err, "clear progress schedule")
 	}
@@ -184,7 +186,7 @@ func date(t time.Time) pgtype.Date { return pgtype.Date{Time: t, Valid: true} }
 // FirstAndLatestWithPhotos are the two checks a comparison reads: the oldest
 // and the newest with a front or side photo. ErrNotFound when there is none;
 // the two are the same check when there is only one.
-func (r *Repository) FirstAndLatestWithPhotos(ctx context.Context, userID uuid.UUID) (first, latest Check, err error) {
+func (r *PostgresRepository) FirstAndLatestWithPhotos(ctx context.Context, userID uuid.UUID) (first, latest Check, err error) {
 	oldest, err := r.q.OldestCheckWithPhotos(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Check{}, Check{}, apperr.ErrNotFound
@@ -209,7 +211,7 @@ func (r *Repository) FirstAndLatestWithPhotos(ctx context.Context, userID uuid.U
 }
 
 // SaveComparison stores the person's comparison, replacing the last one.
-func (r *Repository) SaveComparison(ctx context.Context, userID uuid.UUID, c Comparison) error {
+func (r *PostgresRepository) SaveComparison(ctx context.Context, userID uuid.UUID, c Comparison) error {
 	if err := r.q.UpsertComparison(ctx, progresschecksdb.UpsertComparisonParams{
 		UserID: userID, FromCheckID: c.FromCheckID, ToCheckID: c.ToCheckID,
 		Summary: c.Summary, Confidence: c.Confidence, Limits: c.Limits, ProviderLabel: c.Provider,
@@ -221,7 +223,7 @@ func (r *Repository) SaveComparison(ctx context.Context, userID uuid.UUID, c Com
 
 // Comparison is the person's latest comparison; ErrNotFound when they have
 // none, or when a check it compared was deleted.
-func (r *Repository) Comparison(ctx context.Context, userID uuid.UUID) (Comparison, error) {
+func (r *PostgresRepository) Comparison(ctx context.Context, userID uuid.UUID) (Comparison, error) {
 	row, err := r.q.GetComparison(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Comparison{}, apperr.ErrNotFound

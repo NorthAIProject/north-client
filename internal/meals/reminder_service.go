@@ -11,10 +11,10 @@ import (
 )
 
 type MealReminderService struct {
-	repo *Repository
+	repo Repository
 }
 
-func NewMealReminderService(repo *Repository) *MealReminderService {
+func NewMealReminderService(repo Repository) *MealReminderService {
 	return &MealReminderService{repo: repo}
 }
 
