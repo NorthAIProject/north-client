@@ -27,6 +27,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/insights"
+	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/memories"
@@ -38,6 +39,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
+	"github.com/NorthAIProject/north-client/internal/vault"
+	"github.com/NorthAIProject/north-client/internal/voice"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 )
 
@@ -59,10 +62,12 @@ func apiRouter(t *testing.T) chi.Router {
 	r := chi.NewRouter()
 	mountAPI(r, sessions, apiSet{
 		auth:         auth.NewAPI(sessions).WithAuthService(&auth.Service{}, &auth.Middleware{}),
+		mcpAuth:      mcpauth.NewAPI(nil, nil, nil, nil, nil),
 		capture:      capture.NewAPI(nil, nil, nil, nil),
 		onboarding:   onboarding.NewAPI(nil),
 		dashboard:    dashboard.NewAPI(nil),
 		coach:        coach.NewAPI(nil, nil, nil),
+		voice:        voice.NewAPI(nil, nil),
 		exercises:    exercises.NewAPI(nil, nil),
 		settings:     settings.NewAPI(nil),
 		training:     workouts.NewAPI(nil),
@@ -86,8 +91,10 @@ func apiRouter(t *testing.T) chi.Router {
 		nudges:       nudges.NewAPI(nil),
 		devices:      apns.NewAPI(nil),
 		export:       export.NewHandler(nil, nil, nil),
-		calculator:   calculator.NewAPI(nil, nil),
-		news:         news.NewAPI(nil),
+		// Enabled, so its routes are mounted and checked against the spec.
+		vault:      vault.NewHandler(nil, true),
+		calculator: calculator.NewAPI(nil, nil),
+		news:       news.NewAPI(nil),
 	})
 	return r
 }
@@ -103,6 +110,9 @@ var publicAPIRoutes = map[string]bool{
 	// Who sent an invite link, for the signed-out app; the inviter's name and
 	// handle, nothing else.
 	"/api/v1/invites/{code}": true,
+	// The crew behind a /i/c/<code> link, for the signed-out web page; the
+	// crew's id, name and member count, never its members or messages.
+	"/api/v1/crews/join/{code}": true,
 	// Facebook's OAuth return for Connect Facebook in the app; like Strava's,
 	// it proves itself by its single-use state.
 	"/api/v1/social/facebook/callback": true,
