@@ -50,7 +50,7 @@ type Chat struct {
 	queue  *jobs.Queue
 	// sends bounds how fast one person can post. In memory, because the web
 	// runs one replica; a second replica would double the allowance.
-	sends   *ratelimit.Limiters
+	sends   *ratelimit.Store
 	pushers []ThreadSender
 	log     *slog.Logger
 	now     func() time.Time
@@ -111,7 +111,7 @@ func (c *Chat) Send(ctx context.Context, crewID, channelID, authorID uuid.UUID, 
 	if err = c.mod.CanPost(ctx, authorID); err != nil {
 		return Message{}, err
 	}
-	if !c.sends.Allow(authorID.String()) {
+	if ok, _ := c.sends.Allow(authorID.String()); !ok {
 		return Message{}, apperr.FieldErrors{}.Add("body", i18n.T(ctx, "crews.err.slow"))
 	}
 	if in.ReplyToID != nil {

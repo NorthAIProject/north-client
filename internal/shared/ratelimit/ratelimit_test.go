@@ -6,16 +6,29 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/ratelimit"
 )
 
+type store interface {
+	Allow(identifier string) (bool, error)
+}
+
+func allow(t *testing.T, s store, key string) bool {
+	t.Helper()
+	ok, err := s.Allow(key)
+	if err != nil {
+		t.Fatalf("Allow(%q): %v", key, err)
+	}
+	return ok
+}
+
 func TestAKeySpendsItsBurstAndIsThenDenied(t *testing.T) {
 	limiters := ratelimit.New(10)
 
 	for i := range 10 {
-		if !limiters.Allow("caller") {
+		if !allow(t, limiters, "caller") {
 			t.Fatalf("request %d denied while the burst should still cover it", i+1)
 		}
 	}
 
-	if limiters.Allow("caller") {
+	if allow(t, limiters, "caller") {
 		t.Error("the 11th request was allowed; a per-minute bound of 10 did not bound anything")
 	}
 }
@@ -27,13 +40,13 @@ func TestOneKeyExhaustedLeavesOtherKeysUntouched(t *testing.T) {
 	limiters := ratelimit.New(2)
 
 	for range 2 {
-		limiters.Allow("noisy")
+		allow(t, limiters, "noisy")
 	}
-	if limiters.Allow("noisy") {
+	if allow(t, limiters, "noisy") {
 		t.Fatal("setup failed: the noisy key was not actually exhausted")
 	}
 
-	if !limiters.Allow("quiet") {
+	if !allow(t, limiters, "quiet") {
 		t.Error("a second key was denied because the first spent its budget")
 	}
 }
@@ -43,7 +56,7 @@ func TestZeroOrNegativeRateFallsBackToTheDefault(t *testing.T) {
 	// the endpoint down, nor "allow everything", which would remove the bound.
 	limiters := ratelimit.New(0)
 
-	if !limiters.Allow("caller") {
+	if !allow(t, limiters, "caller") {
 		t.Error("a zero rate denied the first request; a bad config took the endpoint offline")
 	}
 }

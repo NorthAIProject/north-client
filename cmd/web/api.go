@@ -53,6 +53,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/social"
 	"github.com/NorthAIProject/north-client/internal/soreness"
@@ -64,6 +65,14 @@ import (
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/xp"
 )
+
+// apiStreams are the routes that answer with Server-Sent Events, which gzip
+// must leave alone. TestEveryStreamRouteIsRegistered keeps the list honest.
+var apiStreams = []string{
+	"/api/v1/conversations/:id/reply",
+	"/api/v1/conversations/:id/resume",
+	"/api/v1/crews/:crewID/live",
+}
 
 // mountAPI owns the public JSON API boundary, on Echo. Feature APIs register
 // paths relative to /api/v1 so versioning stays centralized when more
@@ -81,7 +90,7 @@ func mountAPI(e *echo.Echo, sessions auth.SessionResolver, apis apiSet) {
 	// A guess from Accept-Language for the signed-out routes, so an account
 	// created from the app starts in the phone's language. auth.Bearer
 	// replaces it with the account's own setting.
-	api := e.Group("/api/v1", echo.WrapMiddleware(middleware.Locale))
+	api := e.Group("/api/v1", echo.WrapMiddleware(middleware.Locale), echox.Gzip(apiStreams...))
 
 	json := api.Group("", echomw.BodyLimit(maxJSONBody))
 	apis.auth.RegisterPublic(json)

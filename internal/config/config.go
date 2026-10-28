@@ -39,7 +39,7 @@ type Config struct {
 	// every rate limiter keys on the address it can actually see. Behind an
 	// ingress that address is the proxy, so leaving this unset in a cluster
 	// silently collapses every limiter into one shared bucket — set it to the
-	// pod network CIDR there. See internal/shared/middleware.ClientIP.
+	// pod network CIDR there. See middleware.TrustedProxies.IPExtractor.
 	TrustedProxies middleware.TrustedProxies
 
 	// OperatorUserIDs are the accounts that review reported content at
