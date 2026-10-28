@@ -330,6 +330,7 @@ the binary still starts.
 | `GOOGLE_CLIENT_ID` | empty | Google Cloud OAuth 2.0 client ID |
 | `GOOGLE_CLIENT_SECRET` | empty | Must travel with the id |
 | `WEBAUTHN_RP_ID` | host of `BASE_URL` | Hostname only (`www.duxos.ai`), never a URL. Leave empty unless it should differ from `BASE_URL` |
+| `WEBAUTHN_RP_ORIGINS` | `BASE_URL` | Comma-separated origins (`https://kheprios.com`) a passkey ceremony may come from. Leave empty when the web app shares `BASE_URL`'s origin; list the web app's origin when it does not (local SvelteKit on `http://localhost:5173`) |
 | `WEBAUTHN_RP_DISPLAY_NAME` | `North` | What the passkey prompt shows |
 
 Google Cloud authorized redirect: `{BASE_URL}/auth/google/callback`.
