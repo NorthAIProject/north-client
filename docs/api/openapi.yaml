@@ -7133,6 +7133,33 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /settings/appearance:
+    put:
+      operationId: setAppearance
+      summary: Change the appearance alone (system, light or dark)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appearance]
+              properties:
+                appearance:
+                  type: string
+                  description: system, light or dark.
+                surface:
+                  type: string
+                  description: Where the change was made, for analytics — "switcher" or "settings".
+      responses:
+        '204':
+          description: Saved
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /devices/apns:
     put:
       operationId: registerAPNsDevice
@@ -10993,6 +11020,17 @@ components:
           type: string
         needsOnboarding:
           type: boolean
+        locale:
+          type: string
+          description: |
+            BCP 47 tag the account reads Khepri in (en, pt-PT, pt-BR, es). A
+            plain string rather than an enum, so a language added later does
+            not break a shipped client's decode.
+        appearance:
+          type: string
+          description: |
+            system, light or dark. Empty when the account never chose; the
+            web client then falls back to its visitor cookie, then dark.
     MeResponse:
       type: object
       required: [user]

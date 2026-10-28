@@ -107,6 +107,10 @@ type APIUser struct {
 	DisplayName     string    `json:"displayName"`
 	Timezone        string    `json:"timezone"`
 	NeedsOnboarding bool      `json:"needsOnboarding"`
+	// Locale and Appearance let a web client render its first byte in the
+	// account's language and mode, as LoadUser does for the Go pages.
+	Locale     string `json:"locale,omitempty"`
+	Appearance string `json:"appearance,omitempty"`
 }
 
 type MeResponse struct {
@@ -240,5 +244,7 @@ func ProjectUser(user users.User) APIUser {
 		DisplayName:     user.DisplayName,
 		Timezone:        user.Timezone,
 		NeedsOnboarding: user.NeedsOnboarding(),
+		Locale:          string(user.Locale),
+		Appearance:      string(user.Appearance),
 	}
 }
