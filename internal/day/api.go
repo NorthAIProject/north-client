@@ -8,8 +8,13 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
+	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day/day"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/soreness/sore"
+	"github.com/NorthAIProject/north-client/internal/supplements/supplement"
 )
 
 // API is "My Day" for native clients: one date, every card, and the rules the
@@ -24,6 +29,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/day", a.show)
 	r.Get("/day/rules", a.listRules)
 	r.Get("/day/trends", a.trends)
+	r.Get("/day/checkin", a.checkIn)
 	r.Put("/day/rules/{kind}", a.setRule)
 	r.Delete("/day/rules/{kind}", a.deleteRule)
 }
@@ -53,6 +59,51 @@ type DayResponse struct {
 
 	Timeline []TimelineView `json:"timeline"`
 	Markers  []MarkerView   `json:"markers"`
+
+	// Around is the timeline from the evening before the date to the small
+	// hours after it, for a rail that shows nearby entries faded beside the
+	// date. Absent when only the date itself was read.
+	Around []TimelineView `json:"around,omitempty"`
+	// Fasts is every fast touching that wider window, for the rail's bands.
+	Fasts []FastView `json:"fasts"`
+	// CheckIn is the live streak tile: the streak, today's check-in and the
+	// version GET /day/checkin is polled with.
+	CheckIn StreakTileView `json:"checkIn"`
+	// Presets are the quick-add choices, so a client needs no list of its own.
+	Presets PresetsView `json:"presets"`
+}
+
+// StreakTileView is the streak card's face. Version is opaque: send it back
+// as ?v= and an unchanged tile answers 204.
+type StreakTileView struct {
+	Streak  int               `json:"streak"`
+	Version string            `json:"version"`
+	Today   *TodayCheckInView `json:"today,omitempty"`
+}
+
+// TodayCheckInView is today's check-in, absent until there is one.
+type TodayCheckInView struct {
+	Mood      int       `json:"mood"`
+	Energy    int       `json:"energy"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// PresetsView lists the quick-add choices: caffeine drinks, supplements and
+// the regions soreness can be logged against. Keys are open strings.
+type PresetsView struct {
+	Caffeine        []CaffeinePresetView   `json:"caffeine"`
+	Supplements     []SupplementPresetView `json:"supplements"`
+	SorenessRegions []string               `json:"sorenessRegions"`
+}
+
+type CaffeinePresetView struct {
+	Key string `json:"key"`
+	MG  int    `json:"mg"`
+}
+
+type SupplementPresetView struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
 // VitalsView holds the strip of small gauges. A null is "not measured".
@@ -182,6 +233,10 @@ type TimelineView struct {
 	Detail string    `json:"detail,omitempty"`
 	Href   string    `json:"href,omitempty"`
 	Icon   string    `json:"icon"`
+	// PresetKey is the caffeine preset a drink was logged from (espresso,
+	// coffee…), so a client can name it in the reader's language. An open
+	// string; absent for anything else.
+	PresetKey string `json:"presetKey,omitempty"`
 }
 
 type MarkerView struct {
@@ -220,6 +275,35 @@ func (a *API) show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, Project(snap))
+}
+
+// checkIn is the streak tile alone, for a live poll. An unchanged version
+// answers 204, so the poll is one small query.
+func (a *API) checkIn(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	version, err := a.svc.CheckInVersion(r.Context(), user.ID)
+	if err != nil {
+		httpx.Error(w, err, "The check-in could not be loaded.")
+		return
+	}
+	if r.URL.Query().Get("v") == version {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	tile, err := a.svc.LoadStreakTile(r.Context(), user)
+	if err != nil {
+		httpx.Error(w, err, "The check-in could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, streakTileJSON(tile.Streak, tile.TodayCheckIn, tile.Version))
+}
+
+func streakTileJSON(streak int, today *checkin.CheckIn, version string) StreakTileView {
+	out := StreakTileView{Streak: streak, Version: version}
+	if today != nil {
+		out.Today = &TodayCheckInView{Mood: today.Mood, Energy: today.Energy, UpdatedAt: today.UpdatedAt}
+	}
+	return out
 }
 
 func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
@@ -308,15 +392,16 @@ func Project(s Snapshot) DayResponse {
 		Streak:   s.Streak,
 		Timeline: make([]TimelineView, len(s.Timeline)),
 		Markers:  make([]MarkerView, len(s.Markers)),
+		Fasts:    []FastView{},
+		CheckIn:  streakTileJSON(s.Streak, s.TodayCheckIn, s.CheckInVersion),
+		Presets:  presetsView(),
 	}
 	for i, m := range s.Milestones {
 		out.Milestones[i] = MilestoneView{ID: m.ID, Name: m.Name, MonthsSince: m.MonthsSince, Fraction: m.Fraction, Due: m.Due}
 	}
 	if s.Fast != nil {
-		out.Fast = &FastView{
-			StartedAt: s.Fast.StartedAt, EndedAt: s.Fast.EndedAt, TargetHours: s.Fast.TargetHours,
-			ElapsedMinutes: int(s.Fast.Elapsed.Minutes()), Phase: s.Fast.Phase, Fraction: s.Fast.Fraction,
-		}
+		f := fastView(*s.Fast)
+		out.Fast = &f
 	}
 	if d, ok := s.Body.ToGoal(); ok {
 		out.Body.ToGoalKg = &d
@@ -351,10 +436,47 @@ func Project(s Snapshot) DayResponse {
 		out.Sleep = sl
 	}
 	for i, e := range s.Timeline {
-		out.Timeline[i] = TimelineView{Kind: string(e.Kind), At: e.At, Title: e.Title, Detail: e.Detail, Href: e.Href, Icon: e.Icon}
+		out.Timeline[i] = timelineView(e)
+	}
+	if s.Around != nil {
+		out.Around = make([]TimelineView, len(s.Around))
+		for i, e := range s.Around {
+			out.Around[i] = timelineView(e)
+		}
+	}
+	for _, f := range s.Fasts {
+		out.Fasts = append(out.Fasts, fastView(f))
 	}
 	for i, m := range s.Markers {
 		out.Markers[i] = MarkerView{Kind: string(m.Kind), Label: m.Kind.Label(), At: m.At, Passed: m.Passed}
+	}
+	return out
+}
+
+func timelineView(e dashboard.Entry) TimelineView {
+	v := TimelineView{Kind: string(e.Kind), At: e.At, Title: e.Title, Detail: e.Detail, Href: e.Href, Icon: e.Icon}
+	if e.Kind == KindCaffeine {
+		if key, ok := caffeinecalc.PresetKeyFor(e.Title); ok {
+			v.PresetKey = key
+		}
+	}
+	return v
+}
+
+func fastView(f day.Fast) FastView {
+	return FastView{
+		StartedAt: f.StartedAt, EndedAt: f.EndedAt, TargetHours: f.TargetHours,
+		ElapsedMinutes: int(f.Elapsed.Minutes()), Phase: f.Phase, Fraction: f.Fraction,
+	}
+}
+
+func presetsView() PresetsView {
+	out := PresetsView{SorenessRegions: sore.Regions()}
+	for _, p := range caffeinecalc.Presets() {
+		out.Caffeine = append(out.Caffeine, CaffeinePresetView{Key: p.Key, MG: p.MG})
+	}
+	for _, p := range supplement.Presets() {
+		out.Supplements = append(out.Supplements, SupplementPresetView{Key: p.Key, Name: p.Name})
 	}
 	return out
 }
