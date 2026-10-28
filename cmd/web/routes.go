@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v5"
 	"github.com/posthog/posthog-go"
 
 	"github.com/NorthAIProject/north-client/internal/account"
@@ -83,6 +84,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -119,7 +121,7 @@ func routes(
 	embedder ai.Embedder,
 	posthogClient posthog.Client,
 	metricsReg *metrics.Registry,
-) (http.Handler, background) {
+) (*server, background) {
 	// Wiring happens once, here. Every dependency is constructed explicitly and
 	// passed down, so the shape of the application is readable in one place
 	// rather than discovered through package-level initialisation.
@@ -1072,11 +1074,14 @@ func routes(
 		ResourceMetadataURL: mcpAuthSvc.ResourceMetadataURL(),
 	})
 
-	r := chi.NewRouter()
+	// Echo is the server: request ids, the request log and panic recovery run
+	// for every request here, and the JSON API registers on it natively.
+	e := echox.New(echox.Config{Logger: slog.Default()})
 
-	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger(slog.Default()))
-	r.Use(middleware.Recover)
+	// r is the browser app, still on chi until the web front end moves out of
+	// this process. Echo hands it every request no Echo route claims.
+	r := chi.NewRouter()
+	e.RouteNotFound("/*", echo.WrapHandler(r))
 
 	// /mcp sits outside the session group, and the two middlewares it skips are
 	// the reason it needs its own.
@@ -1380,7 +1385,7 @@ func routes(
 		})
 	})
 
-	return r, func(ctx context.Context) error {
+	return &server{Echo: e, web: r}, func(ctx context.Context) error {
 		// One LISTEN connection feeds every open crew stream in this process.
 		// When the process is told to stop, the streams end at once, so the
 		// server's graceful shutdown does not wait out its timeout on them.
@@ -1398,6 +1403,14 @@ func routes(
 		}
 		return runTelegram(ctx, telegramClient, telegramPoller)
 	}
+}
+
+// server is the process's HTTP side: Echo in front, serving the JSON API and
+// owning the middleware every request runs through, and the browser app's
+// chi router behind it for whatever Echo does not route itself.
+type server struct {
+	*echo.Echo
+	web *chi.Mux
 }
 
 // runTelegram publishes the command menu, then polls for the life of the
