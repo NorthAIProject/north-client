@@ -81,3 +81,21 @@ func TestTodayResponseShape(t *testing.T) {
 		},
 	})
 }
+
+func TestOverviewResponseShape(t *testing.T) {
+	t.Parallel()
+
+	planID := uuid.MustParse("66666666-6666-6666-6666-666666666666")
+	apitest.AssertGolden(t, "overview.golden.json", dashboard.OverviewResponse{
+		Snapshot:          dashboard.TodaySnapshot{Range: "week", Goals: []dashboard.Goal{}, Timeline: []dashboard.TimelineResponse{}, Nudges: []dashboard.NudgeResponse{}},
+		NewsTickerEnabled: true,
+		CheckInVersion:    "3:2026-09-24T07:15:00Z",
+		PlanID:            &planID,
+		NextSession:       &dashboard.OverviewPlanDay{Weekday: "Thursday", Focus: "Upper body", StartTime: "18:30", ExerciseCount: 5},
+		SessionToday:      true,
+		CheckIns:          []dashboard.OverviewCheckInDay{{Label: "23 Sep", Mood: 0, Energy: 0}, {Label: "24 Sep", Mood: 4, Energy: 3}},
+		Habits:            dashboard.OverviewHabits{HasHabits: true, Rate: 75, Kept: 6, Scheduled: 8, BestStreak: 4},
+		HydrationDays:     []dashboard.OverviewHydrationDay{{Label: "24 Sep", TotalML: 1250, TargetML: 2500}},
+	})
+	apitest.AssertGolden(t, "overview-version.golden.json", dashboard.OverviewVersion{CheckInVersion: "3:2026-09-24T07:15:00Z"})
+}
