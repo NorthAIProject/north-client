@@ -33,6 +33,10 @@ type TimelineEntry struct {
 	At     time.Time `json:"at"`
 	Title  string    `json:"title"`
 	Detail string    `json:"detail"`
+	// Href opens the entry's own page; empty when it has none.
+	Href string `json:"href,omitempty"`
+	// Icon is a lucide icon name, an open string.
+	Icon string `json:"icon,omitempty"`
 }
 
 type TimelineFilter struct {
@@ -137,6 +141,60 @@ type InsightsTraining struct {
 	// finished workout in the window.
 	Plan  *TrainingPlanWeek    `json:"plan,omitempty"`
 	Recap *lifts.LiftRecapView `json:"recap,omitempty"`
+	// Lifting is what the window's logged sets add up to; HasSets false
+	// before the first set.
+	Lifting TrainingLifting `json:"lifting"`
+}
+
+// TrainingLifting is the strength section of the training page, worded and
+// formatted as the web shows it.
+type TrainingLifting struct {
+	HasSets  bool   `json:"hasSets"`
+	Volume   string `json:"volume"`
+	Delta    Delta  `json:"delta"`
+	Sets     int    `json:"sets"`
+	Workouts int    `json:"workouts"`
+	// Weekly is volume per week; HasWeekly false for fewer than two weeks.
+	HasWeekly bool                `json:"hasWeekly"`
+	Weekly    Chart               `json:"weekly"`
+	Exercises []LiftingExercise   `json:"exercises"`
+	Records   []LiftingRecord     `json:"records"`
+	Muscles   []LiftingMuscleSets `json:"muscles"`
+}
+
+type LiftingExercise struct {
+	Name   string `json:"name"`
+	Sets   int    `json:"sets"`
+	Best   string `json:"best"`
+	E1RM   string `json:"e1rm"`
+	Volume string `json:"volume"`
+	// ChangeKg is the estimated max's movement across the window.
+	ChangeKg float64 `json:"changeKg"`
+}
+
+type LiftingRecord struct {
+	Exercise string `json:"exercise"`
+	Lift     string `json:"lift"`
+	E1RM     string `json:"e1rm"`
+	Gain     string `json:"gain"`
+	On       string `json:"on"`
+}
+
+type LiftingMuscleSets struct {
+	Name string `json:"name"`
+	Sets int    `json:"sets"`
+	// Pct is against the most-trained muscle, 0-100.
+	Pct int `json:"pct"`
+}
+
+// NutritionEating is the eating-habits section under the nutrition charts:
+// tiles, the share of calories by time of day, top foods and habit notes.
+type NutritionEating struct {
+	HasData bool       `json:"hasData"`
+	Tiles   []StatsRow `json:"tiles"`
+	Slots   []StatsBar `json:"slots"`
+	Foods   []StatsRow `json:"foods"`
+	Notes   []StatsRow `json:"notes"`
 }
 
 // TrainingPlanWeek is the plan against what was done: this Monday–Sunday
@@ -175,6 +233,8 @@ type InsightsNutrition struct {
 	HasSplit     bool      `json:"hasSplit"`
 	Highlights   []string  `json:"highlights"`
 	HasData      bool      `json:"hasData"`
+	// Eating is absent from older servers; HasData false without a logged day.
+	Eating NutritionEating `json:"eating"`
 }
 
 type InsightsCoach struct {
@@ -342,7 +402,9 @@ func projectTimeline(v insightpages.TimelineView) InsightsTimeline {
 		Range: projectRange(v.Range), Entries: []TimelineEntry{}, Filters: []TimelineFilter{}, Overflow: v.Overflow,
 	}
 	for _, e := range v.Entries {
-		out.Entries = append(out.Entries, TimelineEntry{Kind: e.Kind, Label: e.Label, At: e.At, Title: e.Title, Detail: e.Detail})
+		out.Entries = append(out.Entries, TimelineEntry{
+			Kind: e.Kind, Label: e.Label, At: e.At, Title: e.Title, Detail: e.Detail, Href: e.Href, Icon: e.Icon,
+		})
 	}
 	for _, c := range v.Chips {
 		out.Filters = append(out.Filters, TimelineFilter{Key: c.Key, Label: c.Label, Count: c.Count, Selected: c.Selected})
@@ -397,7 +459,36 @@ func projectTraining(v insightpages.TrainingView, kinds []viz.DonutSegment) Insi
 	for _, s := range v.Sessions {
 		out.Sessions = append(out.Sessions, TrainingSession{Name: s.Name, At: s.At, Duration: s.Duration, Calories: s.Calories})
 	}
+	out.Lifting = projectLifting(v.Lifting)
 	return out
+}
+
+func projectLifting(v insightpages.LiftingView) TrainingLifting {
+	out := TrainingLifting{
+		HasSets: v.HasSets, Volume: v.Volume, Sets: v.Sets, Workouts: v.Workouts,
+		Delta:     Delta{Direction: v.Delta.Direction, Pct: v.Delta.Pct, HasPrior: v.Delta.HasPrior},
+		HasWeekly: v.HasWeekly, Weekly: projectChart(v.WeeklyChart.Data),
+		Exercises: []LiftingExercise{}, Records: []LiftingRecord{}, Muscles: []LiftingMuscleSets{},
+	}
+	for _, e := range v.Exercises {
+		out.Exercises = append(out.Exercises, LiftingExercise{
+			Name: e.Name, Sets: e.Sets, Best: e.Best, E1RM: e.E1RM, Volume: e.Volume, ChangeKg: e.Change,
+		})
+	}
+	for _, r := range v.Records {
+		out.Records = append(out.Records, LiftingRecord{Exercise: r.Exercise, Lift: r.Lift, E1RM: r.E1RM, Gain: r.Gain, On: r.On})
+	}
+	for _, m := range v.Muscles {
+		out.Muscles = append(out.Muscles, LiftingMuscleSets{Name: m.Name, Sets: m.Sets, Pct: m.Pct})
+	}
+	return out
+}
+
+func projectEating(v insightpages.EatingView) NutritionEating {
+	return NutritionEating{
+		HasData: v.HasData, Tiles: projectRows(v.Tiles), Slots: projectBars(v.Slots),
+		Foods: projectRows(v.Foods), Notes: projectRows(v.Notes),
+	}
 }
 
 func projectPlanWeek(ctx context.Context, data TrainingData) *TrainingPlanWeek {
@@ -430,7 +521,7 @@ func projectNutrition(v insightpages.NutritionView, macros []viz.DonutSegment) I
 		DaysLogged: v.DaysLogged, Entries: v.Entries, HasGoal: v.HasGoal,
 		GoalCalories: v.GoalCalories, GoalProtein: v.GoalProtein,
 		Calories: projectChart(v.CaloriesChart.Data), Macros: projectSegments(macros), HasSplit: v.HasSplit,
-		Highlights: nonNil(v.Highlights), HasData: v.HasData,
+		Highlights: nonNil(v.Highlights), HasData: v.HasData, Eating: projectEating(v.Eating),
 	}
 }
 

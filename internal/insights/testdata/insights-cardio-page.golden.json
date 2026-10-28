@@ -1,0 +1,59 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      }
+    ]
+  },
+  "hasData": true,
+  "tiles": [
+    {
+      "label": "Sessions",
+      "value": "2",
+      "note": ""
+    }
+  ],
+  "weekly": {
+    "labels": [
+      "Oct 1",
+      "Oct 2"
+    ],
+    "series": [
+      {
+        "label": "Hours",
+        "values": [
+          7.5,
+          6.9
+        ]
+      }
+    ]
+  },
+  "weeklyTitle": "Distance by week",
+  "kinds": [
+    {
+      "label": "Running (2)",
+      "value": "1h 04m · 16.0 km",
+      "pct": 100
+    }
+  ],
+  "runs": [
+    {
+      "label": "Runs",
+      "value": "2",
+      "note": ""
+    }
+  ],
+  "hasRuns": true,
+  "recent": [],
+  "heart": [
+    {
+      "label": "Resting heart rate",
+      "value": "55 bpm",
+      "note": "+2 since Oct 1"
+    }
+  ]
+}

@@ -84,10 +84,13 @@ type ScheduleRequest struct {
 	Cadence string `json:"cadence"`
 }
 
-// ProgressPhotoView is one pose. URL is signed and lasts two hours.
+// ProgressPhotoView is one pose. URL is signed and lasts two hours; MediaID
+// is the stored photo, for a client that links it through its own media route
+// (the web's /app/media/{id}), which signs a fresh URL on every open.
 type ProgressPhotoView struct {
-	Pose string `json:"pose"`
-	URL  string `json:"url"`
+	Pose    string    `json:"pose"`
+	URL     string    `json:"url"`
+	MediaID uuid.UUID `json:"mediaId"`
 }
 
 type ProgressCheckView struct {
@@ -417,7 +420,7 @@ func ProjectCheck(c Check, urls map[uuid.UUID]string) ProgressCheckView {
 		Complete: c.Complete(), Photos: make([]ProgressPhotoView, len(c.Photos)), CreatedAt: c.CreatedAt,
 	}
 	for i, p := range c.Photos {
-		out.Photos[i] = ProgressPhotoView{Pose: string(p.Pose), URL: urls[p.MediaID]}
+		out.Photos[i] = ProgressPhotoView{Pose: string(p.Pose), URL: urls[p.MediaID], MediaID: p.MediaID}
 	}
 	return out
 }

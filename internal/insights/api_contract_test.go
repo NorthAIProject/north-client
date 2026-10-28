@@ -37,6 +37,10 @@ func TestInsightsShapes(t *testing.T) {
 		}},
 		Highlights: []string{"Best night: Wednesday, 7.9 h."},
 		OnTrack:    1, Judged: 1,
+		Days: []insightpages.DayRow{{Label: "Mon 6", Cells: []insightpages.DayCell{
+			{Label: "Sleep", Value: "7.2h", Filled: true}, {Label: "Water", Value: "—", Filled: false},
+		}}},
+		HasDays: true,
 	}))
 	apitest.AssertGolden(t, "insights-metric.golden.json", projectMetric(insightpages.MetricView{
 		Range: rng, Key: "sleep", Label: "Sleep", Headline: "7.3 h a night", Note: "From your sleep log.",
@@ -122,12 +126,26 @@ func TestInsightsShapes(t *testing.T) {
 		Sessions: []insightpages.SessionRow{{Name: "Running", At: at, Duration: "42m", Calories: 410}},
 		Calories: 410, Delta: insightpages.DeltaView{Pct: 12.5, Direction: 1, HasPrior: true},
 		SessionCount: 1, TotalTime: "42m", HasSessions: true,
+		Lifting: insightpages.LiftingView{
+			HasSets: true, Volume: "4200 kg", Delta: insightpages.DeltaView{Pct: 8, Direction: 1, HasPrior: true},
+			Sets: 18, Workouts: 3, HasWeekly: true, WeeklyChart: chart.Props{Data: week},
+			Exercises: []insightpages.LiftExerciseRow{{Name: "Back squat", Sets: 6, Best: "100 kg", E1RM: "113.3 kg", Volume: "2400 kg", Change: 2.5}},
+			Records:   []insightpages.LiftRecordRow{{Exercise: "Back squat", Lift: "100 kg × 4", E1RM: "113.3 kg", Gain: "2.5 kg", On: "Mon, Sep 21"}},
+			Muscles:   []insightpages.MuscleRow{{Name: "Quads", Sets: 6, Pct: 100}},
+		},
 	}, []viz.DonutSegment{{Label: "Running", Value: 1}}))
 	apitest.AssertGolden(t, "insights-nutrition.golden.json", projectNutrition(insightpages.NutritionView{
 		Range: rng, AvgCalories: "2150 kcal", AvgProtein: "140 g", DaysLogged: 5, Entries: 17,
 		HasGoal: true, GoalCalories: "2300 kcal", GoalProtein: "150 g",
 		CaloriesChart: chart.Props{Data: week}, HasSplit: true,
 		Highlights: []string{"Highest: Tuesday, 2400 kcal."}, HasData: true,
+		Eating: insightpages.EatingView{
+			HasData: true,
+			Tiles:   []insightpages.Row{{Label: "Average day", Value: "2150 kcal", Note: "140 g protein · 220 g carbs · 70 g fat"}},
+			Slots:   []insightpages.Bar{{Label: "Lunch", Value: "40%", Pct: 40}},
+			Foods:   []insightpages.Row{{Label: "Oats", Value: "×4", Note: "380 kcal"}},
+			Notes:   []insightpages.Row{{Label: "Days logged", Value: "5"}},
+		},
 	}, []viz.DonutSegment{{Label: "Protein", Value: 700}, {Label: "Fat", Value: 350}, {Label: "Carbs", Value: 1100}}))
 	apitest.AssertGolden(t, "insights-coach.golden.json", projectCoach(insightpages.CoachView{
 		Range: rng, Turns: 12, YourMessages: 6, CoachReplies: 6, HasRatings: true, HelpfulRate: 80, Rated: 5,
