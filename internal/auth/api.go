@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -40,32 +41,32 @@ func (a *API) WithAuthService(service *Service, mw *Middleware) *API {
 	return a
 }
 
-// PublicRoutes mounts the credential routes relative to /api/v1. They run
-// before a session exists, so they sit outside RequireBearer.
-func (a *API) PublicRoutes(r chi.Router) {
+// RegisterPublic registers the credential routes relative to /api/v1. They
+// run before a session exists, so they sit outside Bearer.
+func (a *API) RegisterPublic(g *echo.Group) {
 	if a.service == nil || a.mw == nil {
 		return
 	}
-	r.Post("/auth/signup", a.signup)
-	r.Post("/auth/login", a.login)
-	r.Post("/auth/google", a.google)
-	r.Post("/auth/apple", a.apple)
-	r.Post("/auth/logout", a.logout)
-	r.Post("/auth/forgot-password", a.forgotPassword)
-	r.Post("/auth/reset-password", a.resetPassword)
-	r.Get("/auth/options", a.options)
-	r.Post("/auth/google/start", a.googleStart)
-	r.Post("/auth/google/code", a.googleCode)
-	r.Post("/auth/passkey/register/begin", a.passkeyRegisterBegin)
-	r.Post("/auth/passkey/register/finish", a.passkeyRegisterFinish)
-	r.Post("/auth/passkey/login/begin", a.passkeyLoginBegin)
-	r.Post("/auth/passkey/login/finish", a.passkeyLoginFinish)
+	g.POST("/auth/signup", a.signup)
+	g.POST("/auth/login", a.login)
+	g.POST("/auth/google", a.google)
+	g.POST("/auth/apple", a.apple)
+	g.POST("/auth/logout", a.logout)
+	g.POST("/auth/forgot-password", a.forgotPassword)
+	g.POST("/auth/reset-password", a.resetPassword)
+	g.GET("/auth/options", a.options)
+	g.POST("/auth/google/start", a.googleStart)
+	g.POST("/auth/google/code", a.googleCode)
+	g.POST("/auth/passkey/register/begin", a.passkeyRegisterBegin)
+	g.POST("/auth/passkey/register/finish", a.passkeyRegisterFinish)
+	g.POST("/auth/passkey/login/begin", a.passkeyLoginBegin)
+	g.POST("/auth/passkey/login/finish", a.passkeyLoginFinish)
 }
 
-// Routes mounts the signed-in routes relative to /api/v1. Mount them behind
-// RequireBearer.
-func (a *API) Routes(r chi.Router) {
-	r.Get("/me", a.me)
+// Register registers the signed-in routes relative to /api/v1, on a group
+// behind Bearer.
+func (a *API) Register(g *echo.Group) {
+	g.GET("/me", a.me)
 }
 
 type LoginRequest struct {
@@ -121,18 +122,19 @@ type MeResponse struct {
 	User APIUser `json:"user"`
 }
 
-func (a *API) me(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, MeResponse{User: ProjectUser(MustUser(r.Context()))})
+func (a *API) me(c *echo.Context) error {
+	return c.JSON(http.StatusOK, MeResponse{User: ProjectUser(MustUser(c.Request().Context()))})
 }
 
-func (a *API) signup(w http.ResponseWriter, r *http.Request) {
+func (a *API) signup(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	var req SignupRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.signup"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 64 << 10}, i18n.T(ctx, "auth.api.body.signup")); err != nil {
+		return err
 	}
 
-	user, token, err := a.service.Signup(r.Context(), SignupInput{
+	user, token, err := a.service.Signup(ctx, SignupInput{
 		Email:                req.Email,
 		Password:             req.Password,
 		PasswordConfirmation: req.PasswordConfirmation,
@@ -140,105 +142,102 @@ func (a *API) signup(w http.ResponseWriter, r *http.Request) {
 		Timezone:             req.Timezone,
 	}, a.mw.RequestMetadata(r))
 	if err != nil {
-		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.signup"))
-		return
+		return authError(c, err, i18n.T(ctx, "auth.api.signup"))
 	}
 
 	// The API returns the token; it does not set the browser cookie.
-	session, err := a.sessions.Resolve(r.Context(), token)
+	session, err := a.sessions.Resolve(ctx, token)
 	if err != nil {
-		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.generic"))
-		return
+		return authError(c, err, i18n.T(ctx, "auth.api.generic"))
 	}
-	httpx.WriteJSON(w, http.StatusCreated, AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: ProjectUser(user)})
+	return c.JSON(http.StatusCreated, AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: ProjectUser(user)})
 }
 
-func (a *API) login(w http.ResponseWriter, r *http.Request) {
+func (a *API) login(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	var req LoginRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.login"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 64 << 10}, i18n.T(ctx, "auth.api.body.login")); err != nil {
+		return err
 	}
 
-	user, token, err := a.service.Login(r.Context(), LoginInput(req), a.mw.RequestMetadata(r))
+	user, token, err := a.service.Login(ctx, LoginInput(req), a.mw.RequestMetadata(r))
 	if err != nil {
-		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.err.credentials"))
-		return
+		return authError(c, err, i18n.T(ctx, "auth.err.credentials"))
 	}
 
-	session, err := a.sessions.Resolve(r.Context(), token)
+	session, err := a.sessions.Resolve(ctx, token)
 	if err != nil {
-		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.generic"))
-		return
+		return authError(c, err, i18n.T(ctx, "auth.api.generic"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: ProjectUser(user)})
+	return c.JSON(http.StatusOK, AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: ProjectUser(user)})
 }
 
-func (a *API) google(w http.ResponseWriter, r *http.Request) {
+func (a *API) google(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	var req GoogleRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.google"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 16 << 10}, i18n.T(ctx, "auth.api.body.google")); err != nil {
+		return err
 	}
-	user, token, expiresAt, err := a.service.CompleteGoogleIDToken(r.Context(), req.IDToken, a.mw.RequestMetadata(r))
+	user, token, expiresAt, err := a.service.CompleteGoogleIDToken(ctx, req.IDToken, a.mw.RequestMetadata(r))
 	if err != nil {
-		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.google"))
-		return
+		return authError(c, err, i18n.T(ctx, "auth.api.google"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, AuthResponse{Token: token, ExpiresAt: expiresAt, User: ProjectUser(user)})
+	return c.JSON(http.StatusOK, AuthResponse{Token: token, ExpiresAt: expiresAt, User: ProjectUser(user)})
 }
 
-func (a *API) apple(w http.ResponseWriter, r *http.Request) {
+func (a *API) apple(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	var req AppleRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 32 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.apple"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 32 << 10}, i18n.T(ctx, "auth.api.body.apple")); err != nil {
+		return err
 	}
-	user, token, expiresAt, err := a.service.CompleteAppleSignIn(r.Context(), AppleSignInInput{
+	user, token, expiresAt, err := a.service.CompleteAppleSignIn(ctx, AppleSignInInput{
 		IdentityToken: req.IdentityToken,
 		Nonce:         req.Nonce,
 		FullName:      req.FullName,
 		Email:         req.Email,
 	}, a.mw.RequestMetadata(r))
 	if err != nil {
-		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.apple"))
-		return
+		return authError(c, err, i18n.T(ctx, "auth.api.apple"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, AuthResponse{Token: token, ExpiresAt: expiresAt, User: ProjectUser(user)})
+	return c.JSON(http.StatusOK, AuthResponse{Token: token, ExpiresAt: expiresAt, User: ProjectUser(user)})
 }
 
-func (a *API) logout(w http.ResponseWriter, r *http.Request) {
+func (a *API) logout(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	token, ok := bearerToken(r)
 	if !ok {
-		httpx.Error(w, apperr.ErrUnauthenticated, i18n.T(r.Context(), "auth.api.bearer"))
-		return
+		return httpx.Fail(apperr.ErrUnauthenticated, i18n.T(ctx, "auth.api.bearer"))
 	}
-	if err := a.service.Logout(r.Context(), token); err != nil {
-		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.signout"))
-		return
+	if err := a.service.Logout(ctx, token); err != nil {
+		return authError(c, err, i18n.T(ctx, "auth.api.signout"))
 	}
-	httpx.WriteJSON(w, http.StatusNoContent, nil)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) forgotPassword(w http.ResponseWriter, r *http.Request) {
+func (a *API) forgotPassword(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req ForgotPasswordRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.email"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 16 << 10}, i18n.T(ctx, "auth.api.body.email")); err != nil {
+		return err
 	}
-	if err := a.service.RequestPasswordReset(r.Context(), req.Email); err != nil {
-		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.api.reset"))
-		return
+	if err := a.service.RequestPasswordReset(ctx, req.Email); err != nil {
+		return authError(c, err, i18n.T(ctx, "auth.api.reset"))
 	}
-	httpx.WriteJSON(w, http.StatusAccepted, nil)
+	return c.JSON(http.StatusAccepted, nil)
 }
 
-func (a *API) writeAuthError(w http.ResponseWriter, err error, message string) {
+// authError answers a credential failure. Wrong credentials are a 401 with
+// the endpoint's message; anything else is mapped as usual.
+func authError(c *echo.Context, err error, message string) error {
 	if apperr.Is(err, ErrInvalidCredentials) {
-		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: message}})
-		return
+		return c.JSON(http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: message}})
 	}
-	httpx.Error(w, err, message)
+	return httpx.Fail(err, message)
 }
 
 func ProjectUser(user users.User) APIUser {

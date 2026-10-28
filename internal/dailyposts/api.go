@@ -4,26 +4,26 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/dailyposts/post"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
-// API is the daily post for native clients. Mount behind auth.RequireBearer.
+// API is the daily post for native clients. Register behind auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/daily-posts", a.feed)
-	r.Post("/daily-posts/{postID}/kudos", a.kudos(true))
-	r.Delete("/daily-posts/{postID}/kudos", a.kudos(false))
+func (a *API) Register(g *echo.Group) {
+	g.GET("/daily-posts", a.feed)
+	g.POST("/daily-posts/:postID/kudos", a.kudos(true))
+	g.DELETE("/daily-posts/:postID/kudos", a.kudos(false))
 }
 
 type PostView struct {
@@ -46,33 +46,32 @@ type FeedView struct {
 	Earlier []PostView `json:"earlier"`
 }
 
-func (a *API) feed(w http.ResponseWriter, r *http.Request) {
-	f, err := a.svc.Feed(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) feed(c *echo.Context) error {
+	ctx := c.Request().Context()
+	f, err := a.svc.Feed(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "The daily post could not be loaded.")
-		return
+		return httpx.Fail(err, "The daily post could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectFeed(f))
+	return c.JSON(http.StatusOK, projectFeed(f))
 }
 
-func (a *API) kudos(give bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := uuid.Parse(chi.URLParam(r, "postID"))
+func (a *API) kudos(give bool) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		id, err := echox.UUIDParam(c, "postID")
 		if err != nil {
-			httpx.Error(w, apperr.ErrNotFound, "Not found.")
-			return
+			return err
 		}
-		viewer := auth.MustUser(r.Context()).ID
+		ctx := c.Request().Context()
+		viewer := auth.MustUser(ctx).ID
 		if give {
-			err = a.svc.GiveKudos(r.Context(), id, viewer)
+			err = a.svc.GiveKudos(ctx, id, viewer)
 		} else {
-			err = a.svc.TakeKudos(r.Context(), id, viewer)
+			err = a.svc.TakeKudos(ctx, id, viewer)
 		}
 		if err != nil {
-			httpx.Error(w, err, "Kudos could not be saved.")
-			return
+			return httpx.Fail(err, "Kudos could not be saved.")
 		}
-		w.WriteHeader(http.StatusNoContent)
+		return c.NoContent(http.StatusNoContent)
 	}
 }
 

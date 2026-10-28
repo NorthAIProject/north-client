@@ -4,12 +4,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -22,20 +23,20 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(opts Options) *API { return &API{svc: NewService(opts)} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/care", a.show)
-	r.Post("/care/water", a.logWater)
-	r.Delete("/care/water/{entryID}", a.undoWater)
-	r.Put("/care/sleep", a.logSleep)
-	r.Post("/care/habits", a.createHabit)
-	r.Put("/care/habits/{habitID}/done", a.setHabitDone)
-	r.Delete("/care/habits/{habitID}", a.deleteHabit)
-	r.Post("/care/reminders", a.createReminder)
-	r.Put("/care/reminders/{reminderID}/enabled", a.setReminderEnabled)
-	r.Delete("/care/reminders/{reminderID}", a.deleteReminder)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/care", a.show)
+	g.POST("/care/water", a.logWater)
+	g.DELETE("/care/water/:entryID", a.undoWater)
+	g.PUT("/care/sleep", a.logSleep)
+	g.POST("/care/habits", a.createHabit)
+	g.PUT("/care/habits/:habitID/done", a.setHabitDone)
+	g.DELETE("/care/habits/:habitID", a.deleteHabit)
+	g.POST("/care/reminders", a.createReminder)
+	g.PUT("/care/reminders/:reminderID/enabled", a.setReminderEnabled)
+	g.DELETE("/care/reminders/:reminderID", a.deleteReminder)
 }
 
 type WaterEntryView struct {
@@ -131,147 +132,146 @@ type FlagRequest struct {
 	Value bool `json:"value"`
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	a.respond(w, r, http.StatusOK)
+func (a *API) show(c *echo.Context) error {
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) logWater(w http.ResponseWriter, r *http.Request) {
+func (a *API) logWater(c *echo.Context) error {
 	var req AmountRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if _, err := a.svc.hydration.Log(r.Context(), auth.MustUser(r.Context()), req.AmountML); err != nil {
-		httpx.Error(w, err, "The water could not be logged.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.hydration.Log(ctx, auth.MustUser(ctx), req.AmountML); err != nil {
+		return httpx.Fail(err, "The water could not be logged.")
 	}
-	a.respond(w, r, http.StatusCreated)
+	return a.respond(c, http.StatusCreated)
 }
 
-func (a *API) undoWater(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "entryID")
-	if !ok {
-		return
+func (a *API) undoWater(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "entryID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.hydration.Undo(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, "That could not be undone.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.hydration.Undo(ctx, auth.MustUser(ctx), id); err != nil {
+		return httpx.Fail(err, "That could not be undone.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) logSleep(w http.ResponseWriter, r *http.Request) {
+func (a *API) logSleep(c *echo.Context) error {
 	var req SleepRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if _, err := a.svc.sleep.LogToday(r.Context(), auth.MustUser(r.Context()), sleep.Input(req)); err != nil {
-		httpx.Error(w, err, "The night could not be logged.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.sleep.LogToday(ctx, auth.MustUser(ctx), sleep.Input(req)); err != nil {
+		return httpx.Fail(err, "The night could not be logged.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) createHabit(w http.ResponseWriter, r *http.Request) {
+func (a *API) createHabit(c *echo.Context) error {
 	var req HabitRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
 	days := make([]time.Weekday, 0, len(req.DaysOfWeek))
 	for _, d := range req.DaysOfWeek {
 		days = append(days, time.Weekday(d))
 	}
-	if _, err := a.svc.habits.Create(r.Context(), auth.MustUser(r.Context()), habits.Input{
+	ctx := c.Request().Context()
+	if _, err := a.svc.habits.Create(ctx, auth.MustUser(ctx), habits.Input{
 		Name: req.Name, Domain: req.Domain, Days: days, Active: true,
 	}); err != nil {
-		httpx.Error(w, renameField(err, "days", "daysOfWeek"), "The habit could not be saved.")
-		return
+		return httpx.Fail(renameField(err, "days", "daysOfWeek"), "The habit could not be saved.")
 	}
-	a.respond(w, r, http.StatusCreated)
+	return a.respond(c, http.StatusCreated)
 }
 
-func (a *API) setHabitDone(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "habitID")
-	if !ok {
-		return
+func (a *API) setHabitDone(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "habitID")
+	if err != nil {
+		return err
 	}
 	var req FlagRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err = readJSON(c, &req); err != nil {
+		return err
 	}
-	user := auth.MustUser(r.Context())
-	var err error
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	if req.Value {
-		err = a.svc.habits.Complete(r.Context(), user, id)
+		err = a.svc.habits.Complete(ctx, user, id)
 	} else {
-		err = a.svc.habits.Uncomplete(r.Context(), user, id)
+		err = a.svc.habits.Uncomplete(ctx, user, id)
 	}
 	if err != nil {
-		httpx.Error(w, err, "The habit could not be updated.")
-		return
+		return httpx.Fail(err, "The habit could not be updated.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) deleteHabit(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "habitID")
-	if !ok {
-		return
+func (a *API) deleteHabit(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "habitID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.habits.Delete(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, "The habit could not be deleted.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.habits.Delete(ctx, auth.MustUser(ctx), id); err != nil {
+		return httpx.Fail(err, "The habit could not be deleted.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) createReminder(w http.ResponseWriter, r *http.Request) {
+func (a *API) createReminder(c *echo.Context) error {
 	var req ReminderRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if _, err := a.svc.reminders.Create(r.Context(), auth.MustUser(r.Context()).ID, meals.ReminderInput(req)); err != nil {
-		httpx.Error(w, err, "The reminder could not be saved.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.reminders.Create(ctx, auth.MustUser(ctx).ID, meals.ReminderInput(req)); err != nil {
+		return httpx.Fail(err, "The reminder could not be saved.")
 	}
-	a.respond(w, r, http.StatusCreated)
+	return a.respond(c, http.StatusCreated)
 }
 
-func (a *API) setReminderEnabled(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "reminderID")
-	if !ok {
-		return
+func (a *API) setReminderEnabled(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "reminderID")
+	if err != nil {
+		return err
 	}
 	var req FlagRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if _, err := a.svc.reminders.Toggle(r.Context(), id, auth.MustUser(r.Context()).ID, req.Value); err != nil {
-		httpx.Error(w, err, "The reminder could not be changed.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.reminders.Toggle(ctx, id, auth.MustUser(ctx).ID, req.Value); err != nil {
+		return httpx.Fail(err, "The reminder could not be changed.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) deleteReminder(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "reminderID")
-	if !ok {
-		return
+func (a *API) deleteReminder(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "reminderID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.reminders.Delete(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The reminder could not be deleted.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.reminders.Delete(ctx, id, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The reminder could not be deleted.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
 // respond answers with the page as it now stands.
-func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
-	snap, err := a.svc.Load(r.Context(), auth.MustUser(r.Context()))
+func (a *API) respond(c *echo.Context, status int) error {
+	ctx := c.Request().Context()
+	snap, err := a.svc.Load(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, "Care could not be loaded.")
-		return
+		return httpx.Fail(err, "Care could not be loaded.")
 	}
-	httpx.WriteJSON(w, status, project(snap))
+	return c.JSON(status, project(snap))
 }
 
 func project(s Snapshot) CareView {
@@ -345,19 +345,6 @@ func renameField(err error, from, to string) error {
 	return renamed
 }
 
-func pathID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, name))
-	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
-func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
-	}
-	return true
+func readJSON(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 16 << 10}, "The request body could not be read.")
 }

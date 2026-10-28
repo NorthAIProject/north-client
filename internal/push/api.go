@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -13,17 +13,17 @@ import (
 
 // API is Web Push opt-in for web clients over /api/v1: the same subscribe and
 // unsubscribe the cookie-session handler serves, plus the VAPID key the
-// browser subscribes with. Mount behind auth.RequireBearer.
+// browser subscribes with. Register it behind auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/push/config", a.config)
-	r.Post("/push/subscriptions", a.subscribe)
-	r.Delete("/push/subscriptions", a.unsubscribe)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/push/config", a.config)
+	g.POST("/push/subscriptions", a.subscribe)
+	g.DELETE("/push/subscriptions", a.unsubscribe)
 }
 
 // PushConfig says whether this deployment sends Web Push, with what key, and
@@ -42,73 +42,73 @@ type apiSubscription struct {
 	UserAgent string `json:"userAgent"`
 }
 
-func (a *API) config(w http.ResponseWriter, r *http.Request) {
-	devices, err := a.svc.Count(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) config(c *echo.Context) error {
+	ctx := c.Request().Context()
+	devices, err := a.svc.Count(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Notifications could not be loaded.")
-		return
+		return httpx.Fail(err, "Notifications could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, PushConfig{Enabled: a.svc.Enabled(), PublicKey: a.svc.PublicKey(), Devices: devices})
+	return c.JSON(http.StatusOK, PushConfig{Enabled: a.svc.Enabled(), PublicKey: a.svc.PublicKey(), Devices: devices})
 }
 
-func (a *API) subscribe(w http.ResponseWriter, r *http.Request) {
+func (a *API) subscribe(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	if !a.svc.Enabled() {
-		httpx.Error(w, apperr.ErrNotFound, "Notifications are not available here.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Notifications are not available here.")
 	}
 	var in apiSubscription
-	if !readSubscription(w, r, &in) {
-		return
+	if ok, err := readSubscription(c, &in); !ok {
+		return err
 	}
 	ua := in.UserAgent
 	if ua == "" {
 		ua = r.UserAgent()
 	}
-	_, err := a.svc.Subscribe(r.Context(), auth.MustUser(r.Context()).ID, Input{
+	_, err := a.svc.Subscribe(ctx, auth.MustUser(ctx).ID, Input{
 		Endpoint: in.Endpoint, P256dh: in.Keys.P256dh, Auth: in.Keys.Auth, UserAgent: ua,
 	})
 	switch {
 	case err == nil:
-		w.WriteHeader(http.StatusNoContent)
+		return c.NoContent(http.StatusNoContent)
 	case apperr.Is(err, apperr.ErrValidation):
-		httpx.Error(w, err, "That is not a valid push subscription.")
+		return httpx.Fail(err, "That is not a valid push subscription.")
 	case apperr.Is(err, apperr.ErrUnavailable):
-		httpx.Error(w, apperr.ErrNotFound, "Notifications are not available here.")
+		return httpx.Fail(apperr.ErrNotFound, "Notifications are not available here.")
 	default:
-		httpx.Error(w, err, "Something went wrong.")
+		return httpx.Fail(err, "Something went wrong.")
 	}
 }
 
-func (a *API) unsubscribe(w http.ResponseWriter, r *http.Request) {
+func (a *API) unsubscribe(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var in struct {
 		Endpoint string `json:"endpoint"`
 	}
-	if !readSubscription(w, r, &in) {
-		return
+	if ok, err := readSubscription(c, &in); !ok {
+		return err
 	}
 	if in.Endpoint == "" {
-		httpx.Error(w, apperr.ErrValidation, "An endpoint is required.")
-		return
+		return httpx.Fail(apperr.ErrValidation, "An endpoint is required.")
 	}
-	if err := a.svc.Unsubscribe(r.Context(), auth.MustUser(r.Context()).ID, in.Endpoint); err != nil {
-		httpx.Error(w, err, "Something went wrong.")
-		return
+	if err := a.svc.Unsubscribe(ctx, auth.MustUser(ctx).ID, in.Endpoint); err != nil {
+		return httpx.Fail(err, "Something went wrong.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // readSubscription decodes a small JSON body, answering the request itself
-// when it is not one. Unknown fields are allowed for the reason the cookie
+// when it is not one: ok is then false, and err is only what writing that
+// answer returned. Unknown fields are allowed for the reason the cookie
 // handler gives: the browser's shape, not ours.
-func readSubscription(w http.ResponseWriter, r *http.Request, dst any) bool {
-	err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: maxRequestBytes, AllowUnknownFields: true})
+func readSubscription(c *echo.Context, dst any) (ok bool, err error) {
+	err = httpx.ReadJSON(c.Response(), c.Request(), dst, httpx.ReadOptions{MaxBytes: maxRequestBytes, AllowUnknownFields: true})
 	switch {
 	case err == nil:
-		return true
+		return true, nil
 	case errors.Is(err, httpx.ErrTooLarge):
-		httpx.WriteJSON(w, http.StatusRequestEntityTooLarge, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: "That request is too large."}})
+		return false, c.JSON(http.StatusRequestEntityTooLarge, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: "That request is too large."}})
 	default:
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: "The request body must be a JSON subscription."}})
+		return false, c.JSON(http.StatusBadRequest, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: "The request body must be a JSON subscription."}})
 	}
-	return false
 }

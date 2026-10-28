@@ -12,10 +12,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/crews"
 	"github.com/NorthAIProject/north-client/internal/crews/live"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/social"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -39,9 +41,8 @@ func newLiveServer(t *testing.T, r room) liveServer {
 	t.Helper()
 	hub := live.NewHub()
 	t.Cleanup(hub.Close)
-	api := chi.NewRouter()
-	api.Use(asUser)
-	crews.NewAPI(r.svc, "https://north.test").WithLive(r.chat, hub).WithHeartbeat(50 * time.Millisecond).Routes(api)
+	api := echox.New(echox.Config{})
+	crews.NewAPI(r.svc, "https://north.test").WithLive(r.chat, hub).WithHeartbeat(50 * time.Millisecond).Register(api.Group("", echo.WrapMiddleware(asUser)))
 	web := chi.NewRouter()
 	web.Use(asUser)
 	crews.NewHandler(r.svc, "https://north.test", false).WithLive(r.chat, hub).WithHeartbeat(50 * time.Millisecond).Routes(web)

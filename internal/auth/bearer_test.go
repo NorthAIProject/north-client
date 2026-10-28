@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/labstack/echo/v5"
+
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -18,14 +20,15 @@ func (s stubSessions) Resolve(context.Context, string) (Session, error) {
 
 // The app sends the phone's Accept-Language on every request; once signed in,
 // the account's own language must win, exactly as it does in the browser.
-func TestRequireBearerUsesTheAccountLocale(t *testing.T) {
+func TestBearerUsesTheAccountLocale(t *testing.T) {
 	t.Parallel()
 
 	var got string
-	h := RequireBearer(stubSessions{user: users.User{Locale: users.LocalePTBR}})(
-		http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			got = i18n.LocaleFrom(r.Context())
-		}))
+	h := echo.New()
+	h.GET("/api/v1/me", func(c *echo.Context) error {
+		got = i18n.LocaleFrom(c.Request().Context())
+		return nil
+	}, Bearer(stubSessions{user: users.User{Locale: users.LocalePTBR}}))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	req.Header.Set("Authorization", "Bearer tok")

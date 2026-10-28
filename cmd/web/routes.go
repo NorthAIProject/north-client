@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	echomw "github.com/labstack/echo/v5/middleware"
 	"github.com/posthog/posthog-go"
 
 	"github.com/NorthAIProject/north-client/internal/account"
@@ -1097,10 +1098,7 @@ func routes(
 	// The body cap is its own and far below the media limit: an MCP request is a
 	// small JSON-RPC envelope, and there is no reason to accept a video's worth
 	// of one.
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.MaxBody(1 << 20))
-		r.Handle("/mcp", mcpEndpoint)
-	})
+	e.Any("/mcp", echo.WrapHandler(mcpEndpoint), echomw.BodyLimit(1<<20))
 
 	// OAuth's machine half sits beside /mcp for the same reasons and one more.
 	//
@@ -1111,15 +1109,14 @@ func routes(
 	// therefore mounted in the session group further down, not here.
 	//
 	// A smaller cap than /mcp: everything here is a handful of short strings.
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.MaxBody(64 << 10))
-		mcpAuthMachine.Routes(r)
-	})
+	mcpAuthMachine.Register(e.Group("", echomw.BodyLimit(64<<10)))
 
 	// /api/v1 sits beside /mcp for the same three reasons: no cookie, no form,
 	// and a bearer a browser never attaches on its own. The native app signs
 	// in for a bearer session; capture keeps its nk_ connection token. Body
-	// caps are set per group inside mountAPI.
+	// caps are set per group inside mountAPI. It is Echo's own, so no request
+	// for /api/v1 ever reaches the browser app below.
+	//
 	// The web transcript loads a photo a turn carried through the API.
 	coachAPI := coach.NewAPI(coachSvc, quotaSvc, mediaSvc).WithAttachmentURLs(func(ctx context.Context, id, userID uuid.UUID) (string, error) {
 		m, err := mediaSvc.GetMedia(ctx, id, userID)
@@ -1128,69 +1125,67 @@ func routes(
 		}
 		return mediaSvc.PlaybackURL(ctx, m)
 	})
-	r.Group(func(r chi.Router) {
-		mountAPI(r, sessions, apiSet{
-			auth:         authAPI,
-			mcpAuth:      mcpAuthAPI,
-			capture:      captureAPI,
-			onboarding:   onboardingAPI,
-			dashboard:    dashboardAPI,
-			day:          day.NewAPI(daySvc),
-			caffeine:     caffeine.NewAPI(caffeineSvc),
-			lifts:        lifts.NewAPI(liftSvc),
-			stats:        stats.NewAPI(statsSvc),
-			fasting:      fasting.NewAPI(fastingSvc),
-			supplements:  supplements.NewAPI(supplementSvc),
-			medications:  medications.NewAPI(medicationSvc),
-			progress:     progresschecks.NewAPI(progressSvc, liftSvc, quotaSvc),
-			screenTime:   screentime.NewAPI(screenTimeSvc),
-			soreness:     soreness.NewAPI(sorenessSvc),
-			milestones:   milestones.NewAPI(milestoneSvc),
-			coach:        coachAPI,
-			voice:        voice.NewAPI(voiceSvc, quotaSvc),
-			exercises:    exercises.NewAPI(exerciseSvc, assets.Assets),
-			settings:     settings.NewAPI(settingsHandler),
-			vault:        vaultHandler,
-			training:     workouts.NewAPI(workoutSvc).WithRecaps(liftSvc).WithLoads(liftSvc),
-			activity:     activity.NewAPI(activitySvc),
-			health:       health.NewAPI(healthSvc),
-			fitness:      fitness.NewAPI(stravaSvc, cfg.BaseURL).WithHub(fitnessHandler.Hub()),
-			insights:     insights.NewAPI(insightsSvc).WithFocus(weeklySvc),
-			goals:        goals.NewAPI(goalSvc),
-			checkins:     checkins.NewAPI(checkinSvc).WithFunnel(funnel),
-			checkinReply: checkinreply.NewAPI(checkinReplySvc),
-			reports:      reports.NewAPI(reportSvc).WithQuotas(quotaSvc),
-			memories:     memories.NewAPI(memorySvc),
-			knowledge:    documents.NewAPI(documentSvc, quotaSvc),
-			formChecks:   media.NewAPI(mediaSvc, quotaSvc),
-			care:         care.NewAPI(careOpts),
-			mind:         mind.NewAPI(mindSvc),
-			nutrition:    meals.NewAPI(mealsOpts),
-			planImport:   planimport.NewAPI(planImportSvc, quotaSvc),
-			decisions:    decisions.NewAPI(decisionSvc),
-			nudges:       nudges.NewAPI(nudgeSvc),
-			devices:      apns.NewAPI(apnsSvc),
-			export:       exportHandler,
-			calculator:   calculator.NewAPI(calculatorSvc, biometricSvc),
-			news:         news.NewAPI(newsSvc),
-			social:       social.NewAPI(socialSvc, cfg.BaseURL),
-			profiles:     profiles.NewAPI(profilesSvc),
-			achievements: achievements.NewAPI(achievementSvc),
-			awards:       awards.NewAPI(awardsSvc).WithPeople(profilesSvc),
-			crews:        crews.NewAPI(crewSvc, cfg.BaseURL).WithLive(crewChat, crewLive),
-			moderation:   moderation.NewAPI(moderationSvc),
-			xp:           xp.NewAPI(xpSvc),
-			weekly:       weekly.NewAPI(weeklySvc),
-			recaps:       recaps.NewAPI(recapSvc),
-			dailyPosts:   dailyposts.NewAPI(dailyPostSvc),
-			inbox:        inbox.NewAPI(inboxSvc),
-			lighter: lighterday.NewAPI(lighterSvc).WithCoveredBy(func(ctx context.Context, u users.User) bool {
-				return outreachSvc != nil && outreachSvc.CoversRecovery(ctx, u)
-			}),
-			outreach:  outreach.NewAPI(outreachSvc),
-			firstWeek: firstweek.NewAPI(firstWeekSvc),
-			push:      push.NewAPI(pushSvc),
-		})
+	mountAPI(e, sessions, apiSet{
+		auth:         authAPI,
+		mcpAuth:      mcpAuthAPI,
+		capture:      captureAPI,
+		onboarding:   onboardingAPI,
+		dashboard:    dashboardAPI,
+		day:          day.NewAPI(daySvc),
+		caffeine:     caffeine.NewAPI(caffeineSvc),
+		lifts:        lifts.NewAPI(liftSvc),
+		stats:        stats.NewAPI(statsSvc),
+		fasting:      fasting.NewAPI(fastingSvc),
+		supplements:  supplements.NewAPI(supplementSvc),
+		medications:  medications.NewAPI(medicationSvc),
+		progress:     progresschecks.NewAPI(progressSvc, liftSvc, quotaSvc),
+		screenTime:   screentime.NewAPI(screenTimeSvc),
+		soreness:     soreness.NewAPI(sorenessSvc),
+		milestones:   milestones.NewAPI(milestoneSvc),
+		coach:        coachAPI,
+		voice:        voice.NewAPI(voiceSvc, quotaSvc),
+		exercises:    exercises.NewAPI(exerciseSvc, assets.Assets),
+		settings:     settings.NewAPI(settingsHandler),
+		vault:        vaultHandler,
+		training:     workouts.NewAPI(workoutSvc).WithRecaps(liftSvc).WithLoads(liftSvc),
+		activity:     activity.NewAPI(activitySvc),
+		health:       health.NewAPI(healthSvc),
+		fitness:      fitness.NewAPI(stravaSvc, cfg.BaseURL).WithHub(fitnessHandler.Hub()),
+		insights:     insights.NewAPI(insightsSvc).WithFocus(weeklySvc),
+		goals:        goals.NewAPI(goalSvc),
+		checkins:     checkins.NewAPI(checkinSvc).WithFunnel(funnel),
+		checkinReply: checkinreply.NewAPI(checkinReplySvc),
+		reports:      reports.NewAPI(reportSvc).WithQuotas(quotaSvc),
+		memories:     memories.NewAPI(memorySvc),
+		knowledge:    documents.NewAPI(documentSvc, quotaSvc),
+		formChecks:   media.NewAPI(mediaSvc, quotaSvc),
+		care:         care.NewAPI(careOpts),
+		mind:         mind.NewAPI(mindSvc),
+		nutrition:    meals.NewAPI(mealsOpts),
+		planImport:   planimport.NewAPI(planImportSvc, quotaSvc),
+		decisions:    decisions.NewAPI(decisionSvc),
+		nudges:       nudges.NewAPI(nudgeSvc),
+		devices:      apns.NewAPI(apnsSvc),
+		export:       exportHandler,
+		calculator:   calculator.NewAPI(calculatorSvc, biometricSvc),
+		news:         news.NewAPI(newsSvc),
+		social:       social.NewAPI(socialSvc, cfg.BaseURL),
+		profiles:     profiles.NewAPI(profilesSvc),
+		achievements: achievements.NewAPI(achievementSvc),
+		awards:       awards.NewAPI(awardsSvc).WithPeople(profilesSvc),
+		crews:        crews.NewAPI(crewSvc, cfg.BaseURL).WithLive(crewChat, crewLive),
+		moderation:   moderation.NewAPI(moderationSvc),
+		xp:           xp.NewAPI(xpSvc),
+		weekly:       weekly.NewAPI(weeklySvc),
+		recaps:       recaps.NewAPI(recapSvc),
+		dailyPosts:   dailyposts.NewAPI(dailyPostSvc),
+		inbox:        inbox.NewAPI(inboxSvc),
+		lighter: lighterday.NewAPI(lighterSvc).WithCoveredBy(func(ctx context.Context, u users.User) bool {
+			return outreachSvc != nil && outreachSvc.CoversRecovery(ctx, u)
+		}),
+		outreach:  outreach.NewAPI(outreachSvc),
+		firstWeek: firstweek.NewAPI(firstWeekSvc),
+		push:      push.NewAPI(pushSvc),
 	})
 
 	// Health ingest sits beside /mcp for exactly the reasons above: the caller is
@@ -1202,20 +1197,20 @@ func routes(
 	// reject an ordinary Monday morning. This bound and health's own
 	// maxReadings are two spellings of the same limit — a payload at the row
 	// count lands near this size.
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.MaxBody(8 << 20))
-		r.Mount("/ingest/health", http.StripPrefix("/ingest/health", health.NewHandler(health.HandlerConfig{
-			Service: healthSvc,
-			Auth:    connectionSvc,
+	healthIngest := echo.WrapHandler(http.StripPrefix("/ingest/health", health.NewHandler(health.HandlerConfig{
+		Service: healthSvc,
+		Auth:    connectionSvc,
 
-			// Left at the package defaults. The MCP bound is configurable
-			// because a call there can reach a paid model and an operator may
-			// need to tighten it; a write here costs a transaction, so there is
-			// nothing yet for a knob to protect against.
-			TrustedProxies: cfg.TrustedProxies,
-			Log:            slog.Default(),
-		})))
-	})
+		// Left at the package defaults. The MCP bound is configurable
+		// because a call there can reach a paid model and an operator may
+		// need to tighten it; a write here costs a transaction, so there is
+		// nothing yet for a knob to protect against.
+		TrustedProxies: cfg.TrustedProxies,
+		Log:            slog.Default(),
+	})))
+	ingest := e.Group("/ingest/health", echomw.BodyLimit(8<<20))
+	ingest.Any("", healthIngest)
+	ingest.Any("/*", healthIngest)
 
 	// The Telegram webhook joins /mcp and /ingest/health for the third time for
 	// the same reason: Telegram is not a browser, holds no cookie, and proves
@@ -1223,10 +1218,7 @@ func routes(
 	// update is a small JSON envelope and nothing legitimate approaches even
 	// this.
 	if telegramWebhook != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.MaxBody(1 << 20))
-			r.Handle("/webhooks/telegram", telegramWebhook)
-		})
+		e.Any("/webhooks/telegram", echo.WrapHandler(telegramWebhook), echomw.BodyLimit(1<<20))
 	}
 
 	r.Group(func(r chi.Router) {

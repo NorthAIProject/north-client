@@ -7,37 +7,38 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/moderation"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
-// chatRoutes are a crew's chat for native clients: the space, its channels,
-// their messages, and what members do to messages.
-func (a *API) chatRoutes(r chi.Router) {
-	r.Get("/crews/unread", a.unread)
-	r.Get("/crews/{crewID}/space", a.space)
-	r.Put("/crews/{crewID}/notifications", a.setNotify)
-	r.Post("/crews/{crewID}/channels", a.createChannel)
-	r.Patch("/crews/{crewID}/channels/{channelID}", a.updateChannel)
-	r.Delete("/crews/{crewID}/channels/{channelID}", a.deleteChannel)
-	r.Get("/crews/{crewID}/channels/{channelID}/messages", a.messages)
-	r.Post("/crews/{crewID}/channels/{channelID}/messages", a.send)
-	r.Get("/crews/{crewID}/channels/{channelID}/pins", a.pins)
-	r.Post("/crews/{crewID}/channels/{channelID}/read", a.markRead)
-	r.Get("/crews/{crewID}/messages/{messageID}", a.message)
-	r.Patch("/crews/{crewID}/messages/{messageID}", a.edit)
-	r.Delete("/crews/{crewID}/messages/{messageID}", a.deleteMessage)
-	r.Put("/crews/{crewID}/messages/{messageID}/reactions/{emoji}", a.react(true))
-	r.Delete("/crews/{crewID}/messages/{messageID}/reactions/{emoji}", a.react(false))
-	r.Put("/crews/{crewID}/messages/{messageID}/pin", a.pin(true))
-	r.Delete("/crews/{crewID}/messages/{messageID}/pin", a.pin(false))
-	r.Post("/crews/{crewID}/messages/{messageID}/report", a.report)
+// registerChat registers a crew's chat for native clients: the space, its
+// channels, their messages, and what members do to messages.
+func (a *API) registerChat(g *echo.Group) {
+	g.GET("/crews/unread", a.unread)
+	g.GET("/crews/:crewID/space", a.space)
+	g.PUT("/crews/:crewID/notifications", a.setNotify)
+	g.POST("/crews/:crewID/channels", a.createChannel)
+	g.PATCH("/crews/:crewID/channels/:channelID", a.updateChannel)
+	g.DELETE("/crews/:crewID/channels/:channelID", a.deleteChannel)
+	g.GET("/crews/:crewID/channels/:channelID/messages", a.messages)
+	g.POST("/crews/:crewID/channels/:channelID/messages", a.send)
+	g.GET("/crews/:crewID/channels/:channelID/pins", a.pins)
+	g.POST("/crews/:crewID/channels/:channelID/read", a.markRead)
+	g.GET("/crews/:crewID/messages/:messageID", a.message)
+	g.PATCH("/crews/:crewID/messages/:messageID", a.edit)
+	g.DELETE("/crews/:crewID/messages/:messageID", a.deleteMessage)
+	g.PUT("/crews/:crewID/messages/:messageID/reactions/:emoji", a.react(true))
+	g.DELETE("/crews/:crewID/messages/:messageID/reactions/:emoji", a.react(false))
+	g.PUT("/crews/:crewID/messages/:messageID/pin", a.pin(true))
+	g.DELETE("/crews/:crewID/messages/:messageID/pin", a.pin(false))
+	g.POST("/crews/:crewID/messages/:messageID/report", a.report)
 }
 
 // CrewPerson is someone in a crew. Role is owner, admin or member on the
@@ -156,245 +157,241 @@ type NotifyRequest struct {
 // for the JSON around it.
 const messageBodyLimit = 16 << 10
 
-func (a *API) space(w http.ResponseWriter, r *http.Request) {
-	crewID, ok := pathID(w, r, "crewID")
-	if !ok {
-		return
-	}
-	sp, err := a.svc.Space(r.Context(), crewID, auth.MustUser(r.Context()).ID)
+func (a *API) space(c *echo.Context) error {
+	crewID, err := echox.UUIDParam(c, "crewID")
 	if err != nil {
-		httpx.Error(w, err, "The crew could not be loaded.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, a.projectSpace(sp))
+	ctx := c.Request().Context()
+	sp, err := a.svc.Space(ctx, crewID, auth.MustUser(ctx).ID)
+	if err != nil {
+		return httpx.Fail(err, "The crew could not be loaded.")
+	}
+	return c.JSON(http.StatusOK, a.projectSpace(sp))
 }
 
-func (a *API) setNotify(w http.ResponseWriter, r *http.Request) {
-	crewID, ok := pathID(w, r, "crewID")
-	if !ok {
-		return
+func (a *API) setNotify(c *echo.Context) error {
+	crewID, err := echox.UUIDParam(c, "crewID")
+	if err != nil {
+		return err
 	}
 	var req NotifyRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if err := a.svc.SetNotify(r.Context(), crewID, auth.MustUser(r.Context()).ID, req.Notify, req.MutedUntil); err != nil {
-		httpx.Error(w, err, "The notification setting could not be saved.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.SetNotify(ctx, crewID, auth.MustUser(ctx).ID, req.Notify, req.MutedUntil); err != nil {
+		return httpx.Fail(err, "The notification setting could not be saved.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) createChannel(w http.ResponseWriter, r *http.Request) {
-	crewID, ok := pathID(w, r, "crewID")
-	if !ok {
-		return
+func (a *API) createChannel(c *echo.Context) error {
+	crewID, err := echox.UUIDParam(c, "crewID")
+	if err != nil {
+		return err
 	}
 	var req ChannelRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err = readJSON(c, &req); err != nil {
+		return err
 	}
-	ch, err := a.svc.CreateChannel(r.Context(), crewID, auth.MustUser(r.Context()).ID, req.Name, req.Topic)
+	ctx := c.Request().Context()
+	ch, err := a.svc.CreateChannel(ctx, crewID, auth.MustUser(ctx).ID, req.Name, req.Topic)
 	if err != nil {
-		httpx.Error(w, err, "The channel could not be made.")
-		return
+		return httpx.Fail(err, "The channel could not be made.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, projectChannel(SpaceChannel{Channel: ch}))
+	return c.JSON(http.StatusCreated, projectChannel(SpaceChannel{Channel: ch}))
 }
 
-func (a *API) updateChannel(w http.ResponseWriter, r *http.Request) {
-	crewID, channelID, ok := twoIDs(w, r, "channelID")
-	if !ok {
-		return
+func (a *API) updateChannel(c *echo.Context) error {
+	crewID, channelID, err := twoIDs(c, "channelID")
+	if err != nil {
+		return err
 	}
 	var req ChannelRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err = readJSON(c, &req); err != nil {
+		return err
 	}
-	ch, err := a.svc.UpdateChannel(r.Context(), crewID, channelID, auth.MustUser(r.Context()).ID, req.Name, req.Topic)
+	ctx := c.Request().Context()
+	ch, err := a.svc.UpdateChannel(ctx, crewID, channelID, auth.MustUser(ctx).ID, req.Name, req.Topic)
 	if err != nil {
-		httpx.Error(w, err, "The channel could not be changed.")
-		return
+		return httpx.Fail(err, "The channel could not be changed.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectChannel(SpaceChannel{Channel: ch}))
+	return c.JSON(http.StatusOK, projectChannel(SpaceChannel{Channel: ch}))
 }
 
-func (a *API) deleteChannel(w http.ResponseWriter, r *http.Request) {
-	crewID, channelID, ok := twoIDs(w, r, "channelID")
-	if !ok {
-		return
+func (a *API) deleteChannel(c *echo.Context) error {
+	crewID, channelID, err := twoIDs(c, "channelID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.DeleteChannel(r.Context(), crewID, channelID, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The channel could not be deleted.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.DeleteChannel(ctx, crewID, channelID, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The channel could not be deleted.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // messages pages a channel: before= for older history, after= for what is
 // new since the last message the client has; neither for the latest page.
-func (a *API) messages(w http.ResponseWriter, r *http.Request) {
-	crewID, channelID, ok := twoIDs(w, r, "channelID")
-	if !ok {
-		return
-	}
-	q := r.URL.Query()
-	before, err1 := queryInt(q.Get("before"))
-	after, err2 := queryInt(q.Get("after"))
-	limit, err3 := queryInt(q.Get("limit"))
-	if err := errors.Join(err1, err2, err3); err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("cursor", "before, after and limit are whole numbers"), "The page could not be read.")
-		return
-	}
-	page, err := a.chat.List(r.Context(), crewID, channelID, auth.MustUser(r.Context()).ID, before, after, int(limit))
+func (a *API) messages(c *echo.Context) error {
+	crewID, channelID, err := twoIDs(c, "channelID")
 	if err != nil {
-		httpx.Error(w, err, "The messages could not be loaded.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectPage(r.Context(), page))
+	before, err1 := queryInt(c.QueryParam("before"))
+	after, err2 := queryInt(c.QueryParam("after"))
+	limit, err3 := queryInt(c.QueryParam("limit"))
+	if err = errors.Join(err1, err2, err3); err != nil {
+		return httpx.Fail(apperr.FieldErrors{}.Add("cursor", "before, after and limit are whole numbers"), "The page could not be read.")
+	}
+	ctx := c.Request().Context()
+	page, err := a.chat.List(ctx, crewID, channelID, auth.MustUser(ctx).ID, before, after, int(limit))
+	if err != nil {
+		return httpx.Fail(err, "The messages could not be loaded.")
+	}
+	return c.JSON(http.StatusOK, projectPage(ctx, page))
 }
 
-func (a *API) send(w http.ResponseWriter, r *http.Request) {
-	crewID, channelID, ok := twoIDs(w, r, "channelID")
-	if !ok {
-		return
+func (a *API) send(c *echo.Context) error {
+	crewID, channelID, err := twoIDs(c, "channelID")
+	if err != nil {
+		return err
 	}
 	var req SendMessageRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: messageBodyLimit}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err = echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: messageBodyLimit}, "The request body could not be read."); err != nil {
+		return err
 	}
-	m, err := a.chat.Send(r.Context(), crewID, channelID, auth.MustUser(r.Context()).ID, SendInput(req))
+	ctx := c.Request().Context()
+	m, err := a.chat.Send(ctx, crewID, channelID, auth.MustUser(ctx).ID, SendInput(req))
 	if err != nil {
-		postError(w, err, "The message could not be sent.")
-		return
+		return postError(c, err, "The message could not be sent.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, projectMessage(r.Context(), m))
+	return c.JSON(http.StatusCreated, projectMessage(ctx, m))
 }
 
-func (a *API) pins(w http.ResponseWriter, r *http.Request) {
-	crewID, channelID, ok := twoIDs(w, r, "channelID")
-	if !ok {
-		return
-	}
-	pins, err := a.chat.Pins(r.Context(), crewID, channelID, auth.MustUser(r.Context()).ID)
+func (a *API) pins(c *echo.Context) error {
+	crewID, channelID, err := twoIDs(c, "channelID")
 	if err != nil {
-		httpx.Error(w, err, "The pins could not be loaded.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, CrewMessageList{Messages: projectMessages(r.Context(), pins)})
+	ctx := c.Request().Context()
+	pins, err := a.chat.Pins(ctx, crewID, channelID, auth.MustUser(ctx).ID)
+	if err != nil {
+		return httpx.Fail(err, "The pins could not be loaded.")
+	}
+	return c.JSON(http.StatusOK, CrewMessageList{Messages: projectMessages(ctx, pins)})
 }
 
-func (a *API) markRead(w http.ResponseWriter, r *http.Request) {
-	crewID, channelID, ok := twoIDs(w, r, "channelID")
-	if !ok {
-		return
+func (a *API) markRead(c *echo.Context) error {
+	crewID, channelID, err := twoIDs(c, "channelID")
+	if err != nil {
+		return err
 	}
 	var req ReadRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if err := a.chat.MarkRead(r.Context(), crewID, channelID, auth.MustUser(r.Context()).ID, req.Seq); err != nil {
-		httpx.Error(w, err, "That could not be marked read.")
-		return
+	ctx := c.Request().Context()
+	if err := a.chat.MarkRead(ctx, crewID, channelID, auth.MustUser(ctx).ID, req.Seq); err != nil {
+		return httpx.Fail(err, "That could not be marked read.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) message(w http.ResponseWriter, r *http.Request) {
-	crewID, messageID, ok := twoIDs(w, r, "messageID")
-	if !ok {
-		return
-	}
-	m, err := a.chat.Get(r.Context(), crewID, messageID, auth.MustUser(r.Context()).ID)
+func (a *API) message(c *echo.Context) error {
+	crewID, messageID, err := twoIDs(c, "messageID")
 	if err != nil {
-		httpx.Error(w, err, "The message could not be loaded.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectMessage(r.Context(), m))
+	ctx := c.Request().Context()
+	m, err := a.chat.Get(ctx, crewID, messageID, auth.MustUser(ctx).ID)
+	if err != nil {
+		return httpx.Fail(err, "The message could not be loaded.")
+	}
+	return c.JSON(http.StatusOK, projectMessage(ctx, m))
 }
 
-func (a *API) edit(w http.ResponseWriter, r *http.Request) {
-	crewID, messageID, ok := twoIDs(w, r, "messageID")
-	if !ok {
-		return
+func (a *API) edit(c *echo.Context) error {
+	crewID, messageID, err := twoIDs(c, "messageID")
+	if err != nil {
+		return err
 	}
 	var req EditMessageRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: messageBodyLimit}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err = echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: messageBodyLimit}, "The request body could not be read."); err != nil {
+		return err
 	}
-	m, err := a.chat.Edit(r.Context(), crewID, messageID, auth.MustUser(r.Context()).ID, req.Body)
+	ctx := c.Request().Context()
+	m, err := a.chat.Edit(ctx, crewID, messageID, auth.MustUser(ctx).ID, req.Body)
 	if err != nil {
-		postError(w, err, "The message could not be changed.")
-		return
+		return postError(c, err, "The message could not be changed.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectMessage(r.Context(), m))
+	return c.JSON(http.StatusOK, projectMessage(ctx, m))
 }
 
-func (a *API) deleteMessage(w http.ResponseWriter, r *http.Request) {
-	crewID, messageID, ok := twoIDs(w, r, "messageID")
-	if !ok {
-		return
+func (a *API) deleteMessage(c *echo.Context) error {
+	crewID, messageID, err := twoIDs(c, "messageID")
+	if err != nil {
+		return err
 	}
-	if err := a.chat.Delete(r.Context(), crewID, messageID, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The message could not be deleted.")
-		return
+	ctx := c.Request().Context()
+	if err := a.chat.Delete(ctx, crewID, messageID, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The message could not be deleted.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) react(on bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		crewID, messageID, ok := twoIDs(w, r, "messageID")
-		if !ok {
-			return
+func (a *API) react(on bool) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		crewID, messageID, err := twoIDs(c, "messageID")
+		if err != nil {
+			return err
 		}
-		if err := a.chat.React(r.Context(), crewID, messageID, auth.MustUser(r.Context()).ID, chi.URLParam(r, "emoji"), on); err != nil {
-			httpx.Error(w, err, "The reaction could not be saved.")
-			return
+		ctx := c.Request().Context()
+		if err := a.chat.React(ctx, crewID, messageID, auth.MustUser(ctx).ID, c.Param("emoji"), on); err != nil {
+			return httpx.Fail(err, "The reaction could not be saved.")
 		}
-		w.WriteHeader(http.StatusNoContent)
-	}
-}
-
-func (a *API) pin(on bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		crewID, messageID, ok := twoIDs(w, r, "messageID")
-		if !ok {
-			return
-		}
-		if err := a.chat.Pin(r.Context(), crewID, messageID, auth.MustUser(r.Context()).ID, on); err != nil {
-			httpx.Error(w, err, "The pin could not be changed.")
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
+		return c.NoContent(http.StatusNoContent)
 	}
 }
 
-func (a *API) report(w http.ResponseWriter, r *http.Request) {
-	crewID, messageID, ok := twoIDs(w, r, "messageID")
-	if !ok {
-		return
+func (a *API) pin(on bool) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		crewID, messageID, err := twoIDs(c, "messageID")
+		if err != nil {
+			return err
+		}
+		ctx := c.Request().Context()
+		if err := a.chat.Pin(ctx, crewID, messageID, auth.MustUser(ctx).ID, on); err != nil {
+			return httpx.Fail(err, "The pin could not be changed.")
+		}
+		return c.NoContent(http.StatusNoContent)
+	}
+}
+
+func (a *API) report(c *echo.Context) error {
+	crewID, messageID, err := twoIDs(c, "messageID")
+	if err != nil {
+		return err
 	}
 	var req ReportRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if err := a.chat.Report(r.Context(), crewID, messageID, auth.MustUser(r.Context()).ID, req.Reason, req.Note); err != nil {
-		httpx.Error(w, err, "The report could not be sent.")
-		return
+	ctx := c.Request().Context()
+	if err := a.chat.Report(ctx, crewID, messageID, auth.MustUser(ctx).ID, req.Reason, req.Note); err != nil {
+		return httpx.Fail(err, "The report could not be sent.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // unread is, per crew, what the caller has not read, for the badge on the
 // way in.
-func (a *API) unread(w http.ResponseWriter, r *http.Request) {
-	list, err := a.chat.Unread(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) unread(c *echo.Context) error {
+	ctx := c.Request().Context()
+	list, err := a.chat.Unread(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Unread counts could not be loaded.")
-		return
+		return httpx.Fail(err, "Unread counts could not be loaded.")
 	}
 	out := CrewUnreadList{Crews: []CrewUnreadView{}}
 	at := map[uuid.UUID]int{}
@@ -409,17 +406,17 @@ func (a *API) unread(w http.ResponseWriter, r *http.Request) {
 		out.Crews[i].Mentions += u.Mentions
 		out.Total += u.Count
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // unreadByCrew sums the caller's unread channels per crew. Without a chat
 // (an API built for tests of the board alone) there is nothing unread.
-func (a *API) unreadByCrew(r *http.Request) (map[uuid.UUID]CrewUnreadView, error) {
+func (a *API) unreadByCrew(ctx context.Context) (map[uuid.UUID]CrewUnreadView, error) {
 	out := map[uuid.UUID]CrewUnreadView{}
 	if a.chat == nil {
 		return out, nil
 	}
-	list, err := a.chat.Unread(r.Context(), auth.MustUser(r.Context()).ID)
+	list, err := a.chat.Unread(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
 		return nil, err
 	}
@@ -434,14 +431,14 @@ func (a *API) unreadByCrew(r *http.Request) (map[uuid.UUID]CrewUnreadView, error
 
 // postError answers a refused post. Not having accepted the terms and being
 // suspended are both 403, so the code tells the client which screen to show.
-func postError(w http.ResponseWriter, err error, message string) {
+func postError(c *echo.Context, err error, message string) error {
 	switch {
 	case errors.Is(err, moderation.ErrTermsRequired):
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: "Accept the community terms to post.", Code: "terms_required"}})
+		return c.JSON(http.StatusForbidden, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: "Accept the community terms to post.", Code: "terms_required"}})
 	case errors.Is(err, moderation.ErrSuspended):
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: "You can't post right now.", Code: "suspended"}})
+		return c.JSON(http.StatusForbidden, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: "You can't post right now.", Code: "suspended"}})
 	default:
-		httpx.Error(w, err, message)
+		return httpx.Fail(err, message)
 	}
 }
 
@@ -496,13 +493,16 @@ func projectMessage(ctx context.Context, m Message) CrewMessageView {
 }
 
 // twoIDs is the crew and one more id from the path.
-func twoIDs(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, uuid.UUID, bool) {
-	crewID, ok := pathID(w, r, "crewID")
-	if !ok {
-		return uuid.Nil, uuid.Nil, false
+func twoIDs(c *echo.Context, name string) (uuid.UUID, uuid.UUID, error) {
+	crewID, err := echox.UUIDParam(c, "crewID")
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
 	}
-	id, ok := pathID(w, r, name)
-	return crewID, id, ok
+	id, err := echox.UUIDParam(c, name)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	return crewID, id, nil
 }
 
 // queryInt reads an optional whole number from the query; empty is zero.

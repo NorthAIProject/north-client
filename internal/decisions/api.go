@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
@@ -18,16 +18,16 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/decisions", a.list)
-	r.Post("/decisions", a.create)
-	r.Get("/decisions/calibration", a.calibration)
-	r.Get("/decisions/{decisionID}", a.show)
-	r.Put("/decisions/{decisionID}", a.update)
-	r.Delete("/decisions/{decisionID}", a.destroy)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/decisions", a.list)
+	g.POST("/decisions", a.create)
+	g.GET("/decisions/calibration", a.calibration)
+	g.GET("/decisions/:decisionID", a.show)
+	g.PUT("/decisions/:decisionID", a.update)
+	g.DELETE("/decisions/:decisionID", a.destroy)
 }
 
 type DecisionView struct {
@@ -64,104 +64,91 @@ type DecisionRequest struct {
 	Held string `json:"held"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	list, err := a.svc.List(r.Context(), auth.MustUser(r.Context()).ID, 100)
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
+	list, err := a.svc.List(ctx, auth.MustUser(ctx).ID, 100)
 	if err != nil {
-		httpx.Error(w, err, "Decisions could not be loaded.")
-		return
+		return httpx.Fail(err, "Decisions could not be loaded.")
 	}
 	out := DecisionList{Decisions: make([]DecisionView, 0, len(list))}
 	for _, d := range list {
 		out.Decisions = append(out.Decisions, project(d))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) create(w http.ResponseWriter, r *http.Request) {
+func (a *API) create(c *echo.Context) error {
 	var req DecisionRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	d, err := a.svc.Create(r.Context(), auth.MustUser(r.Context()).ID, Input(req))
+	ctx := c.Request().Context()
+	d, err := a.svc.Create(ctx, auth.MustUser(ctx).ID, Input(req))
 	if err != nil {
-		httpx.Error(w, err, "The decision could not be saved.")
-		return
+		return httpx.Fail(err, "The decision could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, project(d))
+	return c.JSON(http.StatusCreated, project(d))
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	id, ok := decisionID(w, r)
-	if !ok {
-		return
-	}
-	d, err := a.svc.Get(r.Context(), id, auth.MustUser(r.Context()).ID)
+func (a *API) show(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "decisionID")
 	if err != nil {
-		httpx.Error(w, err, "The decision could not be loaded.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, project(d))
+	ctx := c.Request().Context()
+	d, err := a.svc.Get(ctx, id, auth.MustUser(ctx).ID)
+	if err != nil {
+		return httpx.Fail(err, "The decision could not be loaded.")
+	}
+	return c.JSON(http.StatusOK, project(d))
 }
 
-func (a *API) update(w http.ResponseWriter, r *http.Request) {
-	id, ok := decisionID(w, r)
-	if !ok {
-		return
+func (a *API) update(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "decisionID")
+	if err != nil {
+		return err
 	}
 	var req DecisionRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err = readJSON(c, &req); err != nil {
+		return err
 	}
-	d, err := a.svc.Update(r.Context(), id, auth.MustUser(r.Context()).ID, Input(req))
+	ctx := c.Request().Context()
+	d, err := a.svc.Update(ctx, id, auth.MustUser(ctx).ID, Input(req))
 	if err != nil {
-		httpx.Error(w, err, "The decision could not be saved.")
-		return
+		return httpx.Fail(err, "The decision could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, project(d))
+	return c.JSON(http.StatusOK, project(d))
 }
 
-func (a *API) calibration(w http.ResponseWriter, r *http.Request) {
-	c, err := a.svc.Calibration(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) calibration(c *echo.Context) error {
+	ctx := c.Request().Context()
+	cal, err := a.svc.Calibration(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Calibration could not be loaded.")
-		return
+		return httpx.Fail(err, "Calibration could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectCalibration(c))
+	return c.JSON(http.StatusOK, projectCalibration(cal))
 }
 
 func projectCalibration(c Calibration) CalibrationView {
 	return CalibrationView{Yes: c.Yes, Partly: c.Partly, No: c.No, Revisited: c.Revisited()}
 }
 
-func (a *API) destroy(w http.ResponseWriter, r *http.Request) {
-	id, ok := decisionID(w, r)
-	if !ok {
-		return
+func (a *API) destroy(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "decisionID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.Delete(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The decision could not be deleted.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.Delete(ctx, id, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The decision could not be deleted.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 func project(d Decision) DecisionView {
 	return DecisionView{ID: d.ID, Title: d.Title, Options: d.Options, Rationale: d.Rationale, Outcome: d.Outcome, Held: d.Held, DecidedAt: d.DecidedAt}
 }
 
-func decisionID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, "decisionID"))
-	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
-func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
-	}
-	return true
+func readJSON(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 64 << 10}, "The request body could not be read.")
 }

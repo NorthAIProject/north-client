@@ -4,11 +4,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/medications/medication"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -21,13 +22,13 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/medications", a.show)
-	r.Post("/medications", a.add)
-	r.Put("/medications/{medicationID}", a.update)
-	r.Post("/medications/{medicationID}/stop", a.stop)
-	r.Post("/medications/{medicationID}/doses", a.logDose)
-	r.Delete("/medications/doses/{logID}", a.undoDose)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/medications", a.show)
+	g.POST("/medications", a.add)
+	g.PUT("/medications/:medicationID", a.update)
+	g.POST("/medications/:medicationID/stop", a.stop)
+	g.POST("/medications/:medicationID/doses", a.logDose)
+	g.DELETE("/medications/doses/:logID", a.undoDose)
 }
 
 // MedicationRequest adds a medication (name required; remind defaults to
@@ -101,13 +102,12 @@ type MedicationsView struct {
 	Today       MedicationsTodayView `json:"today"`
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) { a.respond(w, r, http.StatusOK) }
+func (a *API) show(c *echo.Context) error { return a.respond(c, http.StatusOK) }
 
-func (a *API) add(w http.ResponseWriter, r *http.Request) {
+func (a *API) add(c *echo.Context) error {
 	var req MedicationRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 8 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 8 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
 	in := Input{Remind: true}
 	if req.Name != nil {
@@ -128,94 +128,92 @@ func (a *API) add(w http.ResponseWriter, r *http.Request) {
 	if req.Notes != nil {
 		in.Notes = *req.Notes
 	}
-	if _, err := a.svc.Add(r.Context(), auth.MustUser(r.Context()), in); err != nil {
-		httpx.Error(w, err, "The medication could not be added.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.Add(ctx, auth.MustUser(ctx), in); err != nil {
+		return httpx.Fail(err, "The medication could not be added.")
 	}
-	a.respond(w, r, http.StatusCreated)
+	return a.respond(c, http.StatusCreated)
 }
 
-func (a *API) update(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "medicationID")
-	if !ok {
-		return
+func (a *API) update(c *echo.Context) error {
+	id, err := pathID(c, "medicationID")
+	if err != nil {
+		return err
 	}
 	var req MedicationRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 8 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 8 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
 	patch := Patch{Name: req.Name, Dose: req.Dose, Times: req.Times, Days: req.DaysOfWeek, Remind: req.Remind, Notes: req.Notes}
-	if _, err := a.svc.Update(r.Context(), auth.MustUser(r.Context()), id, patch); err != nil {
-		httpx.Error(w, err, "The medication could not be changed.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.Update(ctx, auth.MustUser(ctx), id, patch); err != nil {
+		return httpx.Fail(err, "The medication could not be changed.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) stop(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "medicationID")
-	if !ok {
-		return
+func (a *API) stop(c *echo.Context) error {
+	id, err := pathID(c, "medicationID")
+	if err != nil {
+		return err
 	}
-	if _, err := a.svc.Stop(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, "The medication could not be stopped.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.Stop(ctx, auth.MustUser(ctx), id); err != nil {
+		return httpx.Fail(err, "The medication could not be stopped.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) logDose(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "medicationID")
-	if !ok {
-		return
+func (a *API) logDose(c *echo.Context) error {
+	id, err := pathID(c, "medicationID")
+	if err != nil {
+		return err
 	}
 	var req DoseRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	if _, err := a.svc.LogDose(r.Context(), auth.MustUser(r.Context()), id, req.Status, req.Slot); err != nil {
-		httpx.Error(w, err, "The dose could not be logged.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.LogDose(ctx, auth.MustUser(ctx), id, req.Status, req.Slot); err != nil {
+		return httpx.Fail(err, "The dose could not be logged.")
 	}
-	a.respond(w, r, http.StatusCreated)
+	return a.respond(c, http.StatusCreated)
 }
 
-func (a *API) undoDose(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "logID")
-	if !ok {
-		return
+func (a *API) undoDose(c *echo.Context) error {
+	id, err := pathID(c, "logID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.UndoDose(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, "That could not be undone.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.UndoDose(ctx, auth.MustUser(ctx), id); err != nil {
+		return httpx.Fail(err, "That could not be undone.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
-	user := auth.MustUser(r.Context())
-	meds, err := a.svc.List(r.Context(), user, true)
+func (a *API) respond(c *echo.Context, status int) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	meds, err := a.svc.List(ctx, user, true)
 	if err != nil {
-		httpx.Error(w, err, "Your medications could not be loaded.")
-		return
+		return httpx.Fail(err, "Your medications could not be loaded.")
 	}
-	day, err := a.svc.Today(r.Context(), user)
+	day, err := a.svc.Today(ctx, user)
 	if err != nil {
-		httpx.Error(w, err, "Today's medications could not be loaded.")
-		return
+		return httpx.Fail(err, "Today's medications could not be loaded.")
 	}
-	httpx.WriteJSON(w, status, Project(meds, day))
+	return c.JSON(status, Project(meds, day))
 }
 
-func pathID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, name))
+// pathID reads a medication or dose id; one that does not parse names
+// nothing, so it is a 404 in this API's own words.
+func pathID(c *echo.Context, name string) (uuid.UUID, error) {
+	id, err := uuid.Parse(c.Param(name))
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "No such medication or dose.")
-		return uuid.Nil, false
+		return uuid.Nil, httpx.Fail(apperr.ErrNotFound, "No such medication or dose.")
 	}
-	return id, true
+	return id, nil
 }
 
 // Project is the medications payload.

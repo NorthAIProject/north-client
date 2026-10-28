@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -22,14 +22,14 @@ func TestPutSharingWithoutAwardsKeepsIt(t *testing.T) {
 	svc := achievements.NewService(pool)
 	u := person(t, pool, "put-awards@north.test", "Pru")
 
-	r := chi.NewRouter()
-	achievements.NewAPI(svc).Routes(r)
+	e := echo.New()
+	achievements.NewAPI(svc).Register(e.Group(""))
 	put := func(body string) {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodPut, "/social/sharing", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req.WithContext(auth.ContextWithUser(req.Context(), u)))
+		e.ServeHTTP(rec, req.WithContext(auth.ContextWithUser(req.Context(), u)))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("PUT %s = %d %s", body, rec.Code, rec.Body)
 		}

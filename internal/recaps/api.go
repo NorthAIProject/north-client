@@ -4,24 +4,25 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/recaps/recap"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
-// API is the recap for native clients. Mount behind auth.RequireBearer.
+// API is the recap for native clients. Register behind auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/recap", a.get)
-	r.Post("/recap/share", a.share)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/recap", a.get)
+	g.POST("/recap/share", a.share)
 }
 
 type TotalsView struct {
@@ -77,31 +78,30 @@ type ShareView struct {
 	TrainingShared bool `json:"trainingShared"`
 }
 
-func (a *API) get(w http.ResponseWriter, r *http.Request) {
-	key := r.URL.Query().Get("range")
+func (a *API) get(c *echo.Context) error {
+	key := c.QueryParam("range")
 	if key == "" {
 		key = recap.KeyWeek
 	}
-	rc, err := a.svc.Load(r.Context(), auth.MustUser(r.Context()), key)
+	ctx := c.Request().Context()
+	rc, err := a.svc.Load(ctx, auth.MustUser(ctx), key)
 	if err != nil {
-		httpx.Error(w, err, "The recap could not be loaded.")
-		return
+		return httpx.Fail(err, "The recap could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectRecap(rc))
+	return c.JSON(http.StatusOK, projectRecap(rc))
 }
 
-func (a *API) share(w http.ResponseWriter, r *http.Request) {
+func (a *API) share(c *echo.Context) error {
 	var req ShareRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 1 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	shared, err := a.svc.Share(r.Context(), auth.MustUser(r.Context()), req.Range, req.ShareTraining)
+	ctx := c.Request().Context()
+	shared, err := a.svc.Share(ctx, auth.MustUser(ctx), req.Range, req.ShareTraining)
 	if err != nil {
-		httpx.Error(w, err, "The recap could not be shared.")
-		return
+		return httpx.Fail(err, "The recap could not be shared.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, ShareView{ID: shared.ID, TrainingShared: shared.TrainingShared})
+	return c.JSON(http.StatusOK, ShareView{ID: shared.ID, TrainingShared: shared.TrainingShared})
 }
 
 func projectRecap(rc recap.Recap) RecapView {

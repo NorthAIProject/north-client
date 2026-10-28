@@ -7,10 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/quota"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -89,39 +90,36 @@ type CommitResponse struct {
 	Skipped  []Item    `json:"skipped,omitempty"`
 }
 
-// Routes mounts capture endpoints relative to the API version boundary. It
-// carries its own authentication because it is not behind the browser session
-// middleware: the caller is a script or an agent holding a personal access
-// token, not a cookie.
-func (a *API) Routes(r chi.Router) {
-	r.Route("/capture", func(r chi.Router) {
-		r.Use(a.authenticate)
-		r.Post("/parse", a.parse)
-		r.Post("/commit", a.commit)
-		r.Post("/foods", a.foods)
-	})
+// Register registers capture endpoints relative to the API version boundary.
+// It carries its own authentication because it is not behind the browser
+// session middleware: the caller is a script or an agent holding a personal
+// access token, not a cookie.
+func (a *API) Register(g *echo.Group) {
+	cg := g.Group("/capture", a.authenticate)
+	cg.POST("/parse", a.parse)
+	cg.POST("/commit", a.commit)
+	cg.POST("/foods", a.foods)
 }
 
-func (a *API) parse(w http.ResponseWriter, r *http.Request) {
-	user := userFrom(r.Context())
+func (a *API) parse(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := userFrom(ctx)
 
 	var req ParseRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: maxAPIBytes}); err != nil {
-		httpx.Error(w, err, "The request body must be JSON with a text field.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: maxAPIBytes}, "The request body must be JSON with a text field."); err != nil {
+		return err
 	}
 
-	if !a.allow(w, r, user) {
-		return
+	if err := a.allow(c, user); err != nil {
+		return err
 	}
 
-	draft, err := a.svc.Parse(r.Context(), user, req.Text)
+	draft, err := a.svc.Parse(ctx, user, req.Text)
 	if err != nil {
-		a.fail(w, err, "That could not be read.")
-		return
+		return a.fail(err, "That could not be read.")
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, ParseResponse{
+	return c.JSON(http.StatusOK, ParseResponse{
 		Items:    nonNil(draft.Items),
 		Unparsed: nonNilStrings(draft.Unparsed),
 	})
@@ -130,68 +128,64 @@ func (a *API) parse(w http.ResponseWriter, r *http.Request) {
 // foods reads a meal into portions, each with the ingredients it could mean.
 // It writes nothing: the app adds the portions a person kept through the
 // nutrition API, one call per portion.
-func (a *API) foods(w http.ResponseWriter, r *http.Request) {
-	user := userFrom(r.Context())
+func (a *API) foods(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := userFrom(ctx)
 
 	var req ParseRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: maxAPIBytes}); err != nil {
-		httpx.Error(w, err, "The request body must be JSON with a text field.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: maxAPIBytes}, "The request body must be JSON with a text field."); err != nil {
+		return err
 	}
-	if !a.allow(w, r, user) {
-		return
+	if err := a.allow(c, user); err != nil {
+		return err
 	}
 
-	draft, err := a.svc.ParseFoods(r.Context(), user, req.Text)
+	draft, err := a.svc.ParseFoods(ctx, user, req.Text)
 	if err != nil {
-		a.fail(w, err, "That could not be read.")
-		return
+		return a.fail(err, "That could not be read.")
 	}
 
 	draft.Unparsed = nonNilStrings(draft.Unparsed)
-	httpx.WriteJSON(w, http.StatusOK, draft)
+	return c.JSON(http.StatusOK, draft)
 }
 
-// allow spends one parse from the account's capture quota, answering the
-// refusal itself when there is none left.
+// allow spends one parse from the account's capture quota, returning the
+// refusal when there is none left.
 //
 // Consume rather than the Guard middleware: Guard renders an HTML refusal
 // page, which is the wrong answer on a JSON route.
-func (a *API) allow(w http.ResponseWriter, r *http.Request, user users.User) bool {
-	decision, err := a.quotas.Consume(r.Context(), user.ID, string(user.Tier), quota.QuickCapture)
+func (a *API) allow(c *echo.Context, user users.User) error {
+	decision, err := a.quotas.Consume(c.Request().Context(), user.ID, string(user.Tier), quota.QuickCapture)
 	if err != nil {
 		a.log.Error("capture quota", slog.Any("error", err))
-		httpx.Error(w, err, "Something went wrong.")
-		return false
+		return httpx.Fail(err, "Something went wrong.")
 	}
 	if !decision.Allowed {
 		// The same answer the page gives, header and all: a caller should not
 		// have to learn two refusals for one limit.
 		if seconds := int(decision.RetryAfter.Seconds()); seconds > 0 {
-			w.Header().Set("Retry-After", strconv.Itoa(seconds))
+			c.Response().Header().Set("Retry-After", strconv.Itoa(seconds))
 		}
-		httpx.Error(w, httpx.ErrRateLimited, "You have made too many captures for now. Try again shortly.")
-		return false
+		return httpx.Fail(httpx.ErrRateLimited, "You have made too many captures for now. Try again shortly.")
 	}
-	return true
+	return nil
 }
 
-func (a *API) commit(w http.ResponseWriter, r *http.Request) {
-	user := userFrom(r.Context())
+func (a *API) commit(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := userFrom(ctx)
 
 	var req CommitRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: maxAPIBytes}); err != nil {
-		httpx.Error(w, err, "The request body must be JSON with an items array.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: maxAPIBytes}, "The request body must be JSON with an items array."); err != nil {
+		return err
 	}
 
-	receipt, err := a.svc.Commit(r.Context(), user, req.Items)
+	receipt, err := a.svc.Commit(ctx, user, req.Items)
 	if err != nil {
-		a.fail(w, err, "Those entries could not be saved.")
-		return
+		return a.fail(err, "Those entries could not be saved.")
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, CommitResponse{
+	return c.JSON(http.StatusOK, CommitResponse{
 		Written:  receipt.Written(),
 		Failed:   receipt.Failed(),
 		Outcomes: receipt.Outcomes,
@@ -199,49 +193,47 @@ func (a *API) commit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// fail answers a service error, logging the ones that are North's fault.
-func (a *API) fail(w http.ResponseWriter, err error, message string) {
+// fail turns a service error into the reply's error, logging the ones that
+// are North's fault.
+func (a *API) fail(err error, message string) error {
 	if httpx.Status(err) >= http.StatusInternalServerError {
 		a.log.Error("capture api", slog.Any("error", err))
-		httpx.Error(w, err, message)
-		return
+		return httpx.Fail(err, message)
 	}
 	// A validation failure carries a sentence the caller can act on. Nothing
 	// else does: a provider's 402 or 403 surfaces here below 500, and its text
 	// names the model and quotes the provider's own response body.
 	if apperr.Is(err, apperr.ErrValidation) || apperr.Is(err, apperr.ErrNotFound) {
-		httpx.Error(w, err, Sentence(err))
-		return
+		return httpx.Fail(err, Sentence(err))
 	}
-	httpx.Error(w, err, message)
+	return httpx.Fail(err, message)
 }
 
 type apiUserKey struct{}
 
-func (a *API) authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (a *API) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		r := c.Request()
 		token, ok := bearerToken(r)
 		if !ok {
-			a.unauthorized(w, r)
-			return
+			return a.unauthorized(c)
 		}
 
 		user, err := a.caller(r.Context(), token)
 		if err != nil {
 			if apperr.Is(err, apperr.ErrUnauthenticated) || apperr.Is(err, apperr.ErrNotFound) {
-				a.unauthorized(w, r)
-				return
+				return a.unauthorized(c)
 			}
 			// A lookup that failed for another reason is North's problem, and
 			// naming it would describe the deployment to someone who has not
 			// authenticated.
 			a.log.Error("capture api cannot resolve its caller", slog.Any("error", err))
-			httpx.Error(w, apperr.ErrUnavailable, "Something went wrong.")
-			return
+			return httpx.Fail(apperr.ErrUnavailable, "Something went wrong.")
 		}
 
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), apiUserKey{}, user)))
-	})
+		c.SetRequest(r.WithContext(context.WithValue(r.Context(), apiUserKey{}, user)))
+		return next(c)
+	}
 }
 
 // caller resolves a token to its person: an nk_ connection token for agents
@@ -260,10 +252,10 @@ func (a *API) caller(ctx context.Context, token string) (users.User, error) {
 // connectionTokenPrefix marks the tokens Settings → Connections issues.
 const connectionTokenPrefix = "nk_"
 
-func (a *API) unauthorized(w http.ResponseWriter, r *http.Request) {
-	a.log.Warn("capture api rejected", slog.String("remote", r.RemoteAddr))
-	w.Header().Set("WWW-Authenticate", `Bearer realm="north-capture"`)
-	httpx.Error(w, apperr.ErrUnauthenticated, "That token is not valid.")
+func (a *API) unauthorized(c *echo.Context) error {
+	a.log.Warn("capture api rejected", slog.String("remote", c.Request().RemoteAddr))
+	c.Response().Header().Set("WWW-Authenticate", `Bearer realm="north-capture"`)
+	return httpx.Fail(apperr.ErrUnauthenticated, "That token is not valid.")
 }
 
 func userFrom(ctx context.Context) users.User {

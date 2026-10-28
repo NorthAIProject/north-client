@@ -7,23 +7,23 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/meals"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 func (f planFixture) postJSON(t *testing.T, userID uuid.UUID, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	r := chi.NewRouter()
-	meals.NewAPI(meals.HandlerOptions{Plans: f.svc}).Routes(r)
+	e := echox.New(echox.Config{})
+	meals.NewAPI(meals.HandlerOptions{Plans: f.svc}).Register(e.Group(""))
 	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(auth.ContextWithUser(req.Context(), users.User{ID: userID, Timezone: "UTC"}))
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	e.ServeHTTP(rec, req)
 	return rec
 }
 

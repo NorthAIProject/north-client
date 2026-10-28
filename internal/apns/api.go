@@ -3,23 +3,24 @@ package apns
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
 // API lets the app register the device token iOS handed it, and forget it
-// on sign-out. Mount behind auth.RequireBearer.
+// on sign-out. Register behind auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Put("/devices/apns", a.register)
-	r.Delete("/devices/apns/{token}", a.unregister)
+func (a *API) Register(g *echo.Group) {
+	g.PUT("/devices/apns", a.register)
+	g.DELETE("/devices/apns/:token", a.unregister)
 }
 
 type RegisterRequest struct {
@@ -28,24 +29,23 @@ type RegisterRequest struct {
 	Environment string `json:"environment"`
 }
 
-func (a *API) register(w http.ResponseWriter, r *http.Request) {
+func (a *API) register(c *echo.Context) error {
 	var req RegisterRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
 	in := Input(req)
-	if _, err := a.svc.Register(r.Context(), auth.MustUser(r.Context()).ID, in); err != nil {
-		httpx.Error(w, err, "This device could not be registered for notifications.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.Register(ctx, auth.MustUser(ctx).ID, in); err != nil {
+		return httpx.Fail(err, "This device could not be registered for notifications.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) unregister(w http.ResponseWriter, r *http.Request) {
-	if err := a.svc.Unregister(r.Context(), auth.MustUser(r.Context()).ID, chi.URLParam(r, "token")); err != nil {
-		httpx.Error(w, err, "This device could not be removed.")
-		return
+func (a *API) unregister(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := a.svc.Unregister(ctx, auth.MustUser(ctx).ID, c.Param("token")); err != nil {
+		return httpx.Fail(err, "This device could not be removed.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }

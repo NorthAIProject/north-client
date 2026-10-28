@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -28,13 +29,13 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Post("/health/samples", a.sync)
-	r.Delete("/health/samples", a.forget)
-	r.Post("/health/blood-pressure", a.bloodPressure)
+func (a *API) Register(g *echo.Group) {
+	g.POST("/health/samples", a.sync)
+	g.DELETE("/health/samples", a.forget)
+	g.POST("/health/blood-pressure", a.bloodPressure)
 }
 
 type SampleReading struct {
@@ -82,18 +83,17 @@ type SyncResult struct {
 	Workouts int `json:"workouts"`
 }
 
-func (a *API) sync(w http.ResponseWriter, r *http.Request) {
+func (a *API) sync(c *echo.Context) error {
 	var req SyncRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: maxSyncBytes}); err != nil {
-		httpx.Error(w, err, "The health data could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: maxSyncBytes}, "The health data could not be read."); err != nil {
+		return err
 	}
 	if len(req.Readings) == 0 && len(req.Workouts) == 0 {
-		httpx.Error(w, apperr.Wrap(apperr.ErrValidation, "empty sync"), "There was nothing to sync.")
-		return
+		return httpx.Fail(apperr.Wrap(apperr.ErrValidation, "empty sync"), "There was nothing to sync.")
 	}
 
-	userID := auth.MustUser(r.Context()).ID
+	ctx := c.Request().Context()
+	userID := auth.MustUser(ctx).ID
 	var out SyncResult
 
 	if len(req.Readings) > 0 {
@@ -101,10 +101,9 @@ func (a *API) sync(w http.ResponseWriter, r *http.Request) {
 		for _, in := range req.Readings {
 			readings = append(readings, Reading(in))
 		}
-		result, err := a.svc.Ingest(r.Context(), userID, SourceAppleHealth, readings)
+		result, err := a.svc.Ingest(ctx, userID, SourceAppleHealth, readings)
 		if err != nil {
-			httpx.Error(w, err, "The health data could not be saved.")
-			return
+			return httpx.Fail(err, "The health data could not be saved.")
 		}
 		out.Readings = result.Written
 	}
@@ -114,26 +113,25 @@ func (a *API) sync(w http.ResponseWriter, r *http.Request) {
 		for _, in := range req.Workouts {
 			workouts = append(workouts, Workout(in))
 		}
-		result, err := a.svc.IngestWorkouts(r.Context(), userID, SourceAppleHealth, workouts)
+		result, err := a.svc.IngestWorkouts(ctx, userID, SourceAppleHealth, workouts)
 		if err != nil {
-			httpx.Error(w, err, "The workouts could not be saved.")
-			return
+			return httpx.Fail(err, "The workouts could not be saved.")
 		}
 		out.Workouts = result.Written
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // forget deletes every reading Apple Health sent, on the person's request.
 // Workouts already in their activity history stay: those are sessions they
 // did, and removing one is its own decision on the activity page.
-func (a *API) forget(w http.ResponseWriter, r *http.Request) {
-	if err := a.svc.Forget(r.Context(), auth.MustUser(r.Context()).ID, SourceAppleHealth); err != nil {
-		httpx.Error(w, err, "The health data could not be removed.")
-		return
+func (a *API) forget(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := a.svc.Forget(ctx, auth.MustUser(ctx).ID, SourceAppleHealth); err != nil {
+		return httpx.Fail(err, "The health data could not be removed.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // SourceManual is what a reading typed into North is stored under, so it never
@@ -154,16 +152,15 @@ type BloodPressureRequest struct {
 
 // bloodPressure records a cuff reading typed in by hand. The phone syncs its
 // own readings through /health/samples; this is for everyone else.
-func (a *API) bloodPressure(w http.ResponseWriter, r *http.Request) {
+func (a *API) bloodPressure(c *echo.Context) error {
 	var req BloodPressureRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	res, err := a.svc.RecordBloodPressure(r.Context(), auth.MustUser(r.Context()).ID, req.Systolic, req.Diastolic, req.At)
+	ctx := c.Request().Context()
+	res, err := a.svc.RecordBloodPressure(ctx, auth.MustUser(ctx).ID, req.Systolic, req.Diastolic, req.At)
 	if err != nil {
-		httpx.Error(w, err, "The reading could not be saved.")
-		return
+		return httpx.Fail(err, "The reading could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, SyncResult{Readings: res.Written})
+	return c.JSON(http.StatusCreated, SyncResult{Readings: res.Written})
 }

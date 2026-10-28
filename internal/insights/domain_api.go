@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/lifts"
@@ -274,127 +275,120 @@ type InsightsSpend struct {
 const domainError = "These insights could not be loaded."
 
 // request resolves the reader and window the same way the web handler does.
-func request(r *http.Request) (users.User, timerange.Range) {
-	user := auth.MustUser(r.Context())
-	return user, timerange.Parse(r.URL.Query().Get("range"), user.Location())
+func request(c *echo.Context) (users.User, timerange.Range) {
+	user := auth.MustUser(c.Request().Context())
+	return user, timerange.Parse(c.QueryParam("range"), user.Location())
 }
 
-func (a *API) timeline(w http.ResponseWriter, r *http.Request) {
-	user, rg := request(r)
-	data, err := a.svc.Timeline(r.Context(), user, rg, r.URL.Query().Get("kind"))
+func (a *API) timeline(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := request(c)
+	data, err := a.svc.Timeline(ctx, user, rg, c.QueryParam("kind"))
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectTimeline(buildTimelineView(r.Context(), data)))
+	return c.JSON(http.StatusOK, projectTimeline(buildTimelineView(ctx, data)))
 }
 
-func (a *API) body(w http.ResponseWriter, r *http.Request) {
-	user, rg := request(r)
-	data, err := a.svc.Body(r.Context(), user, rg)
+func (a *API) body(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := request(c)
+	data, err := a.svc.Body(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	view, err := buildBodyView(r.Context(), data)
+	view, err := buildBodyView(ctx, data)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectBody(view, habitAdherence(data.Habits)))
+	return c.JSON(http.StatusOK, projectBody(view, habitAdherence(data.Habits)))
 }
 
-func (a *API) mind(w http.ResponseWriter, r *http.Request) {
-	user, rg := request(r)
-	data, err := a.svc.Mind(r.Context(), user, rg)
+func (a *API) mind(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := request(c)
+	data, err := a.svc.Mind(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	view, err := buildMindView(r.Context(), data)
+	view, err := buildMindView(ctx, data)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
 	mood, energy := moodEnergyBuckets(data)
-	httpx.WriteJSON(w, http.StatusOK, projectMind(view, bucketLabels(r.Context(), data.Range), mood, energy))
+	return c.JSON(http.StatusOK, projectMind(view, bucketLabels(ctx, data.Range), mood, energy))
 }
 
-func (a *API) progress(w http.ResponseWriter, r *http.Request) {
-	user, rg := request(r)
-	data, err := a.svc.Progress(r.Context(), user, rg)
+func (a *API) progress(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := request(c)
+	data, err := a.svc.Progress(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	view, err := buildProgressView(r.Context(), data)
+	view, err := buildProgressView(ctx, data)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectProgress(view, goalStatusSegments(r.Context(), data.Active)))
+	return c.JSON(http.StatusOK, projectProgress(view, goalStatusSegments(ctx, data.Active)))
 }
 
-func (a *API) training(w http.ResponseWriter, r *http.Request) {
-	user, rg := request(r)
-	data, err := a.svc.Training(r.Context(), user, rg)
+func (a *API) training(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := request(c)
+	data, err := a.svc.Training(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	view, err := buildTrainingView(r.Context(), data)
+	view, err := buildTrainingView(ctx, data)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
 	out := projectTraining(view, sessionKindSegments(data.Sessions))
-	out.Plan, out.Recap = projectPlanWeek(r.Context(), data), projectRecap(data)
-	httpx.WriteJSON(w, http.StatusOK, out)
+	out.Plan, out.Recap = projectPlanWeek(ctx, data), projectRecap(data)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) nutrition(w http.ResponseWriter, r *http.Request) {
-	user, rg := request(r)
-	data, err := a.svc.Nutrition(r.Context(), user, rg)
+func (a *API) nutrition(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := request(c)
+	data, err := a.svc.Nutrition(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	view, err := buildNutritionView(r.Context(), data)
+	view, err := buildNutritionView(ctx, data)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectNutrition(view, macroSegments(r.Context(), data.Days)))
+	return c.JSON(http.StatusOK, projectNutrition(view, macroSegments(ctx, data.Days)))
 }
 
-func (a *API) coach(w http.ResponseWriter, r *http.Request) {
-	user, rg := request(r)
-	data, err := a.svc.Coach(r.Context(), user, rg)
+func (a *API) coach(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := request(c)
+	data, err := a.svc.Coach(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	view, err := buildCoachView(r.Context(), data)
+	view, err := buildCoachView(ctx, data)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectCoach(view))
+	return c.JSON(http.StatusOK, projectCoach(view))
 }
 
-func (a *API) spend(w http.ResponseWriter, r *http.Request) {
-	user, rg := request(r)
-	data, err := a.svc.Spend(r.Context(), user, rg)
+func (a *API) spend(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := request(c)
+	data, err := a.svc.Spend(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	view, err := buildSpendView(r.Context(), data)
+	view, err := buildSpendView(ctx, data)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return httpx.Fail(err, domainError)
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectSpend(view))
+	return c.JSON(http.StatusOK, projectSpend(view))
 }
 
 func projectTimeline(v insightpages.TimelineView) InsightsTimeline {

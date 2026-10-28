@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -32,14 +32,14 @@ type API struct {
 
 // NewAPI serves catalog entries, with artwork read from art (the embedded
 // web/assets tree; frames live under exercises/<slug>/frame-N.svg.gz).
-// Mount behind auth.RequireBearer.
+// Register behind auth.Bearer.
 func NewAPI(svc *Service, art fs.FS) *API {
 	return &API{svc: svc, art: art}
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/exercises", a.browse)
-	r.Get("/exercises/{slug}", a.show)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/exercises", a.browse)
+	g.GET("/exercises/:slug", a.show)
 }
 
 // ExerciseSummary is a catalog entry in a list: enough to choose one.
@@ -77,24 +77,23 @@ func ProjectList(found []Exercise) ExerciseList {
 
 // browse searches the catalog: ?q=, ?muscle=, ?category=, ?equipment= (may
 // repeat), ?limit= (default 30, at most 100) and ?offset=.
-func (a *API) browse(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+func (a *API) browse(c *echo.Context) error {
+	q := c.QueryParams()
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	if limit <= 0 || limit > 100 {
 		limit = 30
 	}
 	offset, _ := strconv.Atoi(q.Get("offset"))
-	found, total, err := a.svc.Search(r.Context(), Filter{
+	found, total, err := a.svc.Search(c.Request().Context(), Filter{
 		Query: q.Get("q"), Muscle: q.Get("muscle"), Category: q.Get("category"),
 		Equipment: q["equipment"], Limit: limit, Offset: max(offset, 0),
 	})
 	if err != nil {
-		httpx.Error(w, err, "The exercise library could not be searched.")
-		return
+		return httpx.Fail(err, "The exercise library could not be searched.")
 	}
 	out := ProjectList(found)
 	out.Total = total
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // ExerciseDetail is one catalog entry with its artwork.
@@ -124,11 +123,10 @@ type Art struct {
 	Credit string   `json:"credit"`
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	e, err := a.svc.GetBySlug(r.Context(), chi.URLParam(r, "slug"))
+func (a *API) show(c *echo.Context) error {
+	e, err := a.svc.GetBySlug(c.Request().Context(), c.Param("slug"))
 	if err != nil {
-		httpx.Error(w, err, "That exercise was not found.")
-		return
+		return httpx.Fail(err, "That exercise was not found.")
 	}
 
 	detail := ExerciseDetail{
@@ -146,12 +144,11 @@ func (a *API) show(w http.ResponseWriter, r *http.Request) {
 	if e.HasIllustration() {
 		art, err := a.frames(e.IllustrationSlug)
 		if err != nil {
-			httpx.Error(w, apperr.Wrap(err, "read exercise art"), "The exercise artwork could not be read.")
-			return
+			return httpx.Fail(apperr.Wrap(err, "read exercise art"), "The exercise artwork could not be read.")
 		}
 		detail.Art = art
 	}
-	httpx.WriteJSON(w, http.StatusOK, detail)
+	return c.JSON(http.StatusOK, detail)
 }
 
 // artFrameCount is how many poses every movement has; scripts/workout-guide-art
