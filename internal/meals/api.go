@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -59,6 +60,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Put("/nutrition/meal-ingredients/{mealIngredientID}/optional", a.setMealIngredientOptional)
 
 	r.Get("/nutrition/log", a.showLog)
+	r.Get("/nutrition/log/meal-options", a.logMealOptions)
 	r.Post("/nutrition/log/ingredients", a.logIngredient)
 	r.Post("/nutrition/log/meals", a.logMeal)
 	r.Delete("/nutrition/log/{entryID}", a.deleteLogEntry)
@@ -302,6 +304,17 @@ type LogMealRequest struct {
 	MealID uuid.UUID `json:"mealId"`
 }
 
+// LoggableMeal is one entry of the web log page's "log a meal" picker: a
+// plan's meal option flattened to "Plan – Meal · Option".
+type LoggableMeal struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+type LoggableMealList struct {
+	Options []LoggableMeal `json:"options"`
+}
+
 type FoodLogEntryView struct {
 	ID            uuid.UUID  `json:"id"`
 	Label         string     `json:"label"`
@@ -328,9 +341,15 @@ type FoodLog struct {
 	Progress *NutritionProgress `json:"progress,omitempty"`
 }
 
+// searchIngredients takes an optional limit (1–200, default 60): the web
+// pages list 50 on the library page and up to 200 in their pickers.
 func (a *API) searchIngredients(w http.ResponseWriter, r *http.Request) {
 	userID := auth.MustUser(r.Context()).ID
-	list, err := a.ingredients.Search(r.Context(), userID, r.URL.Query().Get("q"), 60)
+	limit := 60
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n >= 1 {
+		limit = min(n, 200)
+	}
+	list, err := a.ingredients.Search(r.Context(), userID, r.URL.Query().Get("q"), limit)
 	if err != nil {
 		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.ingredients.load"))
 		return
@@ -642,6 +661,22 @@ func (a *API) removeMealIngredient(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) showLog(w http.ResponseWriter, r *http.Request) {
 	a.writeLog(w, r, http.StatusOK)
+}
+
+// logMealOptions lists the meals that can be logged today, as the web log
+// page's picker offers them.
+func (a *API) logMealOptions(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	opts, err := mealOptionsFor(r.Context(), a.plans, user.ID, time.Now().In(user.Location()).Weekday())
+	if err != nil {
+		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "nutrition.api.plans.load"))
+		return
+	}
+	out := LoggableMealList{Options: make([]LoggableMeal, 0, len(opts))}
+	for _, o := range opts {
+		out.Options = append(out.Options, LoggableMeal{ID: o.ID, Label: o.Label})
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 func (a *API) logIngredient(w http.ResponseWriter, r *http.Request) {
