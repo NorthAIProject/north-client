@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -29,25 +29,25 @@ type API struct {
 	focus FocusSource
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/insights", a.summary)
-	r.Get("/insights/metrics/{key}", a.metric)
-	r.Get("/insights/health", a.health)
-	r.Get("/insights/consistency", a.consistency)
-	r.Get("/insights/recovery", a.recovery)
-	r.Get("/insights/timeline", a.timeline)
-	r.Get("/insights/body", a.body)
-	r.Get("/insights/mind", a.mind)
-	r.Get("/insights/progress", a.progress)
-	r.Get("/insights/training", a.training)
-	r.Get("/insights/nutrition", a.nutrition)
-	r.Get("/insights/coach", a.coach)
-	r.Get("/insights/spend", a.spend)
-	r.Get("/insights/areas", a.areas)
-	a.statsRoutes(r)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/insights", a.summary)
+	g.GET("/insights/metrics/:key", a.metric)
+	g.GET("/insights/health", a.health)
+	g.GET("/insights/consistency", a.consistency)
+	g.GET("/insights/recovery", a.recovery)
+	g.GET("/insights/timeline", a.timeline)
+	g.GET("/insights/body", a.body)
+	g.GET("/insights/mind", a.mind)
+	g.GET("/insights/progress", a.progress)
+	g.GET("/insights/training", a.training)
+	g.GET("/insights/nutrition", a.nutrition)
+	g.GET("/insights/coach", a.coach)
+	g.GET("/insights/spend", a.spend)
+	g.GET("/insights/areas", a.areas)
+	a.registerStats(g)
 }
 
 type Range struct {
@@ -256,56 +256,54 @@ type HealthMetric struct {
 	Usual  *UsualRange `json:"usual,omitempty"`
 }
 
-func (a *API) summary(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	rg := timerange.Parse(r.URL.Query().Get("range"), user.Location())
-	data, err := a.svc.Summary(r.Context(), user, rg)
+func (a *API) summary(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	rg := timerange.Parse(c.QueryParam("range"), user.Location())
+	data, err := a.svc.Summary(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, "Insights could not be loaded.")
-		return
+		return httpx.Fail(err, "Insights could not be loaded.")
 	}
-	view, err := buildSummaryView(r.Context(), data)
+	view, err := buildSummaryView(ctx, data)
 	if err != nil {
-		httpx.Error(w, err, "Insights could not be loaded.")
-		return
+		return httpx.Fail(err, "Insights could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectSummary(view))
+	return c.JSON(http.StatusOK, projectSummary(view))
 }
 
-func (a *API) metric(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	rg := timerange.Parse(r.URL.Query().Get("range"), user.Location())
-	data, err := a.svc.Metric(r.Context(), user, rg, chi.URLParam(r, "key"))
+func (a *API) metric(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	rg := timerange.Parse(c.QueryParam("range"), user.Location())
+	data, err := a.svc.Metric(ctx, user, rg, c.Param("key"))
 	if err != nil {
-		httpx.Error(w, err, "That metric could not be loaded.")
-		return
+		return httpx.Fail(err, "That metric could not be loaded.")
 	}
-	view, err := buildMetricView(r.Context(), data)
+	view, err := buildMetricView(ctx, data)
 	if err != nil {
-		httpx.Error(w, err, "That metric could not be loaded.")
-		return
+		return httpx.Fail(err, "That metric could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectMetric(view))
+	return c.JSON(http.StatusOK, projectMetric(view))
 }
 
-func (a *API) health(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	rows, err := a.svc.Health(r.Context(), user, time.Now())
+func (a *API) health(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	rows, err := a.svc.Health(ctx, user, time.Now())
 	if err != nil {
-		httpx.Error(w, err, "Health could not be loaded.")
-		return
+		return httpx.Fail(err, "Health could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectHealth(r.Context(), rows))
+	return c.JSON(http.StatusOK, projectHealth(ctx, rows))
 }
 
-func (a *API) recovery(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	data, err := a.svc.Recovery(r.Context(), user, time.Now())
+func (a *API) recovery(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	data, err := a.svc.Recovery(ctx, user, time.Now())
 	if err != nil {
-		httpx.Error(w, err, "Recovery could not be loaded.")
-		return
+		return httpx.Fail(err, "Recovery could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectRecovery(r.Context(), data))
+	return c.JSON(http.StatusOK, projectRecovery(ctx, data))
 }
 
 func projectRecovery(ctx context.Context, r RecoveryData) RecoveryView {
@@ -324,14 +322,14 @@ func projectRecovery(ctx context.Context, r RecoveryData) RecoveryView {
 	return out
 }
 
-func (a *API) consistency(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	data, err := a.svc.Consistency(r.Context(), user, time.Now())
+func (a *API) consistency(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	data, err := a.svc.Consistency(ctx, user, time.Now())
 	if err != nil {
-		httpx.Error(w, err, "Consistency could not be loaded.")
-		return
+		return httpx.Fail(err, "Consistency could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectConsistency(r.Context(), data))
+	return c.JSON(http.StatusOK, projectConsistency(ctx, data))
 }
 
 func projectConsistency(ctx context.Context, c ConsistencyData) ConsistencyView {

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/checkins"
@@ -24,15 +24,15 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API {
 	return &API{svc: svc}
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/today", a.today)
-	r.Get("/overview", a.overview)
-	r.Get("/overview/version", a.version)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/today", a.today)
+	g.GET("/overview", a.overview)
+	g.GET("/overview/version", a.version)
 }
 
 type TodayResponse struct {
@@ -144,19 +144,19 @@ type NudgeResponse struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-func (a *API) today(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) today(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 
-	rg := timerange.Parse(r.URL.Query().Get("range"), user.Location())
-	snapshot, err := a.svc.Load(r.Context(), user, rg)
+	rg := timerange.Parse(c.QueryParam("range"), user.Location())
+	snapshot, err := a.svc.Load(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, "Today could not be loaded.")
-		return
+		return httpx.Fail(err, "Today could not be loaded.")
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, TodayResponse{
+	return c.JSON(http.StatusOK, TodayResponse{
 		User:     auth.ProjectUser(user),
-		Snapshot: projectSnapshot(r.Context(), snapshot),
+		Snapshot: projectSnapshot(ctx, snapshot),
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/account"
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -33,10 +34,14 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Get("/settings/export.zip", func(w http.ResponseWriter, r *http.Request) { h.download(w, r, refusePlain) })
 }
 
-// APIRoutes mounts the same archive for the native app, behind
-// auth.RequireBearer; only the refusal differs, as JSON.
-func (h *Handler) APIRoutes(r chi.Router) {
-	r.Get("/account/export", func(w http.ResponseWriter, r *http.Request) { h.download(w, r, refuseJSON) })
+// RegisterAPI registers the same archive for the native app, behind
+// auth.Bearer; only the refusal differs, as JSON. The download is shared with
+// the browser route and streams straight to the writer, so it is wrapped
+// rather than rewritten as an Echo handler.
+func (h *Handler) RegisterAPI(g *echo.Group) {
+	g.GET("/account/export", echo.WrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.download(w, r, refuseJSON)
+	})))
 }
 
 const refusalMessage = "You have exported your data a few times just now. Try again shortly."

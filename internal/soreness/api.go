@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/soreness/sore"
 )
@@ -18,10 +19,10 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/soreness", a.today)
-	r.Put("/soreness/{region}", a.set)
-	r.Delete("/soreness/{region}", a.clear)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/soreness", a.today)
+	g.PUT("/soreness/:region", a.set)
+	g.DELETE("/soreness/:region", a.clear)
 }
 
 type SorenessRequest struct {
@@ -42,36 +43,35 @@ type SorenessTodayView struct {
 	Regions []string `json:"regions"`
 }
 
-func (a *API) today(w http.ResponseWriter, r *http.Request) { a.respond(w, r, http.StatusOK) }
+func (a *API) today(c *echo.Context) error { return a.respond(c, http.StatusOK) }
 
-func (a *API) set(w http.ResponseWriter, r *http.Request) {
+func (a *API) set(c *echo.Context) error {
 	var req SorenessRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	if _, err := a.svc.Set(r.Context(), auth.MustUser(r.Context()), chi.URLParam(r, "region"), req.Severity, req.Note); err != nil {
-		httpx.Error(w, err, "The soreness could not be saved.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.Set(ctx, auth.MustUser(ctx), c.Param("region"), req.Severity, req.Note); err != nil {
+		return httpx.Fail(err, "The soreness could not be saved.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) clear(w http.ResponseWriter, r *http.Request) {
-	if err := a.svc.Clear(r.Context(), auth.MustUser(r.Context()), chi.URLParam(r, "region")); err != nil {
-		httpx.Error(w, err, "The soreness could not be cleared.")
-		return
+func (a *API) clear(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := a.svc.Clear(ctx, auth.MustUser(ctx), c.Param("region")); err != nil {
+		return httpx.Fail(err, "The soreness could not be cleared.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
-	entries, err := a.svc.OnDate(r.Context(), auth.MustUser(r.Context()), time.Now())
+func (a *API) respond(c *echo.Context, status int) error {
+	ctx := c.Request().Context()
+	entries, err := a.svc.OnDate(ctx, auth.MustUser(ctx), time.Now())
 	if err != nil {
-		httpx.Error(w, err, "Today's soreness could not be loaded.")
-		return
+		return httpx.Fail(err, "Today's soreness could not be loaded.")
 	}
-	httpx.WriteJSON(w, status, ProjectToday(entries))
+	return c.JSON(status, ProjectToday(entries))
 }
 
 // ProjectToday is the today payload.

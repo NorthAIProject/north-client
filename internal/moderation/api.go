@@ -5,10 +5,11 @@ import (
 	"sort"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -21,14 +22,14 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/moderation/terms", a.terms)
-	r.Post("/moderation/terms", a.accept)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/moderation/terms", a.terms)
+	g.POST("/moderation/terms", a.accept)
 	// The operator queue, for the people named in OPERATOR_USER_IDS; anyone
 	// else is not found, as on the web.
-	r.Get("/ops/moderation", a.queue)
-	r.Post("/ops/moderation/users/{userID}/suspend", a.suspend)
-	r.Post("/ops/moderation/{kind}/{subjectID}/{action}", a.decide)
+	g.GET("/ops/moderation", a.queue)
+	g.POST("/ops/moderation/users/:userID/suspend", a.suspend)
+	g.POST("/ops/moderation/:kind/:subjectID/:action", a.decide)
 }
 
 // ReportGroupView is one reported subject in the operator queue.
@@ -81,54 +82,49 @@ func projectGroup(g ReportGroup) ReportGroupView {
 	return v
 }
 
-func (a *API) queue(w http.ResponseWriter, r *http.Request) {
-	if !a.svc.IsOperator(auth.MustUser(r.Context()).ID) {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+func (a *API) queue(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if !a.svc.IsOperator(auth.MustUser(ctx).ID) {
+		return httpx.Fail(apperr.ErrNotFound, "Not found.")
 	}
-	groups, err := a.svc.OpenReports(r.Context())
+	groups, err := a.svc.OpenReports(ctx)
 	if err != nil {
-		httpx.Error(w, err, "The reports could not be loaded.")
-		return
+		return httpx.Fail(err, "The reports could not be loaded.")
 	}
 	out := QueueView{Reports: make([]ReportGroupView, 0, len(groups))}
 	for _, g := range groups {
 		out.Reports = append(out.Reports, projectGroup(g))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) decide(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "subjectID"))
+func (a *API) decide(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "subjectID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	err = a.svc.Decide(r.Context(), auth.MustUser(r.Context()).ID, chi.URLParam(r, "kind"), id, chi.URLParam(r, "action"))
-	if err != nil {
-		httpx.Error(w, err, "That could not be saved.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.Decide(ctx, auth.MustUser(ctx).ID, c.Param("kind"), id, c.Param("action")); err != nil {
+		return httpx.Fail(err, "That could not be saved.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // suspend stops a user posting for hours, or until lifted when hours is 0.
-func (a *API) suspend(w http.ResponseWriter, r *http.Request) {
-	op := auth.MustUser(r.Context()).ID
+func (a *API) suspend(c *echo.Context) error {
+	ctx := c.Request().Context()
+	op := auth.MustUser(ctx).ID
 	if !a.svc.IsOperator(op) {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Not found.")
 	}
-	target, err := uuid.Parse(chi.URLParam(r, "userID"))
+	target, err := echox.UUIDParam(c, "userID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
 	var req SuspendRequest
-	if r.ContentLength != 0 {
-		if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-			httpx.Error(w, err, "That request could not be read.")
-			return
+	if c.Request().ContentLength != 0 {
+		if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 1 << 10}, "That request could not be read."); err != nil {
+			return err
 		}
 	}
 	var until *time.Time
@@ -136,11 +132,10 @@ func (a *API) suspend(w http.ResponseWriter, r *http.Request) {
 		t := time.Now().Add(time.Duration(req.Hours) * time.Hour)
 		until = &t
 	}
-	if err := a.svc.Suspend(r.Context(), &op, target, until, "operator"); err != nil {
-		httpx.Error(w, err, "That could not be saved.")
-		return
+	if err := a.svc.Suspend(ctx, &op, target, until, "operator"); err != nil {
+		return httpx.Fail(err, "That could not be saved.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // TermsView is the terms state for the person asking.
@@ -149,19 +144,19 @@ type TermsView struct {
 	Accepted bool `json:"accepted"`
 }
 
-func (a *API) terms(w http.ResponseWriter, r *http.Request) {
-	ok, err := a.svc.TermsAccepted(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) terms(c *echo.Context) error {
+	ctx := c.Request().Context()
+	ok, err := a.svc.TermsAccepted(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "The terms could not be loaded.")
-		return
+		return httpx.Fail(err, "The terms could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, TermsView{Version: TermsVersion, Accepted: ok})
+	return c.JSON(http.StatusOK, TermsView{Version: TermsVersion, Accepted: ok})
 }
 
-func (a *API) accept(w http.ResponseWriter, r *http.Request) {
-	if err := a.svc.AcceptTerms(r.Context(), auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The terms could not be saved.")
-		return
+func (a *API) accept(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := a.svc.AcceptTerms(ctx, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The terms could not be saved.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }

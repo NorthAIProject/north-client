@@ -4,25 +4,26 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
-// API is the coach's unprompted message for native clients. Mount behind
-// auth.RequireBearer.
+// API is the coach's unprompted message for native clients. Register behind
+// auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/outreach/today", a.today)
-	r.Post("/outreach/{id}/actions", a.act)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/outreach/today", a.today)
+	g.POST("/outreach/:id/actions", a.act)
 }
 
 // OutreachView is one day's message from the coach and its answers.
@@ -54,43 +55,42 @@ type ActionRequest struct {
 	Action string `json:"action"`
 }
 
-func (a *API) today(w http.ResponseWriter, r *http.Request) {
-	o, ok, err := a.svc.Today(r.Context(), auth.MustUser(r.Context()))
+func (a *API) today(c *echo.Context) error {
+	ctx := c.Request().Context()
+	o, ok, err := a.svc.Today(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, "Today's message could not be loaded.")
-		return
+		return httpx.Fail(err, "Today's message could not be loaded.")
 	}
 	var out OutreachToday
 	if ok && o.Body != "" {
-		v := Project(r, o)
+		v := Project(c.Request(), o)
 		out.Outreach = &v
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // act answers an outreach. The id may be "today", which is what a
 // notification button sends: the banner knows the day but not the row.
-func (a *API) act(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) act(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var req ActionRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 1 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
 	var o Outreach
 	var err error
-	if idText := chi.URLParam(r, "id"); idText == "today" {
-		o, err = a.svc.ActToday(r.Context(), user, req.Action)
+	if idText := c.Param("id"); idText == "today" {
+		o, err = a.svc.ActToday(ctx, user, req.Action)
 	} else if id, parseErr := uuid.Parse(idText); parseErr != nil {
 		err = apperr.ErrNotFound
 	} else {
-		o, err = a.svc.Act(r.Context(), user, id, req.Action)
+		o, err = a.svc.Act(ctx, user, id, req.Action)
 	}
 	if err != nil {
-		httpx.Error(w, err, "That answer could not be applied.")
-		return
+		return httpx.Fail(err, "That answer could not be applied.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, Project(r, o))
+	return c.JSON(http.StatusOK, Project(c.Request(), o))
 }
 
 func Project(r *http.Request, o Outreach) OutreachView {

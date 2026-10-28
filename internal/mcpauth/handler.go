@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -54,22 +54,22 @@ func NewMachineHandler(svc *Service, log *slog.Logger, proxies middleware.Truste
 	}
 }
 
-// Routes mounts the machine-facing endpoints.
+// Register mounts the machine-facing endpoints.
 //
 // All of them are public, outside the session and CSRF group: a client
 // fetching discovery has no session, and a token request authenticates with a
 // code rather than a cookie.
-func (h *MachineHandler) Routes(r chi.Router) {
+func (h *MachineHandler) Register(g *echo.Group) {
 	// RFC 9728 puts the resource's path component into the well-known path, so
 	// a client resolving /mcp asks for the /mcp-suffixed one. The bare path is
 	// served too, because several clients still ask for that.
-	r.Get("/.well-known/oauth-protected-resource", h.cors(h.protectedResource))
-	r.Get("/.well-known/oauth-protected-resource/mcp", h.cors(h.protectedResource))
-	r.Get("/.well-known/oauth-authorization-server", h.cors(h.authorizationServer))
+	g.GET("/.well-known/oauth-protected-resource", h.wrap(h.protectedResource))
+	g.GET("/.well-known/oauth-protected-resource/mcp", h.wrap(h.protectedResource))
+	g.GET("/.well-known/oauth-authorization-server", h.wrap(h.authorizationServer))
 
-	r.Post("/oauth/register", h.cors(h.register))
-	r.Post("/oauth/token", h.cors(h.token))
-	r.Post("/oauth/revoke", h.cors(h.revoke))
+	g.POST("/oauth/register", h.wrap(h.register))
+	g.POST("/oauth/token", h.wrap(h.token))
+	g.POST("/oauth/revoke", h.wrap(h.revoke))
 
 	// A browser-based client preflights each of the above before calling it.
 	for _, path := range []string{
@@ -80,8 +80,16 @@ func (h *MachineHandler) Routes(r chi.Router) {
 		"/oauth/token",
 		"/oauth/revoke",
 	} {
-		r.Options(path, h.preflight)
+		g.OPTIONS(path, echo.WrapHandler(http.HandlerFunc(h.preflight)))
 	}
+}
+
+// wrap serves a protocol endpoint through Echo. The handlers stay net/http on
+// purpose: each answers in the exact shape its RFC prescribes (OAuth's own
+// error object, not North's), so none of them goes through Echo's error
+// handler.
+func (h *MachineHandler) wrap(next http.HandlerFunc) echo.HandlerFunc {
+	return echo.WrapHandler(h.cors(next))
 }
 
 // cors makes an endpoint callable from a browser-based client's own page.

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -49,15 +49,15 @@ type FacebookWebCode struct {
 	Code string `json:"code"`
 }
 
-func (a *API) webRoutes(r chi.Router) {
-	r.Get("/social/phone/countries", a.phoneCountries)
-	r.Post("/social/facebook/web", a.facebookWebStart)
-	r.Post("/social/facebook/web/callback", a.facebookWebFinish)
+func (a *API) registerWeb(g *echo.Group) {
+	g.GET("/social/phone/countries", a.phoneCountries)
+	g.POST("/social/facebook/web", a.facebookWebStart)
+	g.POST("/social/facebook/web/callback", a.facebookWebFinish)
 }
 
-func (a *API) phoneCountries(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	httpx.WriteJSON(w, http.StatusOK, projectCountries(phone.DefaultDial(user.Timezone, string(user.Locale))))
+func (a *API) phoneCountries(c *echo.Context) error {
+	user := auth.MustUser(c.Request().Context())
+	return c.JSON(http.StatusOK, projectCountries(phone.DefaultDial(user.Timezone, string(user.Locale))))
 }
 
 func projectCountries(dial string) PhoneCountries {
@@ -71,35 +71,32 @@ func projectCountries(dial string) PhoneCountries {
 // facebookWebStart begins the flow the Friends page's Connect button starts.
 // The callback is this site's /app/friends/facebook/callback, the URI
 // registered in the Meta app, whichever front end serves it.
-func (a *API) facebookWebStart(w http.ResponseWriter, r *http.Request) {
+func (a *API) facebookWebStart(c *echo.Context) error {
 	state, err := NewOAuthState()
 	if err != nil {
-		httpx.Error(w, err, "Facebook is not available right now.")
-		return
+		return httpx.Fail(err, "Facebook is not available right now.")
 	}
 	consent, err := a.svc.FacebookAuthURL(state, a.siteURL+FacebookWebCallbackPath)
 	if err != nil {
-		httpx.Error(w, err, "Facebook is not available right now.")
-		return
+		return httpx.Fail(err, "Facebook is not available right now.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, FacebookWebStart{URL: consent, State: state, ExpiresIn: int(facebookStateTTL.Seconds())})
+	return c.JSON(http.StatusOK, FacebookWebStart{URL: consent, State: state, ExpiresIn: int(facebookStateTTL.Seconds())})
 }
 
 // facebookWebFinish connects the account behind the code and imports who is
 // here. 409 when that Facebook account is connected to another account.
-func (a *API) facebookWebFinish(w http.ResponseWriter, r *http.Request) {
+func (a *API) facebookWebFinish(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req FacebookWebCode
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	f, err := a.svc.ConnectFacebook(r.Context(), auth.MustUser(r.Context()).ID, req.Code, a.siteURL+FacebookWebCallbackPath)
+	f, err := a.svc.ConnectFacebook(ctx, auth.MustUser(ctx).ID, req.Code, a.siteURL+FacebookWebCallbackPath)
 	if err != nil {
 		if errors.Is(err, ErrFacebookTaken) {
-			httpx.Error(w, err, "That Facebook account is connected to another Khepri account.")
-			return
+			return httpx.Fail(err, "That Facebook account is connected to another Khepri account.")
 		}
-		httpx.Error(w, err, "Facebook could not be connected.")
-		return
+		return httpx.Fail(err, "Facebook could not be connected.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectFacebook(f, a.svc.FacebookEnabled()))
+	return c.JSON(http.StatusOK, projectFacebook(f, a.svc.FacebookEnabled()))
 }

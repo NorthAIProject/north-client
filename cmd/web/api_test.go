@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/apns"
@@ -39,6 +39,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/progresschecks"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/settings"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/vault"
 	"github.com/NorthAIProject/north-client/internal/voice"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -56,11 +57,11 @@ func (r resolverThatMustNotRun) Resolve(context.Context, string) (auth.Session, 
 
 // apiRouter mounts /api/v1 exactly as the server does, with no database behind
 // it. Only routing and authentication run; no handler body is reached.
-func apiRouter(t *testing.T) chi.Router {
+func apiRouter(t *testing.T) *echo.Echo {
 	t.Helper()
 	sessions := resolverThatMustNotRun{t: t}
-	r := chi.NewRouter()
-	mountAPI(r, sessions, apiSet{
+	e := echox.New(echox.Config{})
+	mountAPI(e, sessions, apiSet{
 		auth:         auth.NewAPI(sessions).WithAuthService(&auth.Service{}, &auth.Middleware{}),
 		mcpAuth:      mcpauth.NewAPI(nil, nil, nil, nil, nil),
 		capture:      capture.NewAPI(nil, nil, nil, nil),
@@ -96,7 +97,30 @@ func apiRouter(t *testing.T) chi.Router {
 		calculator: calculator.NewAPI(nil, nil),
 		news:       news.NewAPI(nil),
 	})
-	return r
+	return e
+}
+
+// apiRoute is one registered method and path, with parameters written as
+// {name} the way OpenAPI (and chi before Echo) writes them.
+type apiRoute struct{ method, path string }
+
+// apiRoutes lists every route Echo serves, leaving out the not-found
+// fallbacks, which are not endpoints.
+func apiRoutes(e *echo.Echo) []apiRoute {
+	var out []apiRoute
+	for _, ri := range e.Router().Routes() {
+		if ri.Method == echo.RouteNotFound || ri.Method == echo.RouteAny {
+			continue
+		}
+		segments := strings.Split(ri.Path, "/")
+		for i, seg := range segments {
+			if name, ok := strings.CutPrefix(seg, ":"); ok {
+				segments[i] = "{" + name + "}"
+			}
+		}
+		out = append(out, apiRoute{method: ri.Method, path: strings.Join(segments, "/")})
+	}
+	return out
 }
 
 // publicAPIPrefixes are the only /api/v1 paths reachable without a session:
@@ -130,15 +154,16 @@ func isPublicAPIRoute(route string) bool {
 	return false
 }
 
-// Every route added to /api/v1 lands behind RequireBearer unless it is
+// Every route added to /api/v1 lands behind auth.Bearer unless it is
 // deliberately public. A new feature API mounted in the wrong group fails here.
 func TestEveryPrivateAPIRouteRequiresABearerToken(t *testing.T) {
 	router := apiRouter(t)
 
 	checked := 0
-	err := chi.Walk(router, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+	for _, rt := range apiRoutes(router) {
+		method, route := rt.method, rt.path
 		if isPublicAPIRoute(route) {
-			return nil
+			continue
 		}
 		checked++
 		t.Run(method+" "+route, func(t *testing.T) {
@@ -155,10 +180,6 @@ func TestEveryPrivateAPIRouteRequiresABearerToken(t *testing.T) {
 				t.Fatalf("content type = %q, want JSON", got)
 			}
 		})
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 	if checked == 0 {
 		t.Fatal("walked no private routes; the bearer group is not mounted")

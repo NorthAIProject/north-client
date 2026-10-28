@@ -4,16 +4,17 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/insights/score"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-// API is the lighter-day offer for native clients. Mount behind
-// auth.RequireBearer.
+// API is the lighter-day offer for native clients. Register behind
+// auth.Bearer.
 type API struct {
 	svc *Service
 	// coveredBy is the web handler's: a day the coach's own message already
@@ -29,9 +30,9 @@ func (a *API) WithCoveredBy(covered func(context.Context, users.User) bool) *API
 	return a
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/today/lighter", a.show)
-	r.Put("/today/lighter", a.choose)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/today/lighter", a.show)
+	g.PUT("/today/lighter", a.choose)
 }
 
 type ReadinessView struct {
@@ -72,30 +73,29 @@ type ChoiceRequest struct {
 	Choice string `json:"choice"`
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	t, err := a.svc.Today(r.Context(), user)
+func (a *API) show(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	t, err := a.svc.Today(ctx, user)
 	if err != nil {
-		httpx.Error(w, err, "Today could not be loaded.")
-		return
+		return httpx.Fail(err, "Today could not be loaded.")
 	}
-	v := project(r.Context(), t)
-	v.Covered = a.coveredBy != nil && a.coveredBy(r.Context(), user)
-	httpx.WriteJSON(w, http.StatusOK, v)
+	v := project(ctx, t)
+	v.Covered = a.coveredBy != nil && a.coveredBy(ctx, user)
+	return c.JSON(http.StatusOK, v)
 }
 
-func (a *API) choose(w http.ResponseWriter, r *http.Request) {
+func (a *API) choose(c *echo.Context) error {
 	var req ChoiceRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 1 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	t, err := a.svc.Choose(r.Context(), auth.MustUser(r.Context()), req.Choice)
+	ctx := c.Request().Context()
+	t, err := a.svc.Choose(ctx, auth.MustUser(ctx), req.Choice)
 	if err != nil {
-		httpx.Error(w, err, "That could not be saved.")
-		return
+		return httpx.Fail(err, "That could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, project(r.Context(), t))
+	return c.JSON(http.StatusOK, project(ctx, t))
 }
 
 func project(ctx context.Context, t Today) LighterView {

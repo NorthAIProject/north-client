@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 
@@ -159,14 +160,14 @@ func TestFacebookCallbackChecksTheStateCookie(t *testing.T) {
 func TestNativeFacebookCallbackRedirectsToTheApp(t *testing.T) {
 	svc, _, _, _ := fixture(t)
 	svc.WithFacebook(&facebookFake{})
-	r := chi.NewRouter()
-	social.NewAPI(svc, "https://kheprios.com").PublicRoutes(r)
+	e := echo.New()
+	social.NewAPI(svc, "https://kheprios.com").RegisterPublic(e.Group(""))
 	for query, want := range map[string]string{
 		"error=access_denied&state=x": "cancelled",
 		"state=unknown&code=code":     "expired",
 	} {
 		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/social/facebook/callback?"+query, nil))
+		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/social/facebook/callback?"+query, nil))
 		if loc := rec.Header().Get("Location"); rec.Code != http.StatusFound || loc != social.FacebookReturnURL+"?result="+want {
 			t.Fatalf("%s: %d %q, want result=%s", query, rec.Code, loc, want)
 		}

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/labstack/echo/v5"
+
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	quotapages "github.com/NorthAIProject/north-client/web/quota"
@@ -30,6 +32,11 @@ func (s *Service) Guard(action Action) func(http.Handler) http.Handler {
 // sentence, answered as the API's JSON error body instead of a page.
 func (s *Service) GuardJSON(action Action) func(http.Handler) http.Handler {
 	return s.guard(action, s.refuseJSON)
+}
+
+// GuardAPI is GuardJSON for routes registered on Echo.
+func (s *Service) GuardAPI(action Action) echo.MiddlewareFunc {
+	return echo.WrapMiddleware(s.GuardJSON(action))
 }
 
 type refusal func(w http.ResponseWriter, r *http.Request, action Action, decision Decision)

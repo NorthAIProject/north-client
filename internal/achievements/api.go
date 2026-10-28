@@ -5,31 +5,32 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
 // API is the friends feed for native clients, what followers may see, and
-// kudos. Mount behind auth.RequireBearer.
+// kudos. Register behind auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/feed", a.feed)
-	r.Get("/social/sharing", a.getSharing)
-	r.Put("/social/sharing", a.putSharing)
-	r.Post("/achievements/{achievementID}/kudos", a.giveKudos)
-	r.Delete("/achievements/{achievementID}/kudos", a.takeKudos)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/feed", a.feed)
+	g.GET("/social/sharing", a.getSharing)
+	g.PUT("/social/sharing", a.putSharing)
+	g.POST("/achievements/:achievementID/kudos", a.giveKudos)
+	g.DELETE("/achievements/:achievementID/kudos", a.takeKudos)
 }
 
 type FeedItem struct {
@@ -87,24 +88,23 @@ type SharingUpdate struct {
 	Awards   *bool `json:"awards"`
 }
 
-func (a *API) feed(w http.ResponseWriter, r *http.Request) {
+func (a *API) feed(c *echo.Context) error {
 	var before time.Time
-	if raw := r.URL.Query().Get("before"); raw != "" {
+	if raw := c.QueryParam("before"); raw != "" {
 		t, err := time.Parse(time.RFC3339Nano, raw)
 		if err != nil {
-			httpx.Error(w, apperr.FieldErrors{}.Add("before", "Use an RFC 3339 time."), "That page could not be read.")
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("before", "Use an RFC 3339 time."), "That page could not be read.")
 		}
 		before = t
 	}
-	items, next, err := a.svc.FeedPage(r.Context(), auth.MustUser(r.Context()).ID, before)
+	ctx := c.Request().Context()
+	items, next, err := a.svc.FeedPage(ctx, auth.MustUser(ctx).ID, before)
 	if err != nil {
-		httpx.Error(w, err, "The feed could not be loaded.")
-		return
+		return httpx.Fail(err, "The feed could not be loaded.")
 	}
-	out := projectFeed(r.Context(), items)
+	out := projectFeed(ctx, items)
 	out.Before = next
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // feedExercises is how many exercises a feed card names.
@@ -156,29 +156,28 @@ func projectFeed(ctx context.Context, items []Item) Feed {
 	return out
 }
 
-func (a *API) getSharing(w http.ResponseWriter, r *http.Request) {
-	s, err := a.svc.Sharing(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) getSharing(c *echo.Context) error {
+	ctx := c.Request().Context()
+	s, err := a.svc.Sharing(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "What friends see could not be loaded.")
-		return
+		return httpx.Fail(err, "What friends see could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, SharingView(s))
+	return c.JSON(http.StatusOK, SharingView(s))
 }
 
-func (a *API) putSharing(w http.ResponseWriter, r *http.Request) {
+func (a *API) putSharing(c *echo.Context) error {
 	var req SharingUpdate
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	userID := auth.MustUser(r.Context()).ID
+	ctx := c.Request().Context()
+	userID := auth.MustUser(ctx).ID
 	in := Sharing{Training: req.Training, Streaks: req.Streaks, Goals: req.Goals}
 	// A client from before xp or awards does not send them; its save keeps
 	// what is stored.
-	current, err := a.svc.Sharing(r.Context(), userID)
+	current, err := a.svc.Sharing(ctx, userID)
 	if err != nil {
-		httpx.Error(w, err, "What friends see could not be saved.")
-		return
+		return httpx.Fail(err, "What friends see could not be saved.")
 	}
 	in.XP, in.Awards = current.XP, current.Awards
 	if req.XP != nil {
@@ -187,44 +186,34 @@ func (a *API) putSharing(w http.ResponseWriter, r *http.Request) {
 	if req.Awards != nil {
 		in.Awards = *req.Awards
 	}
-	s, err := a.svc.SetSharing(r.Context(), userID, in)
+	s, err := a.svc.SetSharing(ctx, userID, in)
 	if err != nil {
-		httpx.Error(w, err, "What friends see could not be saved.")
-		return
+		return httpx.Fail(err, "What friends see could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, SharingView(s))
+	return c.JSON(http.StatusOK, SharingView(s))
 }
 
-func (a *API) giveKudos(w http.ResponseWriter, r *http.Request) {
-	id, ok := achievementID(w, r)
-	if !ok {
-		return
-	}
-	user := auth.MustUser(r.Context())
-	if err := a.svc.GiveKudos(r.Context(), user.ID, id, user.DisplayName); err != nil {
-		httpx.Error(w, err, "Kudos could not be given.")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) takeKudos(w http.ResponseWriter, r *http.Request) {
-	id, ok := achievementID(w, r)
-	if !ok {
-		return
-	}
-	if err := a.svc.TakeKudos(r.Context(), auth.MustUser(r.Context()).ID, id); err != nil {
-		httpx.Error(w, err, "Kudos could not be taken back.")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func achievementID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, "achievementID"))
+func (a *API) giveKudos(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "achievementID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return uuid.Nil, false
+		return err
 	}
-	return id, true
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	if err := a.svc.GiveKudos(ctx, user.ID, id, user.DisplayName); err != nil {
+		return httpx.Fail(err, "Kudos could not be given.")
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (a *API) takeKudos(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "achievementID")
+	if err != nil {
+		return err
+	}
+	ctx := c.Request().Context()
+	if err := a.svc.TakeKudos(ctx, auth.MustUser(ctx).ID, id); err != nil {
+		return httpx.Fail(err, "Kudos could not be taken back.")
+	}
+	return c.NoContent(http.StatusNoContent)
 }

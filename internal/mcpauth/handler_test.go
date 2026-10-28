@@ -11,9 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 )
 
 func discardLog() *slog.Logger {
@@ -23,9 +22,9 @@ func discardLog() *slog.Logger {
 // machineRouter mounts the machine-facing endpoints the way cmd/web does.
 func (h harness) machineRouter(t *testing.T) http.Handler {
 	t.Helper()
-	r := chi.NewRouter()
-	mcpauth.NewMachineHandler(h.svc, discardLog(), nil).Routes(r)
-	return r
+	e := echox.New(echox.Config{Logger: discardLog()})
+	mcpauth.NewMachineHandler(h.svc, discardLog(), nil).Register(e.Group(""))
+	return e
 }
 
 // The discovery endpoints are what a pasted URL turns into. Both spellings of

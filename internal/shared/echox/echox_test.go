@@ -137,3 +137,23 @@ func TestServeShutsDownWhenTheContextEnds(t *testing.T) {
 		t.Fatalf("Serve = %v, want a clean shutdown", err)
 	}
 }
+
+// Coach replies and crew chat stream over SSE through c.Response(). A flush
+// that stopped at Echo's writer would turn every stream into one buffered
+// blob at the end.
+func TestAFlushThroughTheResponseReachesTheConnection(t *testing.T) {
+	t.Parallel()
+	e := newTestEcho()
+	e.GET("/stream", func(c *echo.Context) error {
+		c.Response().Header().Set("Content-Type", "text/event-stream")
+		c.Response().WriteHeader(http.StatusOK)
+		_, _ = c.Response().Write([]byte("event: token\ndata: {}\n\n"))
+		return http.NewResponseController(c.Response()).Flush()
+	})
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/stream", nil))
+	if !rec.Flushed {
+		t.Fatal("the flush did not reach the underlying writer")
+	}
+}

@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
@@ -24,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
@@ -397,8 +397,8 @@ func TestCommitMealKeepsAnEveryDayDraftThatLostItsFlag(t *testing.T) {
 func TestMealImportAPICarriesOptionsAndNotes(t *testing.T) {
 	f := newFixture(t)
 	ctx := auth.ContextWithUser(context.Background(), f.user)
-	r := chi.NewRouter()
-	planimport.NewAPI(f.svc, nil).Routes(r)
+	e := echox.New(echox.Config{})
+	planimport.NewAPI(f.svc, nil).Register(e.Group(""))
 
 	body := `{"name":"Plano","planType":"","mode":"","hasTarget":false,"canConfirm":false,"unparsed":[],
 	  "everyDay":true,"notes":"Beber água.",
@@ -408,7 +408,7 @@ func TestMealImportAPICarriesOptionsAndNotes(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/nutrition/import/preview", strings.NewReader(body)).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("preview: %d %s", rec.Code, rec.Body.String())
 	}

@@ -4,12 +4,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/media/analysis"
 	"github.com/NorthAIProject/north-client/internal/quota"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -21,18 +22,18 @@ type API struct {
 	quotas *quota.Service
 }
 
-// NewAPI builds the routes. Routes go behind auth.RequireBearer; UploadRoutes
-// go in the upload group, whose cap fits a phone clip.
+// NewAPI builds the routes. Register goes behind auth.Bearer; RegisterUploads
+// goes in the upload group, whose cap fits a phone clip.
 func NewAPI(svc *Service, quotas *quota.Service) *API { return &API{svc: svc, quotas: quotas} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/form-checks", a.list)
-	r.Get("/form-checks/{analysisID}", a.show)
-	r.Get("/media/{mediaID}", a.link)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/form-checks", a.list)
+	g.GET("/form-checks/:analysisID", a.show)
+	g.GET("/media/:mediaID", a.link)
 }
 
-func (a *API) UploadRoutes(r chi.Router) {
-	r.With(a.quotas.GuardJSON(quota.MediaAnalysis)).Post("/form-checks", a.upload)
+func (a *API) RegisterUploads(g *echo.Group) {
+	g.POST("/form-checks", a.upload, a.quotas.GuardAPI(quota.MediaAnalysis))
 }
 
 type FormIssueView struct {
@@ -68,66 +69,63 @@ type FormCheckList struct {
 	Checks []FormCheckView `json:"checks"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	list, err := a.svc.ListAnalyses(r.Context(), auth.MustUser(r.Context()).ID, 30)
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
+	list, err := a.svc.ListAnalyses(ctx, auth.MustUser(ctx).ID, 30)
 	if err != nil {
-		httpx.Error(w, err, "Form checks could not be loaded.")
-		return
+		return httpx.Fail(err, "Form checks could not be loaded.")
 	}
 	out := FormCheckList{Checks: make([]FormCheckView, 0, len(list))}
 	for _, an := range list {
 		out.Checks = append(out.Checks, project(an))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "analysisID"))
+func (a *API) show(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "analysisID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	userID := auth.MustUser(r.Context()).ID
-	an, err := a.svc.GetAnalysis(r.Context(), id, userID)
+	ctx := c.Request().Context()
+	userID := auth.MustUser(ctx).ID
+	an, err := a.svc.GetAnalysis(ctx, id, userID)
 	if err != nil {
-		httpx.Error(w, err, "The form check could not be loaded.")
-		return
+		return httpx.Fail(err, "The form check could not be loaded.")
 	}
-	clip, err := a.svc.GetMedia(r.Context(), an.MediaID, userID)
+	clip, err := a.svc.GetMedia(ctx, an.MediaID, userID)
 	if err != nil {
-		httpx.Error(w, err, "The form check could not be loaded.")
-		return
+		return httpx.Fail(err, "The form check could not be loaded.")
 	}
-	playback, err := a.svc.PlaybackURL(r.Context(), clip)
+	playback, err := a.svc.PlaybackURL(ctx, clip)
 	if err != nil {
-		httpx.Error(w, err, "The form check could not be loaded.")
-		return
+		return httpx.Fail(err, "The form check could not be loaded.")
 	}
 	out := project(an)
 	out.PlaybackURL = playback
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // upload takes one video as multipart/form-data, field "video", and answers
 // 202 with the check that will analyse it; poll it until done or failed.
-func (a *API) upload(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, MaxVideoBytes+(1<<20))
+func (a *API) upload(c *echo.Context) error {
+	r := c.Request()
+	r.Body = http.MaxBytesReader(c.Response(), r.Body, MaxVideoBytes+(1<<20))
 	file, header, err := r.FormFile("video")
 	if err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("video", "Choose a video under 90 MB."), "Choose a video under 90 MB.")
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("video", "Choose a video under 90 MB."), "Choose a video under 90 MB.")
 	}
 	defer func() { _ = file.Close() }()
 	if r.MultipartForm != nil {
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 	}
 
-	an, err := a.svc.UploadVideo(r.Context(), auth.MustUser(r.Context()).ID, header.Filename, header.Size, file)
+	ctx := r.Context()
+	an, err := a.svc.UploadVideo(ctx, auth.MustUser(ctx).ID, header.Filename, header.Size, file)
 	if err != nil {
-		httpx.Error(w, err, "The video could not be uploaded.")
-		return
+		return httpx.Fail(err, "The video could not be uploaded.")
 	}
-	httpx.WriteJSON(w, http.StatusAccepted, project(an))
+	return c.JSON(http.StatusAccepted, project(an))
 }
 
 // MediaLinkView is a short-lived signed link to one stored file: a chat photo,
@@ -143,23 +141,21 @@ type MediaLinkView struct {
 
 // link is the web's GET /app/media/{id} for API clients: the same owner check
 // and the same signed URL, as JSON rather than a redirect.
-func (a *API) link(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "mediaID"))
+func (a *API) link(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "mediaID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	record, err := a.svc.GetMedia(r.Context(), id, auth.MustUser(r.Context()).ID)
+	ctx := c.Request().Context()
+	record, err := a.svc.GetMedia(ctx, id, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "The file could not be loaded.")
-		return
+		return httpx.Fail(err, "The file could not be loaded.")
 	}
-	url, err := a.svc.PlaybackURL(r.Context(), record)
+	url, err := a.svc.PlaybackURL(ctx, record)
 	if err != nil {
-		httpx.Error(w, err, "The file could not be loaded.")
-		return
+		return httpx.Fail(err, "The file could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, MediaLinkView{ID: record.ID, URL: url, Kind: record.Kind, MIMEType: record.MIMEType})
+	return c.JSON(http.StatusOK, MediaLinkView{ID: record.ID, URL: url, Kind: record.Kind, MIMEType: record.MIMEType})
 }
 
 func project(an analysis.Analysis) FormCheckView {

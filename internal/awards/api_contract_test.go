@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -21,7 +21,7 @@ type apiEnv struct {
 	t    *testing.T
 	db   *pgxpool.Pool
 	svc  *awards.Service
-	r    chi.Router
+	r    http.Handler
 	user users.User
 }
 
@@ -29,8 +29,8 @@ func newAPIEnv(t *testing.T, email string) *apiEnv {
 	t.Helper()
 	pool := testdb.New(t)
 	svc := awards.NewService(pool)
-	r := chi.NewRouter()
-	awards.NewAPI(svc).Routes(r)
+	r := echox.New(echox.Config{})
+	awards.NewAPI(svc).Register(r.Group(""))
 	u, err := users.NewService(users.NewRepository(pool)).Register(context.Background(), users.Registration{
 		Email: email, PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly", DisplayName: "Pat", Timezone: "UTC",
 	})

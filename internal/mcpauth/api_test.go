@@ -9,19 +9,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/mcpserver"
 	"github.com/NorthAIProject/north-client/internal/memories"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // apiRouter mounts the consent API as cmd/web does: the public half bare, the
-// decision behind RequireBearer.
+// decision behind Bearer.
 func (h harness) apiRouter(t *testing.T) (http.Handler, *auth.SessionStore) {
 	t.Helper()
 	userSvc := users.NewService(users.NewRepository(h.pool))
@@ -32,13 +31,10 @@ func (h harness) apiRouter(t *testing.T) (http.Handler, *auth.SessionStore) {
 		goals.NewService(goals.NewRepository(h.pool)))
 	api := mcpauth.NewAPI(h.svc, authSvc, auth.NewMiddleware(sessions, false, nil), onboardingSvc, discardLog())
 
-	r := chi.NewRouter()
-	api.PublicRoutes(r)
-	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireBearer(sessions))
-		api.Routes(r)
-	})
-	return r, sessions
+	e := echox.New(echox.Config{})
+	api.RegisterPublic(e.Group(""))
+	api.Register(e.Group("", auth.Bearer(sessions)))
+	return e, sessions
 }
 
 func call(t *testing.T, h http.Handler, method, path, body string, header map[string]string) *httptest.ResponseRecorder {

@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -23,17 +24,17 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/activity", a.overview)
-	r.Post("/activity/start", a.start)
-	r.Post("/activity/log", a.log)
-	r.Post("/activity/{sessionID}/pause", a.pause)
-	r.Post("/activity/{sessionID}/resume", a.resume)
-	r.Post("/activity/{sessionID}/stop", a.stop)
-	r.Delete("/activity/{sessionID}", a.cancel)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/activity", a.overview)
+	g.POST("/activity/start", a.start)
+	g.POST("/activity/log", a.log)
+	g.POST("/activity/:sessionID/pause", a.pause)
+	g.POST("/activity/:sessionID/resume", a.resume)
+	g.POST("/activity/:sessionID/stop", a.stop)
+	g.DELETE("/activity/:sessionID", a.cancel)
 }
 
 type SessionView struct {
@@ -85,22 +86,21 @@ type LogRequest struct {
 	DistanceKm      *float64   `json:"distanceKm,omitempty"`
 }
 
-func (a *API) overview(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) overview(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	userID := user.ID
 	now := time.Now()
 
 	out := Overview{Recent: []SessionView{}, Kinds: make([]ActivityKind, 0, len(METTable))}
-	if active, ok, err := a.svc.Active(r.Context(), userID); err != nil {
-		httpx.Error(w, err, "Activity could not be loaded.")
-		return
+	if active, ok, err := a.svc.Active(ctx, userID); err != nil {
+		return httpx.Fail(err, "Activity could not be loaded.")
 	} else if ok {
 		out.Active = util.Ptr(project(active, now))
 	}
-	recent, err := a.svc.List(r.Context(), userID, 20)
+	recent, err := a.svc.List(ctx, userID, 20)
 	if err != nil {
-		httpx.Error(w, err, "Activity could not be loaded.")
-		return
+		return httpx.Fail(err, "Activity could not be loaded.")
 	}
 	for _, s := range recent {
 		out.Recent = append(out.Recent, project(s, now))
@@ -110,88 +110,87 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	local := now.In(user.Location())
 	since := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, user.Location())
-	if out.TodayCalories, err = a.svc.TotalCaloriesSince(r.Context(), userID, since); err != nil {
-		httpx.Error(w, err, "Activity could not be loaded.")
-		return
+	if out.TodayCalories, err = a.svc.TotalCaloriesSince(ctx, userID, since); err != nil {
+		return httpx.Fail(err, "Activity could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) start(w http.ResponseWriter, r *http.Request) {
+func (a *API) start(c *echo.Context) error {
 	var req StartRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	session, err := a.svc.Start(r.Context(), auth.MustUser(r.Context()).ID, req.ActivityCode, req.PlanWeekday)
-	a.respond(w, http.StatusCreated, session, err)
+	ctx := c.Request().Context()
+	session, err := a.svc.Start(ctx, auth.MustUser(ctx).ID, req.ActivityCode, req.PlanWeekday)
+	return a.respond(c, http.StatusCreated, session, err)
 }
 
-func (a *API) log(w http.ResponseWriter, r *http.Request) {
+func (a *API) log(c *echo.Context) error {
 	var req LogRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
 	if req.DurationMinutes <= 0 {
-		httpx.Error(w, apperr.FieldErrors{}.Add("durationMinutes", "Say how many minutes the session lasted."), "Say how many minutes the session lasted.")
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("durationMinutes", "Say how many minutes the session lasted."), "Say how many minutes the session lasted.")
 	}
 	in := LogInput{ActivityCode: req.ActivityCode, Duration: time.Duration(req.DurationMinutes) * time.Minute}
 	in.StartedAt = util.Val(req.StartedAt)
 	if req.DistanceKm != nil {
 		in.DistanceM = *req.DistanceKm * 1000
 	}
-	session, err := a.svc.Log(r.Context(), auth.MustUser(r.Context()).ID, in)
-	a.respond(w, http.StatusCreated, session, err)
+	ctx := c.Request().Context()
+	session, err := a.svc.Log(ctx, auth.MustUser(ctx).ID, in)
+	return a.respond(c, http.StatusCreated, session, err)
 }
 
-func (a *API) pause(w http.ResponseWriter, r *http.Request) {
-	a.transition(w, r, a.svc.Pause)
+func (a *API) pause(c *echo.Context) error {
+	return a.transition(c, a.svc.Pause)
 }
 
-func (a *API) resume(w http.ResponseWriter, r *http.Request) {
-	a.transition(w, r, a.svc.Resume)
+func (a *API) resume(c *echo.Context) error {
+	return a.transition(c, a.svc.Resume)
 }
 
-func (a *API) stop(w http.ResponseWriter, r *http.Request) {
-	a.transition(w, r, a.svc.Stop)
+func (a *API) stop(c *echo.Context) error {
+	return a.transition(c, a.svc.Stop)
 }
 
-func (a *API) cancel(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "sessionID"))
+func (a *API) cancel(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "sessionID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	if err := a.svc.Cancel(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		a.respond(w, 0, Session{}, err)
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.Cancel(ctx, id, auth.MustUser(ctx).ID); err != nil {
+		return a.respond(c, 0, Session{}, err)
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) transition(w http.ResponseWriter, r *http.Request, step func(ctx context.Context, id, userID uuid.UUID) (Session, error)) {
-	id, err := uuid.Parse(chi.URLParam(r, "sessionID"))
+func (a *API) transition(c *echo.Context, step func(ctx context.Context, id, userID uuid.UUID) (Session, error)) error {
+	id, err := echox.UUIDParam(c, "sessionID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	session, err := step(r.Context(), id, auth.MustUser(r.Context()).ID)
-	a.respond(w, http.StatusOK, session, err)
+	ctx := c.Request().Context()
+	session, err := step(ctx, id, auth.MustUser(ctx).ID)
+	return a.respond(c, http.StatusOK, session, err)
 }
 
 // respond writes the session, or the service's own reason for refusing:
 // "record your biometrics before tracking activity" is worth showing as is.
-func (a *API) respond(w http.ResponseWriter, status int, session Session, err error) {
+func (a *API) respond(c *echo.Context, status int, session Session, err error) error {
 	switch {
 	case err == nil:
-		httpx.WriteJSON(w, status, project(session, time.Now()))
+		return c.JSON(status, project(session, time.Now()))
 	case apperr.Is(err, apperr.ErrValidation):
 		message := strings.TrimSuffix(err.Error(), ": "+apperr.ErrValidation.Error())
-		httpx.Error(w, apperr.FieldErrors{}.Add("activity", message), message)
+		return httpx.Fail(apperr.FieldErrors{}.Add("activity", message), message)
 	case apperr.Is(err, apperr.ErrConflict):
-		httpx.Error(w, err, strings.TrimSuffix(err.Error(), ": "+apperr.ErrConflict.Error()))
+		return httpx.Fail(err, strings.TrimSuffix(err.Error(), ": "+apperr.ErrConflict.Error()))
 	default:
-		httpx.Error(w, err, "That session could not be updated.")
+		return httpx.Fail(err, "That session could not be updated.")
 	}
 }
 
@@ -207,10 +206,6 @@ func project(s Session, now time.Time) SessionView {
 	}
 }
 
-func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
-	}
-	return true
+func readJSON(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read.")
 }

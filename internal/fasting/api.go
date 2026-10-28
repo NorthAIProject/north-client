@@ -5,11 +5,12 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/fasting/fast"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
@@ -21,10 +22,10 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/fasting", a.show)
-	r.Post("/fasting/start", a.start)
-	r.Post("/fasting/stop", a.stop)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/fasting", a.show)
+	g.POST("/fasting/start", a.start)
+	g.POST("/fasting/stop", a.stop)
 }
 
 type FastStartRequest struct {
@@ -47,40 +48,39 @@ type FastingView struct {
 	Current *FastView `json:"current,omitempty"`
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) { a.respond(w, r, http.StatusOK) }
+func (a *API) show(c *echo.Context) error { return a.respond(c, http.StatusOK) }
 
-func (a *API) start(w http.ResponseWriter, r *http.Request) {
+func (a *API) start(c *echo.Context) error {
 	var req FastStartRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	if _, err := a.svc.Start(r.Context(), auth.MustUser(r.Context()), req.TargetHours, req.StartedAt); err != nil {
-		httpx.Error(w, err, "The fast could not be started.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.Start(ctx, auth.MustUser(ctx), req.TargetHours, req.StartedAt); err != nil {
+		return httpx.Fail(err, "The fast could not be started.")
 	}
-	a.respond(w, r, http.StatusCreated)
+	return a.respond(c, http.StatusCreated)
 }
 
-func (a *API) stop(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.svc.Stop(r.Context(), auth.MustUser(r.Context())); err != nil {
-		httpx.Error(w, err, "There is no fast to end.")
-		return
+func (a *API) stop(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if _, err := a.svc.Stop(ctx, auth.MustUser(ctx)); err != nil {
+		return httpx.Fail(err, "There is no fast to end.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
-	current, ok, err := a.svc.Current(r.Context(), auth.MustUser(r.Context()))
+func (a *API) respond(c *echo.Context, status int) error {
+	ctx := c.Request().Context()
+	current, ok, err := a.svc.Current(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, "Fasting could not be loaded.")
-		return
+		return httpx.Fail(err, "Fasting could not be loaded.")
 	}
 	out := FastingView{}
 	if ok {
 		out.Current = util.Ptr(ProjectFast(current, time.Now()))
 	}
-	httpx.WriteJSON(w, status, out)
+	return c.JSON(status, out)
 }
 
 // ProjectFast is one fast's JSON shape.

@@ -2,13 +2,11 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -62,14 +60,10 @@ func readSpecOperations(t *testing.T) []string {
 func mountedAPIOperations(t *testing.T) []string {
 	t.Helper()
 	var ops []string
-	err := chi.Walk(apiRouter(t), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-		// chi and OpenAPI both write parameters as {name}; only the version
-		// prefix differs, because the spec's server URL carries it.
-		ops = append(ops, method+" "+strings.TrimPrefix(route, "/api/v1"))
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	// Echo's :name is rewritten to OpenAPI's {name} by apiRoutes; only the
+	// version prefix differs, because the spec's server URL carries it.
+	for _, rt := range apiRoutes(apiRouter(t)) {
+		ops = append(ops, rt.method+" "+strings.TrimPrefix(rt.path, "/api/v1"))
 	}
 	return ops
 }

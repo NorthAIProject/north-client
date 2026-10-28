@@ -4,11 +4,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -21,10 +22,10 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/caffeine", a.today)
-	r.Post("/caffeine", a.log)
-	r.Delete("/caffeine/{entryID}", a.undo)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/caffeine", a.today)
+	g.POST("/caffeine", a.log)
+	g.DELETE("/caffeine/:entryID", a.undo)
 }
 
 type CaffeineRequest struct {
@@ -50,42 +51,40 @@ type CaffeineTodayView struct {
 	Entries  []CaffeineEntryView `json:"entries"`
 }
 
-func (a *API) today(w http.ResponseWriter, r *http.Request) { a.respond(w, r, http.StatusOK) }
+func (a *API) today(c *echo.Context) error { return a.respond(c, http.StatusOK) }
 
-func (a *API) log(w http.ResponseWriter, r *http.Request) {
+func (a *API) log(c *echo.Context) error {
 	var req CaffeineRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
+	ctx := c.Request().Context()
 	in := LogInput{Preset: req.Preset, MG: req.MG, Label: req.Label, At: req.LoggedAt}
-	if _, err := a.svc.Log(r.Context(), auth.MustUser(r.Context()), in); err != nil {
-		httpx.Error(w, err, "The caffeine could not be logged.")
-		return
+	if _, err := a.svc.Log(ctx, auth.MustUser(ctx), in); err != nil {
+		return httpx.Fail(err, "The caffeine could not be logged.")
 	}
-	a.respond(w, r, http.StatusCreated)
+	return a.respond(c, http.StatusCreated)
 }
 
-func (a *API) undo(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "entryID"))
+func (a *API) undo(c *echo.Context) error {
+	id, err := uuid.Parse(c.Param("entryID"))
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "No such drink.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "No such drink.")
 	}
-	if err := a.svc.Undo(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, "That could not be undone.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.Undo(ctx, auth.MustUser(ctx), id); err != nil {
+		return httpx.Fail(err, "That could not be undone.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
-	entries, err := a.svc.Today(r.Context(), auth.MustUser(r.Context()))
+func (a *API) respond(c *echo.Context, status int) error {
+	ctx := c.Request().Context()
+	entries, err := a.svc.Today(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, "Today's caffeine could not be loaded.")
-		return
+		return httpx.Fail(err, "Today's caffeine could not be loaded.")
 	}
-	httpx.WriteJSON(w, status, ProjectToday(entries, time.Now()))
+	return c.JSON(status, ProjectToday(entries, time.Now()))
 }
 
 // ProjectToday is the today payload.

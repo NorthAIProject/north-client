@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/bodymap"
@@ -19,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/progresschecks/progresscheck"
 	"github.com/NorthAIProject/north-client/internal/quota"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -32,8 +33,8 @@ type BodyMaps interface {
 // bodyMapDays is the heat window /body/current carries, the same as Today's.
 const bodyMapDays = 7
 
-// API is progress checks for native clients. Routes go in the JSON group;
-// UploadRoutes in the upload group, whose body cap fits photos.
+// API is progress checks for native clients. Register goes in the JSON
+// group; RegisterUploads in the upload group, whose body cap fits photos.
 type API struct {
 	svc    *Service
 	maps   BodyMaps
@@ -44,19 +45,19 @@ func NewAPI(svc *Service, maps BodyMaps, quotas *quota.Service) *API {
 	return &API{svc: svc, maps: maps, quotas: quotas}
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/progress/checks", a.list)
-	r.Delete("/progress/checks/{checkID}", a.delete)
-	r.Get("/progress/schedule", a.schedule)
-	r.Put("/progress/schedule", a.setSchedule)
-	r.Get("/body/current", a.body)
-	r.Get("/progress/assist", a.assist)
-	r.With(a.quotas.GuardJSON(quota.ProgressEstimate)).Post("/progress/compare", a.compare)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/progress/checks", a.list)
+	g.DELETE("/progress/checks/:checkID", a.delete)
+	g.GET("/progress/schedule", a.schedule)
+	g.PUT("/progress/schedule", a.setSchedule)
+	g.GET("/body/current", a.body)
+	g.GET("/progress/assist", a.assist)
+	g.POST("/progress/compare", a.compare, a.quotas.GuardAPI(quota.ProgressEstimate))
 }
 
-func (a *API) UploadRoutes(r chi.Router) {
-	r.Post("/progress/checks", a.create)
-	r.With(a.quotas.GuardJSON(quota.ProgressEstimate)).Post("/progress/checks/estimate", a.estimate)
+func (a *API) RegisterUploads(g *echo.Group) {
+	g.POST("/progress/checks", a.create)
+	g.POST("/progress/checks/estimate", a.estimate, a.quotas.GuardAPI(quota.ProgressEstimate))
 }
 
 // maxCheckUpload fits three photos at media's cap plus the framing.
@@ -169,25 +170,24 @@ type ProgressCheckCreated struct {
 	Body  BodyCurrentView   `json:"body"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
+func (a *API) list(c *echo.Context) error {
 	limit := DefaultLimit
-	if raw := r.URL.Query().Get("limit"); raw != "" {
+	if raw := c.QueryParam("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > MaxLimit {
-			httpx.Error(w, apperr.FieldErrors{}.Add("limit", "Use a limit from 1 to 52."), "Use a limit from 1 to 52.")
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("limit", "Use a limit from 1 to 52."), "Use a limit from 1 to 52.")
 		}
 		limit = n
 	}
-	a.respondList(w, r, http.StatusOK, limit)
+	return a.respondList(c, http.StatusOK, limit)
 }
 
-func (a *API) create(w http.ResponseWriter, r *http.Request) {
+func (a *API) create(c *echo.Context) error {
+	r := c.Request()
 	user := auth.MustUser(r.Context())
-	r.Body = http.MaxBytesReader(w, r.Body, maxCheckUpload)
+	r.Body = http.MaxBytesReader(c.Response(), r.Body, maxCheckUpload)
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("front", "The photos could not be read."), "The photos could not be read.")
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("front", "The photos could not be read."), "The photos could not be read.")
 	}
 	defer func() { _ = r.MultipartForm.RemoveAll() }()
 
@@ -196,46 +196,39 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		dec := json.NewDecoder(strings.NewReader(raw))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&req); err != nil {
-			httpx.Error(w, apperr.Wrap(apperr.ErrValidation, "decode check: %v", err), "The check could not be read.")
-			return
+			return httpx.Fail(apperr.Wrap(apperr.ErrValidation, "decode check: %v", err), "The check could not be read.")
 		}
 	}
 	in, cadence, err := req.input()
 	if err != nil {
-		httpx.Error(w, err, "The check could not be read.")
-		return
+		return httpx.Fail(err, "The check could not be read.")
 	}
 
 	uploads, closeAll, err := formPhotos(r)
 	defer closeAll()
 	if err != nil {
-		httpx.Error(w, err, "The photos could not be read.")
-		return
+		return httpx.Fail(err, "The photos could not be read.")
 	}
 
 	check, err := a.svc.Save(r.Context(), user, in, uploads)
 	if err != nil {
-		httpx.Error(w, err, "The check could not be saved.")
-		return
+		return httpx.Fail(err, "The check could not be saved.")
 	}
 	if cadence != "" {
 		if _, err = a.svc.SetCadence(r.Context(), user, cadence); err != nil {
-			httpx.Error(w, err, "The check was saved, but the reminder could not be set.")
-			return
+			return httpx.Fail(err, "The check was saved, but the reminder could not be set.")
 		}
 	}
 
 	view, err := a.project(r.Context(), user, check)
 	if err != nil {
-		httpx.Error(w, err, "The check was saved, but could not be loaded.")
-		return
+		return httpx.Fail(err, "The check was saved, but could not be loaded.")
 	}
 	body, err := a.bodyView(r.Context(), user)
 	if err != nil {
-		httpx.Error(w, err, "The check was saved, but the figure could not be loaded.")
-		return
+		return httpx.Fail(err, "The check was saved, but the figure could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, ProgressCheckCreated{Check: view, Body: body})
+	return c.JSON(http.StatusCreated, ProgressCheckCreated{Check: view, Body: body})
 }
 
 func (req ProgressCheckRequest) input() (Input, progresscheck.Cadence, error) {
@@ -288,97 +281,89 @@ func formPhotos(r *http.Request) ([]PhotoUpload, func(), error) {
 	return uploads, closeAll, nil
 }
 
-func (a *API) delete(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "checkID"))
+func (a *API) delete(c *echo.Context) error {
+	ctx := c.Request().Context()
+	id, err := uuid.Parse(c.Param("checkID"))
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "No such progress check.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "No such progress check.")
 	}
-	if err := a.svc.Delete(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, "The check could not be deleted.")
-		return
+	if err := a.svc.Delete(ctx, auth.MustUser(ctx), id); err != nil {
+		return httpx.Fail(err, "The check could not be deleted.")
 	}
-	a.respondList(w, r, http.StatusOK, DefaultLimit)
+	return a.respondList(c, http.StatusOK, DefaultLimit)
 }
 
-func (a *API) schedule(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	sched, due, err := a.svc.Due(r.Context(), user, time.Now())
+func (a *API) schedule(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	sched, due, err := a.svc.Due(ctx, user, time.Now())
 	if err != nil {
-		httpx.Error(w, err, "The reminder could not be loaded.")
-		return
+		return httpx.Fail(err, "The reminder could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectSchedule(sched, due))
+	return c.JSON(http.StatusOK, ProjectSchedule(sched, due))
 }
 
-func (a *API) setSchedule(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) setSchedule(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var req ScheduleRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 1 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
 	if strings.TrimSpace(req.Cadence) == "" {
-		if err := a.svc.StopSchedule(r.Context(), user); err != nil {
-			httpx.Error(w, err, "The reminder could not be turned off.")
-			return
+		if err := a.svc.StopSchedule(ctx, user); err != nil {
+			return httpx.Fail(err, "The reminder could not be turned off.")
 		}
 	} else {
 		cadence, ok := progresscheck.ParseCadence(req.Cadence)
 		if !ok {
-			httpx.Error(w, apperr.FieldErrors{}.Add("cadence", "Cadence is weekly, biweekly or monthly."), "Cadence is weekly, biweekly or monthly.")
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("cadence", "Cadence is weekly, biweekly or monthly."), "Cadence is weekly, biweekly or monthly.")
 		}
-		if _, err := a.svc.SetCadence(r.Context(), user, cadence); err != nil {
-			httpx.Error(w, err, "The reminder could not be set.")
-			return
+		if _, err := a.svc.SetCadence(ctx, user, cadence); err != nil {
+			return httpx.Fail(err, "The reminder could not be set.")
 		}
 	}
-	a.schedule(w, r)
+	return a.schedule(c)
 }
 
-func (a *API) body(w http.ResponseWriter, r *http.Request) {
-	view, err := a.bodyView(r.Context(), auth.MustUser(r.Context()))
+func (a *API) body(c *echo.Context) error {
+	ctx := c.Request().Context()
+	view, err := a.bodyView(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, "The body could not be loaded.")
-		return
+		return httpx.Fail(err, "The body could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, view)
+	return c.JSON(http.StatusOK, view)
 }
 
-func (a *API) respondList(w http.ResponseWriter, r *http.Request, status, limit int) {
-	user := auth.MustUser(r.Context())
-	checks, err := a.svc.List(r.Context(), user, limit)
+func (a *API) respondList(c *echo.Context, status, limit int) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	checks, err := a.svc.List(ctx, user, limit)
 	if err != nil {
-		httpx.Error(w, err, "Your progress checks could not be loaded.")
-		return
+		return httpx.Fail(err, "Your progress checks could not be loaded.")
 	}
-	sched, due, err := a.svc.Due(r.Context(), user, time.Now())
+	sched, due, err := a.svc.Due(ctx, user, time.Now())
 	if err != nil {
-		httpx.Error(w, err, "The reminder could not be loaded.")
-		return
+		return httpx.Fail(err, "The reminder could not be loaded.")
 	}
 	out := ProgressChecksView{Checks: make([]ProgressCheckView, len(checks)), Schedule: ProjectSchedule(sched, due)}
-	cmp, stale, ok, err := a.svc.SavedComparison(r.Context(), user)
+	cmp, stale, ok, err := a.svc.SavedComparison(ctx, user)
 	if err != nil {
-		httpx.Error(w, err, "Your progress checks could not be loaded.")
-		return
+		return httpx.Fail(err, "Your progress checks could not be loaded.")
 	}
 	if ok {
 		view := ProjectComparison(cmp, stale)
 		out.Comparison = &view
 	}
-	if out.CanCompare, err = a.svc.CanCompare(r.Context(), user); err != nil {
-		httpx.Error(w, err, "Your progress checks could not be loaded.")
-		return
+	if out.CanCompare, err = a.svc.CanCompare(ctx, user); err != nil {
+		return httpx.Fail(err, "Your progress checks could not be loaded.")
 	}
-	for i, c := range checks {
-		if out.Checks[i], err = a.project(r.Context(), user, c); err != nil {
-			httpx.Error(w, err, "Your progress checks could not be loaded.")
-			return
+	for i, check := range checks {
+		if out.Checks[i], err = a.project(ctx, user, check); err != nil {
+			return httpx.Fail(err, "Your progress checks could not be loaded.")
 		}
 	}
-	httpx.WriteJSON(w, status, out)
+	return c.JSON(status, out)
 }
 
 func (a *API) project(ctx context.Context, user users.User, c Check) (ProgressCheckView, error) {
@@ -476,42 +461,39 @@ type ProgressEstimateResult struct {
 	OwnProvider   bool                 `json:"ownProvider"`
 }
 
-func (a *API) assist(w http.ResponseWriter, r *http.Request) {
-	dest, err := a.svc.AssistDestination(r.Context(), auth.MustUser(r.Context()))
+func (a *API) assist(c *echo.Context) error {
+	ctx := c.Request().Context()
+	dest, err := a.svc.AssistDestination(ctx, auth.MustUser(ctx))
 	if errors.Is(err, ErrAssistUnavailable) {
-		httpx.WriteJSON(w, http.StatusOK, ProgressAssistView{})
-		return
+		return c.JSON(http.StatusOK, ProgressAssistView{})
 	}
 	if err != nil {
-		httpx.Error(w, err, "Photo estimates could not be checked.")
-		return
+		return httpx.Fail(err, "Photo estimates could not be checked.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProgressAssistView{Available: true, ProviderLabel: dest.Label, OwnProvider: dest.Own})
+	return c.JSON(http.StatusOK, ProgressAssistView{Available: true, ProviderLabel: dest.Label, OwnProvider: dest.Own})
 }
 
 // estimate reads measurements off the photos in a multipart body with the
 // same pose parts as create. It stores nothing.
-func (a *API) estimate(w http.ResponseWriter, r *http.Request) {
+func (a *API) estimate(c *echo.Context) error {
+	r := c.Request()
 	user := auth.MustUser(r.Context())
-	r.Body = http.MaxBytesReader(w, r.Body, maxCheckUpload)
+	r.Body = http.MaxBytesReader(c.Response(), r.Body, maxCheckUpload)
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("front", "The photos could not be read."), "The photos could not be read.")
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("front", "The photos could not be read."), "The photos could not be read.")
 	}
 	defer func() { _ = r.MultipartForm.RemoveAll() }()
 
 	uploads, closeAll, err := formPhotos(r)
 	defer closeAll()
 	if err != nil {
-		httpx.Error(w, err, "The photos could not be read.")
-		return
+		return httpx.Fail(err, "The photos could not be read.")
 	}
 	est, dest, err := a.svc.Estimate(r.Context(), user, uploads)
 	if err != nil {
-		httpx.Error(w, err, estimateFailure(err))
-		return
+		return httpx.Fail(err, estimateFailure(err))
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProgressEstimateResult{
+	return c.JSON(http.StatusOK, ProgressEstimateResult{
 		Estimate:      ProjectEstimate(est),
 		ProviderLabel: dest.Label,
 		OwnProvider:   dest.Own,
@@ -536,13 +518,13 @@ func ProjectEstimate(e Estimate) ProgressEstimateView {
 
 // compare describes what changed between the first and latest checks with
 // photos, stores it, and answers with it.
-func (a *API) compare(w http.ResponseWriter, r *http.Request) {
-	cmp, err := a.svc.Compare(r.Context(), auth.MustUser(r.Context()))
+func (a *API) compare(c *echo.Context) error {
+	ctx := c.Request().Context()
+	cmp, err := a.svc.Compare(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, compareFailure(err))
-		return
+		return httpx.Fail(err, compareFailure(err))
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectComparison(cmp, false))
+	return c.JSON(http.StatusOK, ProjectComparison(cmp, false))
 }
 
 func compareFailure(err error) string {

@@ -4,10 +4,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -21,11 +22,11 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/trackers", a.list)
-	r.Post("/trackers", a.create)
-	r.Post("/trackers/{id}/done", a.done)
-	r.Delete("/trackers/{id}", a.remove)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/trackers", a.list)
+	g.POST("/trackers", a.create)
+	g.POST("/trackers/:id/done", a.done)
+	g.DELETE("/trackers/:id", a.remove)
 }
 
 type MilestoneRequest struct {
@@ -48,65 +49,71 @@ type MilestonesView struct {
 	Trackers []MilestoneView `json:"trackers"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) { a.respond(w, r, http.StatusOK) }
+func (a *API) list(c *echo.Context) error { return a.respond(c, http.StatusOK) }
 
-func (a *API) create(w http.ResponseWriter, r *http.Request) {
+func (a *API) create(c *echo.Context) error {
 	var req MilestoneRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	user := auth.MustUser(r.Context())
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var last *time.Time
 	if req.LastDoneOn != "" {
 		d, err := time.ParseInLocation("2006-01-02", req.LastDoneOn, user.Location())
 		if err != nil {
-			httpx.Error(w, apperr.FieldErrors{}.Add("lastDoneOn", "Use YYYY-MM-DD."), "Use YYYY-MM-DD.")
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("lastDoneOn", "Use YYYY-MM-DD."), "Use YYYY-MM-DD.")
 		}
 		last = &d
 	}
-	if _, err := a.svc.Create(r.Context(), user, req.Name, last, req.IntervalMonths); err != nil {
-		httpx.Error(w, err, "The tracker could not be created.")
-		return
+	if _, err := a.svc.Create(ctx, user, req.Name, last, req.IntervalMonths); err != nil {
+		return httpx.Fail(err, "The tracker could not be created.")
 	}
-	a.respond(w, r, http.StatusCreated)
+	return a.respond(c, http.StatusCreated)
 }
 
-func (a *API) done(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+func (a *API) done(c *echo.Context) error {
+	id, err := trackerID(c)
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "No such tracker.")
-		return
+		return err
 	}
-	if _, err := a.svc.Done(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, "The tracker could not be updated.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.Done(ctx, auth.MustUser(ctx), id); err != nil {
+		return httpx.Fail(err, "The tracker could not be updated.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) remove(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+func (a *API) remove(c *echo.Context) error {
+	id, err := trackerID(c)
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "No such tracker.")
-		return
+		return err
 	}
-	if err := a.svc.Delete(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, "The tracker could not be removed.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.Delete(ctx, auth.MustUser(ctx), id); err != nil {
+		return httpx.Fail(err, "The tracker could not be removed.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
-	user := auth.MustUser(r.Context())
-	list, err := a.svc.List(r.Context(), user)
+func (a *API) respond(c *echo.Context, status int) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	list, err := a.svc.List(ctx, user)
 	if err != nil {
-		httpx.Error(w, err, "The trackers could not be loaded.")
-		return
+		return httpx.Fail(err, "The trackers could not be loaded.")
 	}
-	httpx.WriteJSON(w, status, ProjectList(list, time.Now().In(user.Location())))
+	return c.JSON(status, ProjectList(list, time.Now().In(user.Location())))
+}
+
+// trackerID reads the :id path parameter. It answers with this API's own
+// "No such tracker." rather than echox.UUIDParam's generic "Not found.".
+func trackerID(c *echo.Context) (uuid.UUID, error) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return uuid.Nil, httpx.Fail(apperr.ErrNotFound, "No such tracker.")
+	}
+	return id, nil
 }
 
 // ProjectList is the list payload.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/awards/award"
@@ -12,8 +12,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
-// API is the caller's own badges for native clients. Mount behind
-// auth.RequireBearer.
+// API is the caller's own badges for native clients. Register behind
+// auth.Bearer.
 type API struct {
 	svc    *Service
 	people People
@@ -25,11 +25,11 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 // caller's own handle on GET /awards. Without it those are absent.
 func (a *API) WithPeople(p People) *API { a.people = p; return a }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/awards", a.list)
-	r.Get("/awards/unseen", a.unseen)
-	r.Post("/awards/{badgeID}/seen", a.seen)
-	r.Get("/profiles/{handle}/awards", a.person)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/awards", a.list)
+	g.GET("/awards/unseen", a.unseen)
+	g.POST("/awards/:badgeID/seen", a.seen)
+	g.GET("/profiles/:handle/awards", a.person)
 }
 
 // AwardsView is every badge, split into what the caller holds and what is
@@ -70,23 +70,20 @@ func projectEarned(ctx context.Context, e Earned, rarities map[string]Rarity) aw
 	return e.Badge.Project(ctx, &at, nil, rarities[e.Badge.ID].WithHolder().Label())
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
 	userID := auth.MustUser(ctx).ID
 	earned, err := a.svc.Earned(ctx, userID)
 	if err != nil {
-		httpx.Error(w, err, "Your awards could not be loaded.")
-		return
+		return httpx.Fail(err, "Your awards could not be loaded.")
 	}
 	progress, err := a.svc.Progress(ctx, userID)
 	if err != nil {
-		httpx.Error(w, err, "Your awards could not be loaded.")
-		return
+		return httpx.Fail(err, "Your awards could not be loaded.")
 	}
 	rarities, err := a.svc.Rarities(ctx)
 	if err != nil {
-		httpx.Error(w, err, "Your awards could not be loaded.")
-		return
+		return httpx.Fail(err, "Your awards could not be loaded.")
 	}
 	// Monthly is a bonus: if it cannot be read, the badges still go out.
 	medals, err := a.svc.MonthlyMedals(ctx, userID)
@@ -119,45 +116,39 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 	if a.people != nil {
 		handle, err := a.people.HandleOf(ctx, userID)
 		if err != nil {
-			httpx.Error(w, err, "Your awards could not be loaded.")
-			return
+			return httpx.Fail(err, "Your awards could not be loaded.")
 		}
 		out.Handle = handle
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-// person is GET /profiles/{handle}/awards: the web's /app/u/{handle}/awards.
+// person is GET /profiles/:handle/awards: the web's /app/u/{handle}/awards.
 // An unknown handle or a block either way is 404, as on the profile.
-func (a *API) person(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+func (a *API) person(c *echo.Context) error {
+	ctx := c.Request().Context()
 	if a.people == nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Not found.")
 	}
 	viewer := auth.MustUser(ctx)
-	p, err := a.people.Person(ctx, viewer, chi.URLParam(r, "handle"))
+	p, err := a.people.Person(ctx, viewer, c.Param("handle"))
 	if err != nil {
-		httpx.Error(w, err, "Nobody has that handle.")
-		return
+		return httpx.Fail(err, "Nobody has that handle.")
 	}
 	out := PersonAwardsView{
 		DisplayName: p.Name, Handle: p.Handle, Self: p.Self, Shared: p.Self || p.Shared,
 		Earned: []award.View{}, Locked: []award.View{},
 	}
 	if !out.Shared {
-		httpx.WriteJSON(w, http.StatusOK, out)
-		return
+		return c.JSON(http.StatusOK, out)
 	}
 	earned, err := a.svc.Earned(ctx, p.ID)
 	if err != nil {
-		httpx.Error(w, err, "The awards could not be loaded.")
-		return
+		return httpx.Fail(err, "The awards could not be loaded.")
 	}
 	rarities, err := a.svc.Rarities(ctx)
 	if err != nil {
-		httpx.Error(w, err, "The awards could not be loaded.")
-		return
+		return httpx.Fail(err, "The awards could not be loaded.")
 	}
 	held := map[string]bool{}
 	badges := make([]award.View, 0, len(earned))
@@ -176,16 +167,15 @@ func (a *API) person(w http.ResponseWriter, r *http.Request) {
 	}
 	out.Earned = MergeEarned(badges, ProjectMonthlyMedals(ctx, medals))
 	if p.Self {
-		if c, err := a.svc.Monthly(ctx, p.ID, a.svc.now()); err != nil {
+		if challenge, err := a.svc.Monthly(ctx, p.ID, a.svc.now()); err != nil {
 			a.svc.log.Warn("awards: monthly challenge skipped", "user_id", p.ID, "error", err)
 		} else {
-			cv := ProjectMonthlyChallenge(ctx, c)
+			cv := ProjectMonthlyChallenge(ctx, challenge)
 			out.MonthlyChallenge = &cv
 		}
 		progress, err := a.svc.Progress(ctx, p.ID)
 		if err != nil {
-			httpx.Error(w, err, "The awards could not be loaded.")
-			return
+			return httpx.Fail(err, "The awards could not be loaded.")
 		}
 		for _, b := range award.Catalog() {
 			if held[b.ID] {
@@ -195,25 +185,22 @@ func (a *API) person(w http.ResponseWriter, r *http.Request) {
 			out.Locked = append(out.Locked, b.Project(ctx, nil, &n, rarities[b.ID].Label()))
 		}
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) unseen(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+func (a *API) unseen(c *echo.Context) error {
+	ctx := c.Request().Context()
 	unseen, err := a.svc.Unseen(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Your awards could not be loaded.")
-		return
+		return httpx.Fail(err, "Your awards could not be loaded.")
 	}
 	rarities, err := a.svc.Rarities(ctx)
 	if err != nil {
-		httpx.Error(w, err, "Your awards could not be loaded.")
-		return
+		return httpx.Fail(err, "Your awards could not be loaded.")
 	}
 	medals, err := a.svc.UnseenMonthly(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Your awards could not be loaded.")
-		return
+		return httpx.Fail(err, "Your awards could not be loaded.")
 	}
 	out := UnseenView{Awards: make([]award.View, 0, len(unseen)+len(medals))}
 	for _, e := range unseen {
@@ -221,44 +208,38 @@ func (a *API) unseen(w http.ResponseWriter, r *http.Request) {
 	}
 	// Medals go after the badges, oldest first like the rest of the list.
 	out.Awards = append(out.Awards, ProjectMonthlyMedals(ctx, medals)...)
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // seen marks a badge celebrated. A badge that does not exist, or that the
 // caller has not earned, is not found; one already seen is a repeat and still
 // 204, so a client may retry a seen it is unsure reached us.
-func (a *API) seen(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+func (a *API) seen(c *echo.Context) error {
+	ctx := c.Request().Context()
 	userID := auth.MustUser(ctx).ID
-	id := chi.URLParam(r, "badgeID")
+	id := c.Param("badgeID")
 	if key, ok := award.ParseMonthlyID(id); ok {
 		if err := a.svc.MarkMonthlySeen(ctx, userID, key); err != nil {
-			httpx.Error(w, err, "Not found.")
-			return
+			return httpx.Fail(err, "Not found.")
 		}
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return c.NoContent(http.StatusNoContent)
 	}
 	if _, ok := award.ByID(id); !ok {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Not found.")
 	}
 	earned, err := a.svc.Earned(ctx, userID)
 	if err != nil {
-		httpx.Error(w, err, "That could not be saved.")
-		return
+		return httpx.Fail(err, "That could not be saved.")
 	}
 	held := false
 	for _, e := range earned {
 		held = held || e.Badge.ID == id
 	}
 	if !held {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Not found.")
 	}
 	if err := a.svc.MarkSeen(ctx, userID, id); err != nil {
-		httpx.Error(w, err, "That could not be saved.")
-		return
+		return httpx.Fail(err, "That could not be saved.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }

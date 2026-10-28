@@ -5,33 +5,34 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
 	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day/day"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/soreness/sore"
 	"github.com/NorthAIProject/north-client/internal/supplements/supplement"
 )
 
 // API is "My Day" for native clients: one date, every card, and the rules the
-// day is read against. Mount behind auth.RequireBearer.
+// day is read against. Register it behind auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/day", a.show)
-	r.Get("/day/rules", a.listRules)
-	r.Get("/day/trends", a.trends)
-	r.Get("/day/checkin", a.checkIn)
-	r.Put("/day/rules/{kind}", a.setRule)
-	r.Delete("/day/rules/{kind}", a.deleteRule)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/day", a.show)
+	g.GET("/day/rules", a.listRules)
+	g.GET("/day/trends", a.trends)
+	g.GET("/day/checkin", a.checkIn)
+	g.PUT("/day/rules/:kind", a.setRule)
+	g.DELETE("/day/rules/:kind", a.deleteRule)
 }
 
 // DayResponse is one local date.
@@ -265,37 +266,35 @@ type RuleRequest struct {
 	Enabled bool   `json:"enabled"`
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	date := ParseDate(r.URL.Query().Get("date"), user.Location(), time.Now())
+func (a *API) show(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	date := ParseDate(c.QueryParam("date"), user.Location(), time.Now())
 
-	snap, err := a.svc.Load(r.Context(), user, date)
+	snap, err := a.svc.Load(ctx, user, date)
 	if err != nil {
-		httpx.Error(w, err, "The day could not be loaded.")
-		return
+		return httpx.Fail(err, "The day could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, Project(snap))
+	return c.JSON(http.StatusOK, Project(snap))
 }
 
 // checkIn is the streak tile alone, for a live poll. An unchanged version
 // answers 204, so the poll is one small query.
-func (a *API) checkIn(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	version, err := a.svc.CheckInVersion(r.Context(), user.ID)
+func (a *API) checkIn(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	version, err := a.svc.CheckInVersion(ctx, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "The check-in could not be loaded.")
-		return
+		return httpx.Fail(err, "The check-in could not be loaded.")
 	}
-	if r.URL.Query().Get("v") == version {
-		w.WriteHeader(http.StatusNoContent)
-		return
+	if c.QueryParam("v") == version {
+		return c.NoContent(http.StatusNoContent)
 	}
-	tile, err := a.svc.LoadStreakTile(r.Context(), user)
+	tile, err := a.svc.LoadStreakTile(ctx, user)
 	if err != nil {
-		httpx.Error(w, err, "The check-in could not be loaded.")
-		return
+		return httpx.Fail(err, "The check-in could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, streakTileJSON(tile.Streak, tile.TodayCheckIn, tile.Version))
+	return c.JSON(http.StatusOK, streakTileJSON(tile.Streak, tile.TodayCheckIn, tile.Version))
 }
 
 func streakTileJSON(streak int, today *checkin.CheckIn, version string) StreakTileView {
@@ -306,41 +305,40 @@ func streakTileJSON(streak int, today *checkin.CheckIn, version string) StreakTi
 	return out
 }
 
-func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
-	a.respondRules(w, r, http.StatusOK)
+func (a *API) listRules(c *echo.Context) error {
+	return a.respondRules(c, http.StatusOK)
 }
 
-func (a *API) setRule(w http.ResponseWriter, r *http.Request) {
+func (a *API) setRule(c *echo.Context) error {
 	var req RuleRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	user := auth.MustUser(r.Context())
-	rule := day.Rule{Kind: day.RuleKind(chi.URLParam(r, "kind")), At: req.At, Enabled: req.Enabled}
-	if _, err := a.svc.SetRule(r.Context(), user.ID, rule); err != nil {
-		httpx.Error(w, err, "The rule could not be saved.")
-		return
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	rule := day.Rule{Kind: day.RuleKind(c.Param("kind")), At: req.At, Enabled: req.Enabled}
+	if _, err := a.svc.SetRule(ctx, user.ID, rule); err != nil {
+		return httpx.Fail(err, "The rule could not be saved.")
 	}
-	a.respondRules(w, r, http.StatusOK)
+	return a.respondRules(c, http.StatusOK)
 }
 
-func (a *API) deleteRule(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	if err := a.svc.DeleteRule(r.Context(), user.ID, day.RuleKind(chi.URLParam(r, "kind"))); err != nil {
-		httpx.Error(w, err, "The rule could not be removed.")
-		return
+func (a *API) deleteRule(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	if err := a.svc.DeleteRule(ctx, user.ID, day.RuleKind(c.Param("kind"))); err != nil {
+		return httpx.Fail(err, "The rule could not be removed.")
 	}
-	a.respondRules(w, r, http.StatusOK)
+	return a.respondRules(c, http.StatusOK)
 }
 
-func (a *API) respondRules(w http.ResponseWriter, r *http.Request, status int) {
-	rules, err := a.svc.Rules(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) respondRules(c *echo.Context, status int) error {
+	ctx := c.Request().Context()
+	rules, err := a.svc.Rules(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "The rules could not be loaded.")
-		return
+		return httpx.Fail(err, "The rules could not be loaded.")
 	}
-	httpx.WriteJSON(w, status, ProjectRules(rules))
+	return c.JSON(status, ProjectRules(rules))
 }
 
 // ProjectRules is the rules payload.
@@ -515,13 +513,13 @@ type TrendsResponse struct {
 	Fasts  []FastBarView `json:"fasts"`
 }
 
-func (a *API) trends(w http.ResponseWriter, r *http.Request) {
-	t, err := a.svc.Trends(r.Context(), auth.MustUser(r.Context()))
+func (a *API) trends(c *echo.Context) error {
+	ctx := c.Request().Context()
+	t, err := a.svc.Trends(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, "Trends could not be loaded.")
-		return
+		return httpx.Fail(err, "Trends could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectTrends(t))
+	return c.JSON(http.StatusOK, ProjectTrends(t))
 }
 
 // ProjectTrends is the trends payload. Series with no data are left out.
