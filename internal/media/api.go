@@ -28,6 +28,7 @@ func NewAPI(svc *Service, quotas *quota.Service) *API { return &API{svc: svc, qu
 func (a *API) Routes(r chi.Router) {
 	r.Get("/form-checks", a.list)
 	r.Get("/form-checks/{analysisID}", a.show)
+	r.Get("/media/{mediaID}", a.link)
 }
 
 func (a *API) UploadRoutes(r chi.Router) {
@@ -127,6 +128,38 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, project(an))
+}
+
+// MediaLinkView is a short-lived signed link to one stored file: a chat photo,
+// a progress photo or a form clip. The browser fetches the bytes from object
+// storage, so they never stream through the app.
+type MediaLinkView struct {
+	ID  uuid.UUID `json:"id"`
+	URL string    `json:"url"`
+	// Kind is image, video or file; an open string.
+	Kind     string `json:"kind"`
+	MIMEType string `json:"mimeType"`
+}
+
+// link is the web's GET /app/media/{id} for API clients: the same owner check
+// and the same signed URL, as JSON rather than a redirect.
+func (a *API) link(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "mediaID"))
+	if err != nil {
+		httpx.Error(w, apperr.ErrNotFound, "Not found.")
+		return
+	}
+	record, err := a.svc.GetMedia(r.Context(), id, auth.MustUser(r.Context()).ID)
+	if err != nil {
+		httpx.Error(w, err, "The file could not be loaded.")
+		return
+	}
+	url, err := a.svc.PlaybackURL(r.Context(), record)
+	if err != nil {
+		httpx.Error(w, err, "The file could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, MediaLinkView{ID: record.ID, URL: url, Kind: record.Kind, MIMEType: record.MIMEType})
 }
 
 func project(an analysis.Analysis) FormCheckView {

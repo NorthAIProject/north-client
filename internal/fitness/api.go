@@ -25,6 +25,7 @@ const NativeReturnURL = "khepri://fitness/strava"
 type API struct {
 	strava  *strava.Service
 	baseURL string
+	hub     *Service
 }
 
 // NewAPI builds the routes. Routes go behind auth.RequireBearer; PublicRoutes
@@ -38,6 +39,13 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/fitness/strava/connect", a.connect)
 	r.Post("/fitness/strava/sync", a.sync)
 	r.Delete("/fitness/strava", a.disconnect)
+
+	// The web app's pages (hub_api.go).
+	r.Get("/fitness/hub", a.hubView)
+	r.Get("/fitness/activities", a.activities)
+	r.Get("/fitness/activities/sessions", a.activitySessions)
+	r.Post("/fitness/strava/connect/web", a.connectWeb)
+	r.Post("/fitness/strava/connect/web/finish", a.finishWeb)
 }
 
 func (a *API) PublicRoutes(r chi.Router) {
@@ -47,8 +55,11 @@ func (a *API) PublicRoutes(r chi.Router) {
 type StravaStatus struct {
 	// Configured is false when this deployment has no Strava credentials; the
 	// app then hides the connection instead of offering one that cannot work.
-	Configured          bool       `json:"configured"`
-	Connected           bool       `json:"connected"`
+	Configured bool `json:"configured"`
+	Connected  bool `json:"connected"`
+	// Unavailable means the connection could not be read; the web hub then
+	// offers no Connect button, which would replace a working credential.
+	Unavailable         bool       `json:"unavailable,omitempty"`
 	LastSyncedAt        *time.Time `json:"lastSyncedAt,omitempty"`
 	LastSyncAttemptedAt *time.Time `json:"lastSyncAttemptedAt,omitempty"`
 	// LastSyncError is empty after a successful sync.

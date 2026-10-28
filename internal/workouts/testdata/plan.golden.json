@@ -19,12 +19,14 @@
           "formCues": "Knees track over toes.",
           "catalogSlug": "goblet-squat",
           "hasArt": true,
+          "illustrationSlug": "goblet-squat",
           "primaryMuscles": [
             "quads"
           ],
           "secondaryMuscles": [
             "glutes"
-          ]
+          ],
+          "stabilizerMuscles": []
         }
       ],
       "completedThisWeek": true,
