@@ -14,17 +14,19 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *connectionsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: connectionsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: connectionsdb.New(pool)}
 }
 
 // Insert stores a connection. The hash is the only form of the token that
 // reaches here; the caller keeps the plaintext just long enough to show it.
-func (r *Repository) Insert(ctx context.Context, userID uuid.UUID, name string, kind ClientKind, tokenHash []byte, prefix string) (Connection, error) {
+func (r *PostgresRepository) Insert(ctx context.Context, userID uuid.UUID, name string, kind ClientKind, tokenHash []byte, prefix string) (Connection, error) {
 	row, err := r.q.InsertAgentConnection(ctx, connectionsdb.InsertAgentConnectionParams{
 		UserID: userID, Name: name, ClientKind: string(kind), TokenHash: tokenHash, TokenPrefix: prefix,
 	})
@@ -38,7 +40,7 @@ func (r *Repository) Insert(ctx context.Context, userID uuid.UUID, name string, 
 //
 // The same table as a pasted token, which is what keeps one revoke button
 // covering both kinds and the settings page free of a second list.
-func (r *Repository) InsertGrant(ctx context.Context, in GrantRow) (Connection, error) {
+func (r *PostgresRepository) InsertGrant(ctx context.Context, in GrantRow) (Connection, error) {
 	// NULL rather than the empty string. The column is a foreign key, and ""
 	// is a value that satisfies no row — it fails the constraint instead of
 	// meaning "no client recorded", which is what an absent id means.
@@ -65,7 +67,7 @@ func (r *Repository) InsertGrant(ctx context.Context, in GrantRow) (Connection, 
 //
 // Returns ErrNotFound when the grant is revoked, missing, or was issued by
 // hand — a pasted token has no refresh flow and must not acquire one here.
-func (r *Repository) RotateToken(ctx context.Context, id uuid.UUID, tokenHash []byte, expiresAt time.Time) error {
+func (r *PostgresRepository) RotateToken(ctx context.Context, id uuid.UUID, tokenHash []byte, expiresAt time.Time) error {
 	rows, err := r.q.RotateAgentConnectionToken(ctx, connectionsdb.RotateAgentConnectionTokenParams{
 		ID:        id,
 		TokenHash: tokenHash,
@@ -80,7 +82,7 @@ func (r *Repository) RotateToken(ctx context.Context, id uuid.UUID, tokenHash []
 	return nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID) ([]Connection, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID) ([]Connection, error) {
 	rows, err := r.q.ListAgentConnections(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list agent connections")
@@ -96,7 +98,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID) ([]Connection, 
 //
 // The error is deliberately not wrapped with the hash: an error string is the
 // one place a credential-shaped value tends to end up in a log.
-func (r *Repository) ByTokenHash(ctx context.Context, tokenHash []byte) (Connection, error) {
+func (r *PostgresRepository) ByTokenHash(ctx context.Context, tokenHash []byte) (Connection, error) {
 	row, err := r.q.GetAgentConnectionByTokenHash(ctx, tokenHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -109,7 +111,7 @@ func (r *Repository) ByTokenHash(ctx context.Context, tokenHash []byte) (Connect
 
 // Touch records that a token was used. The query is a no-op unless the stored
 // value has gone stale, so a polling agent does not write on every request.
-func (r *Repository) Touch(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) Touch(ctx context.Context, id uuid.UUID) error {
 	if err := r.q.TouchAgentConnection(ctx, id); err != nil {
 		return apperr.Wrap(err, "touch agent connection")
 	}
@@ -118,7 +120,7 @@ func (r *Repository) Touch(ctx context.Context, id uuid.UUID) error {
 
 // RevokeGrant turns a connection off by id alone. See the query's comment for
 // why that is safe here and nowhere near a form.
-func (r *Repository) RevokeGrant(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) RevokeGrant(ctx context.Context, id uuid.UUID) error {
 	rows, err := r.q.RevokeGrantByID(ctx, id)
 	if err != nil {
 		return apperr.Wrap(err, "revoke grant")
@@ -131,7 +133,7 @@ func (r *Repository) RevokeGrant(ctx context.Context, id uuid.UUID) error {
 
 // Revoke turns a connection off. Scoped by user as well as id, so an id
 // guessed from someone else's page revokes nothing.
-func (r *Repository) Revoke(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Revoke(ctx context.Context, id, userID uuid.UUID) error {
 	rows, err := r.q.RevokeAgentConnection(ctx, connectionsdb.RevokeAgentConnectionParams{ID: id, UserID: userID})
 	if err != nil {
 		return apperr.Wrap(err, "revoke agent connection")

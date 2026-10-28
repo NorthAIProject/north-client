@@ -22,10 +22,36 @@ const maxMessageLength = 20_000
 const defaultHistoryLimit = 200
 
 type Service struct {
-	repo *Repository
+	repo Repository
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps conversations and their messages.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, title, kind string) (Conversation, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Conversation, error)
+	List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]Conversation, error)
+	SetSummary(ctx context.Context, id uuid.UUID, summary string) error
+	SetContextSummary(ctx context.Context, id uuid.UUID, summary string, through time.Time) error
+	MessagesBetween(ctx context.Context, id uuid.UUID, after, through time.Time, limit int) ([]Message, error)
+	AwaitingSummary(ctx context.Context, keepRecent, limit int) ([]Pending, error)
+	Owner(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	SetTitle(ctx context.Context, id uuid.UUID, title string) error
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	Append(ctx context.Context, msg NewMessage) (Message, error)
+	Messages(ctx context.Context, conversationID uuid.UUID, limit int) ([]Message, error)
+	Recent(ctx context.Context, conversationID uuid.UUID, limit int) ([]Message, error)
+	RecentUserMessages(ctx context.Context, userID uuid.UUID, limit int) ([]Message, error)
+	CountMessages(ctx context.Context, conversationID uuid.UUID) (int, error)
+	AwaitingExtraction(ctx context.Context, idleBefore time.Time, minMessages, limit int) ([]Pending, error)
+	MarkExtracted(ctx context.Context, id uuid.UUID) error
+	SetMessageHelpful(ctx context.Context, messageID, userID uuid.UUID, helpful *bool) (Message, bool, error)
+	UserMessagesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time, limit int) ([]MessageStat, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

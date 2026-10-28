@@ -13,17 +13,19 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *mcpauthdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: mcpauthdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: mcpauthdb.New(pool)}
 }
 
 // --- clients ---------------------------------------------------------------
 
-func (r *Repository) InsertClient(ctx context.Context, c Client, dedupeKey []byte) (Client, error) {
+func (r *PostgresRepository) InsertClient(ctx context.Context, c Client, dedupeKey []byte) (Client, error) {
 	row, err := r.q.InsertOAuthClient(ctx, mcpauthdb.InsertOAuthClientParams{
 		ID:           c.ID,
 		ClientName:   c.Name,
@@ -38,7 +40,7 @@ func (r *Repository) InsertClient(ctx context.Context, c Client, dedupeKey []byt
 	return clientFromDB(row), nil
 }
 
-func (r *Repository) ClientByDedupeKey(ctx context.Context, dedupeKey []byte) (Client, error) {
+func (r *PostgresRepository) ClientByDedupeKey(ctx context.Context, dedupeKey []byte) (Client, error) {
 	row, err := r.q.GetOAuthClientByDedupeKey(ctx, dedupeKey)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -49,7 +51,7 @@ func (r *Repository) ClientByDedupeKey(ctx context.Context, dedupeKey []byte) (C
 	return clientFromDB(row), nil
 }
 
-func (r *Repository) Client(ctx context.Context, id string) (Client, error) {
+func (r *PostgresRepository) Client(ctx context.Context, id string) (Client, error) {
 	row, err := r.q.GetOAuthClient(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -60,7 +62,7 @@ func (r *Repository) Client(ctx context.Context, id string) (Client, error) {
 	return clientFromDB(row), nil
 }
 
-func (r *Repository) CountClients(ctx context.Context) (int64, error) {
+func (r *PostgresRepository) CountClients(ctx context.Context) (int64, error) {
 	n, err := r.q.CountOAuthClients(ctx)
 	if err != nil {
 		return 0, apperr.Wrap(err, "count oauth clients")
@@ -68,7 +70,7 @@ func (r *Repository) CountClients(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
-func (r *Repository) TouchClient(ctx context.Context, id string) error {
+func (r *PostgresRepository) TouchClient(ctx context.Context, id string) error {
 	if err := r.q.TouchOAuthClient(ctx, id); err != nil {
 		return apperr.Wrap(err, "touch oauth client")
 	}
@@ -78,7 +80,7 @@ func (r *Repository) TouchClient(ctx context.Context, id string) error {
 // --- authorization requests ------------------------------------------------
 
 // InsertRequest parks a validated authorization request.
-func (r *Repository) InsertRequest(ctx context.Context, req Request, challenge, method string, verifierHash []byte) (Request, error) {
+func (r *PostgresRepository) InsertRequest(ctx context.Context, req Request, challenge, method string, verifierHash []byte) (Request, error) {
 	row, err := r.q.InsertAuthorizationRequest(ctx, mcpauthdb.InsertAuthorizationRequestParams{
 		ClientID:            req.ClientID,
 		RedirectUri:         req.RedirectURI,
@@ -104,7 +106,7 @@ type storedRequest struct {
 	CodeChallengeMethod string
 }
 
-func (r *Repository) Request(ctx context.Context, id uuid.UUID, verifierHash []byte) (storedRequest, error) {
+func (r *PostgresRepository) Request(ctx context.Context, id uuid.UUID, verifierHash []byte) (storedRequest, error) {
 	row, err := r.q.GetAuthorizationRequest(ctx, mcpauthdb.GetAuthorizationRequestParams{
 		ID:           id,
 		VerifierHash: verifierHash,
@@ -122,7 +124,7 @@ func (r *Repository) Request(ctx context.Context, id uuid.UUID, verifierHash []b
 	}, nil
 }
 
-func (r *Repository) MarkRequestAccountCreated(ctx context.Context, id uuid.UUID, verifierHash []byte) error {
+func (r *PostgresRepository) MarkRequestAccountCreated(ctx context.Context, id uuid.UUID, verifierHash []byte) error {
 	err := r.q.MarkAuthorizationRequestAccountCreated(ctx, mcpauthdb.MarkAuthorizationRequestAccountCreatedParams{
 		ID:           id,
 		VerifierHash: verifierHash,
@@ -135,7 +137,7 @@ func (r *Repository) MarkRequestAccountCreated(ctx context.Context, id uuid.UUID
 
 // ConsumeRequest closes a request. ErrNotFound means somebody else already
 // did, which is what a double-clicked Approve looks like.
-func (r *Repository) ConsumeRequest(ctx context.Context, id uuid.UUID, verifierHash []byte) error {
+func (r *PostgresRepository) ConsumeRequest(ctx context.Context, id uuid.UUID, verifierHash []byte) error {
 	rows, err := r.q.ConsumeAuthorizationRequest(ctx, mcpauthdb.ConsumeAuthorizationRequestParams{
 		ID:           id,
 		VerifierHash: verifierHash,
@@ -151,7 +153,7 @@ func (r *Repository) ConsumeRequest(ctx context.Context, id uuid.UUID, verifierH
 
 // --- authorization codes ---------------------------------------------------
 
-func (r *Repository) InsertCode(ctx context.Context, code storedCode) error {
+func (r *PostgresRepository) InsertCode(ctx context.Context, code storedCode) error {
 	_, err := r.q.InsertAuthorizationCode(ctx, mcpauthdb.InsertAuthorizationCodeParams{
 		CodeHash:            code.Hash,
 		ClientID:            code.ClientID,
@@ -191,7 +193,7 @@ type storedCode struct {
 	ConnectionID *uuid.UUID
 }
 
-func (r *Repository) Code(ctx context.Context, hash []byte) (storedCode, error) {
+func (r *PostgresRepository) Code(ctx context.Context, hash []byte) (storedCode, error) {
 	row, err := r.q.GetAuthorizationCode(ctx, hash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -214,7 +216,7 @@ func (r *Repository) Code(ctx context.Context, hash []byte) (storedCode, error) 
 	}, nil
 }
 
-func (r *Repository) ConsumeCode(ctx context.Context, hash []byte, connectionID uuid.UUID) error {
+func (r *PostgresRepository) ConsumeCode(ctx context.Context, hash []byte, connectionID uuid.UUID) error {
 	rows, err := r.q.ConsumeAuthorizationCode(ctx, mcpauthdb.ConsumeAuthorizationCodeParams{
 		CodeHash:     hash,
 		ConnectionID: &connectionID,
@@ -230,7 +232,7 @@ func (r *Repository) ConsumeCode(ctx context.Context, hash []byte, connectionID 
 
 // --- refresh tokens --------------------------------------------------------
 
-func (r *Repository) InsertRefreshToken(ctx context.Context, connectionID uuid.UUID, hash []byte, expiresAt time.Time) (uuid.UUID, error) {
+func (r *PostgresRepository) InsertRefreshToken(ctx context.Context, connectionID uuid.UUID, hash []byte, expiresAt time.Time) (uuid.UUID, error) {
 	row, err := r.q.InsertRefreshToken(ctx, mcpauthdb.InsertRefreshTokenParams{
 		ConnectionID: connectionID,
 		TokenHash:    hash,
@@ -250,7 +252,7 @@ type storedRefresh struct {
 	Consumed     *time.Time
 }
 
-func (r *Repository) RefreshToken(ctx context.Context, hash []byte) (storedRefresh, error) {
+func (r *PostgresRepository) RefreshToken(ctx context.Context, hash []byte) (storedRefresh, error) {
 	row, err := r.q.GetRefreshToken(ctx, hash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -266,7 +268,7 @@ func (r *Repository) RefreshToken(ctx context.Context, hash []byte) (storedRefre
 	}, nil
 }
 
-func (r *Repository) ConsumeRefreshToken(ctx context.Context, hash []byte, replacedBy uuid.UUID) error {
+func (r *PostgresRepository) ConsumeRefreshToken(ctx context.Context, hash []byte, replacedBy uuid.UUID) error {
 	var replacement *uuid.UUID
 	if replacedBy != uuid.Nil {
 		replacement = &replacedBy
@@ -287,7 +289,7 @@ func (r *Repository) ConsumeRefreshToken(ctx context.Context, hash []byte, repla
 // LinkReplaced records which token superseded a spent one, for forensics on a
 // stolen-token chain. Best effort at the call site: a missing audit link must
 // not fail a refresh that already succeeded.
-func (r *Repository) LinkReplaced(ctx context.Context, hash []byte, replacedBy uuid.UUID) error {
+func (r *PostgresRepository) LinkReplaced(ctx context.Context, hash []byte, replacedBy uuid.UUID) error {
 	err := r.q.LinkReplacedRefreshToken(ctx, mcpauthdb.LinkReplacedRefreshTokenParams{
 		TokenHash:  hash,
 		ReplacedBy: &replacedBy,
@@ -301,7 +303,7 @@ func (r *Repository) LinkReplaced(ctx context.Context, hash []byte, replacedBy u
 // ConsumeAllRefreshTokens retires every refresh token a grant holds. Used when
 // a replay is detected: the grant is being revoked, and leaving a live refresh
 // token behind would let the attacker keep the connection alive.
-func (r *Repository) ConsumeAllRefreshTokens(ctx context.Context, connectionID uuid.UUID) error {
+func (r *PostgresRepository) ConsumeAllRefreshTokens(ctx context.Context, connectionID uuid.UUID) error {
 	if _, err := r.q.ConsumeRefreshTokensForConnection(ctx, connectionID); err != nil {
 		return apperr.Wrap(err, "consume refresh tokens for connection")
 	}
@@ -315,7 +317,7 @@ type Swept struct {
 	Requests, Codes, RefreshTokens, Clients int64
 }
 
-func (r *Repository) Sweep(ctx context.Context) (Swept, error) {
+func (r *PostgresRepository) Sweep(ctx context.Context) (Swept, error) {
 	var out Swept
 	var err error
 

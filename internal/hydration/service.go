@@ -18,7 +18,7 @@ import (
 const maxEntryML = 5000
 
 type Service struct {
-	repo   *Repository
+	repo   Repository
 	awards Awards
 }
 
@@ -32,7 +32,21 @@ func (s *Service) WithAwards(a Awards) *Service {
 	return s
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps water entries.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, date time.Time, amountML int) (Entry, error)
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	ListForDate(ctx context.Context, userID uuid.UUID, date time.Time) ([]Entry, error)
+	TotalForDate(ctx context.Context, userID uuid.UUID, date time.Time) (int, int, error)
+	TotalsSince(ctx context.Context, userID uuid.UUID, since time.Time) ([]Day, error)
+	TotalsBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Day, error)
+	ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

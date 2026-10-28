@@ -236,17 +236,17 @@ func purgeSimulated(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 // which is exactly the seam this needs, and they still carry the constraints,
 // natural keys and timezone handling that raw SQL would bypass.
 type simWriter struct {
-	users         *users.Repository
-	habits        *habits.Repository
+	users         users.Repository
+	habits        habits.Repository
 	checkins      *checkins.Repository
-	sleep         *sleep.Repository
-	hydration     *hydration.Repository
+	sleep         sleep.Repository
+	hydration     hydration.Repository
 	health        *health.Repository
 	nudges        *nudges.Repository
 	workouts      *workouts.Repository
 	activity      *activity.Repository
 	meals         *meals.Repository
-	conversations *conversations.Repository
+	conversations conversations.Repository
 	pool          *pgxpool.Pool
 
 	// ingredients are the catalog rows food logs reference, resolved once.

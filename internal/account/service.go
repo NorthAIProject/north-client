@@ -14,12 +14,23 @@ import (
 
 // Service ends accounts.
 type Service struct {
-	repo    *Repository
+	repo    Repository
 	storage Storage
 	log     *slog.Logger
 }
 
-func NewService(repo *Repository, storage Storage, log *slog.Logger) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that erases an account.
+type Repository interface {
+	StorageKeys(ctx context.Context, userID uuid.UUID) ([]string, error)
+	Erase(ctx context.Context, userID uuid.UUID, objects int) (eventID uuid.UUID, jobs int64, err error)
+	RecordEvent(ctx context.Context, userID uuid.UUID, event string) error
+	CloseErasure(ctx context.Context, eventID uuid.UUID, e Erasure) error
+}
+
+func NewService(repo Repository, storage Storage, log *slog.Logger) *Service {
 	if log == nil {
 		log = slog.Default()
 	}

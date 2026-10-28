@@ -15,15 +15,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *notificationsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: notificationsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: notificationsdb.New(pool)}
 }
 
-func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Prefs, error) {
+func (r *PostgresRepository) Get(ctx context.Context, userID uuid.UUID) (Prefs, error) {
 	row, err := r.q.GetUserNotificationPrefs(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -34,7 +36,7 @@ func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Prefs, error) {
 	return fromDB(row), nil
 }
 
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Prefs, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Prefs, error) {
 	row, err := r.q.UpsertUserNotificationPrefs(ctx, notificationsdb.UpsertUserNotificationPrefsParams{
 		UserID:               userID,
 		NudgeMissedCheckin:   in.NudgeMissedCheckIn,
@@ -59,7 +61,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Pr
 	return fromDB(row), nil
 }
 
-func (r *Repository) GetSchedule(ctx context.Context, userID uuid.UUID, kind string) (Schedule, error) {
+func (r *PostgresRepository) GetSchedule(ctx context.Context, userID uuid.UUID, kind string) (Schedule, error) {
 	row, err := r.q.GetAlertSchedule(ctx, notificationsdb.GetAlertScheduleParams{
 		UserID: userID,
 		Kind:   kind,
@@ -73,7 +75,7 @@ func (r *Repository) GetSchedule(ctx context.Context, userID uuid.UUID, kind str
 	return scheduleFromDB(row), nil
 }
 
-func (r *Repository) ListSchedules(ctx context.Context, userID uuid.UUID) ([]Schedule, error) {
+func (r *PostgresRepository) ListSchedules(ctx context.Context, userID uuid.UUID) ([]Schedule, error) {
 	rows, err := r.q.ListAlertSchedules(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list alert schedules")
@@ -85,7 +87,7 @@ func (r *Repository) ListSchedules(ctx context.Context, userID uuid.UUID) ([]Sch
 	return out, nil
 }
 
-func (r *Repository) UpsertSchedule(ctx context.Context, userID uuid.UUID, in ScheduleInput) (Schedule, error) {
+func (r *PostgresRepository) UpsertSchedule(ctx context.Context, userID uuid.UUID, in ScheduleInput) (Schedule, error) {
 	row, err := r.q.UpsertAlertSchedule(ctx, notificationsdb.UpsertAlertScheduleParams{
 		UserID:       userID,
 		Kind:         in.Kind,
@@ -105,7 +107,7 @@ func (r *Repository) UpsertSchedule(ctx context.Context, userID uuid.UUID, in Sc
 // The insert is the lock: two sweeps racing on the same window both try, one
 // inserts, and the other is told it lost. Reading first and then writing would
 // leave a gap between the two in which both could decide to send.
-func (r *Repository) ClaimDigest(ctx context.Context, userID uuid.UUID, cadence string, periodStart time.Time) (bool, error) {
+func (r *PostgresRepository) ClaimDigest(ctx context.Context, userID uuid.UUID, cadence string, periodStart time.Time) (bool, error) {
 	_, err := r.q.ClaimStatsDigest(ctx, notificationsdb.ClaimStatsDigestParams{
 		UserID:      userID,
 		Cadence:     cadence,

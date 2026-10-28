@@ -23,15 +23,17 @@ type Connection struct {
 	UpdatedAt  time.Time
 }
 
-type Repository struct {
+type PostgresRepository struct {
 	q *vaultdb.Queries
 }
 
-func NewRepository(q *vaultdb.Queries) *Repository {
-	return &Repository{q: q}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(q *vaultdb.Queries) *PostgresRepository {
+	return &PostgresRepository{q: q}
 }
 
-func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Connection, error) {
+func (r *PostgresRepository) Get(ctx context.Context, userID uuid.UUID) (Connection, error) {
 	row, err := r.q.GetVaultConnection(ctx, userID)
 	if err != nil {
 		return Connection{}, mapNotFound(err)
@@ -39,7 +41,7 @@ func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Connection, err
 	return fromDB(row), nil
 }
 
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, rootPath string) (Connection, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, rootPath string) (Connection, error) {
 	row, err := r.q.UpsertVaultConnection(ctx, vaultdb.UpsertVaultConnectionParams{
 		UserID:   userID,
 		RootPath: rootPath,
@@ -50,15 +52,15 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, rootPath stri
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.DeleteVaultConnection(ctx, userID), "disconnect vault")
 }
 
-func (r *Repository) MarkSynced(ctx context.Context, userID uuid.UUID) error {
+func (r *PostgresRepository) MarkSynced(ctx context.Context, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.MarkVaultSynced(ctx, userID), "mark vault synced")
 }
 
-func (r *Repository) MarkFailed(ctx context.Context, userID uuid.UUID, reason string) error {
+func (r *PostgresRepository) MarkFailed(ctx context.Context, userID uuid.UUID, reason string) error {
 	return apperr.Wrap(r.q.MarkVaultSyncFailed(ctx, vaultdb.MarkVaultSyncFailedParams{
 		UserID:    userID,
 		LastError: reason,

@@ -12,15 +12,17 @@ import (
 	watchesdb "github.com/NorthAIProject/north-client/internal/watches/db"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *watchesdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: watchesdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: watchesdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID, conversationID uuid.UUID, p Proposal, next time.Time) (Watch, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID, conversationID uuid.UUID, p Proposal, next time.Time) (Watch, error) {
 	var convo *uuid.UUID
 	if conversationID != uuid.Nil {
 		convo = &conversationID
@@ -47,7 +49,7 @@ func (r *Repository) Create(ctx context.Context, userID, conversationID uuid.UUI
 	return fromDB(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID) ([]Watch, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID) ([]Watch, error) {
 	rows, err := r.q.ListWatches(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list watches")
@@ -56,7 +58,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID) ([]Watch, error
 }
 
 // Due is every active watch whose slot has arrived, oldest first.
-func (r *Repository) Due(ctx context.Context, now time.Time, limit int) ([]Watch, error) {
+func (r *PostgresRepository) Due(ctx context.Context, now time.Time, limit int) ([]Watch, error) {
 	rows, err := r.q.DueWatches(ctx, watchesdb.DueWatchesParams{NextRunAt: now, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list due watches")
@@ -67,7 +69,7 @@ func (r *Repository) Due(ctx context.Context, now time.Time, limit int) ([]Watch
 // Claim moves a due watch to its next slot, reporting whether this caller is
 // the one that did. dueAt is the slot the caller read; if another sweep has
 // already moved it, nothing matches and the answer is false.
-func (r *Repository) Claim(ctx context.Context, id uuid.UUID, dueAt, next, now time.Time) (bool, error) {
+func (r *PostgresRepository) Claim(ctx context.Context, id uuid.UUID, dueAt, next, now time.Time) (bool, error) {
 	n, err := r.q.ClaimWatchRun(ctx, watchesdb.ClaimWatchRunParams{
 		ID:        id,
 		DueAt:     dueAt,
