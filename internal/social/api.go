@@ -54,6 +54,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/social/facebook", a.facebookFriends)
 	r.Delete("/social/facebook", a.disconnectFacebook)
 	r.Post("/social/facebook/connect", a.connectFacebook)
+	a.webRoutes(r)
 }
 
 type PersonView struct {
