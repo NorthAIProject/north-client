@@ -18,11 +18,11 @@ func TestMemoryShapes(t *testing.T) {
 		Pending: []MemoryView{{
 			ID: uuid.MustParse("a7a7a7a7-a7a7-a7a7-a7a7-a7a7a7a7a7a7"), Category: "injury",
 			Content: "Left knee aches on long downhill runs.", Status: "pending", Source: "extraction",
-			SourceConversationID: &convo, CreatedAt: created,
+			SourceConversationID: &convo, CreatedAt: created, UpdatedAt: created,
 		}},
 		Approved: []MemoryView{{
 			ID: uuid.MustParse("b8b8b8b8-b8b8-b8b8-b8b8-b8b8b8b8b8b8"), Category: "preference",
-			Content: "Trains before work, around 07:00.", Status: "approved", Pinned: true, Source: "user", CreatedAt: created,
+			Content: "Trains before work, around 07:00.", Status: "approved", Pinned: true, Source: "user", CreatedAt: created, UpdatedAt: created,
 		}},
 		Categories: Categories,
 	})
