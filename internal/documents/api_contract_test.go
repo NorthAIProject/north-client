@@ -1,7 +1,9 @@
 package documents
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,13 +19,22 @@ func TestKnowledgeShapes(t *testing.T) {
 	doc := DocumentView{
 		ID: uuid.MustParse("c9c9c9c9-c9c9-c9c9-c9c9-c9c9c9c9c9c9"), Title: "Marathon plan.md", Kind: "upload",
 		MIME: "text/markdown", ByteSize: 4210, Status: "ready", IndexedAt: &indexed, CreatedAt: indexed.Add(-time.Minute),
+		LineCount: 2,
 	}
-	apitest.AssertGolden(t, "knowledge.golden.json", KnowledgeList{Documents: []DocumentView{doc}, Counts: KnowledgeCounts{Ready: 1}})
-	apitest.AssertGolden(t, "knowledge-document.golden.json", DocumentDetail{DocumentView: doc, Text: "# Marathon plan\nWeek 1: three easy runs."})
+	apitest.AssertGolden(t, "knowledge.golden.json", KnowledgeList{
+		Documents: []DocumentView{doc}, Counts: KnowledgeCounts{Ready: 1, Chunks: 1},
+		Problems:     []KnowledgeProblem{{DocumentID: doc.ID, Title: doc.Title, Kind: "stale", Detail: "Changed since it was last read."}},
+		EmbeddingGap: 3,
+		LastRun:      &IndexRunView{StartedAt: indexed.Add(-time.Second), CompletedAt: &indexed, Seen: 1, Added: 1},
+	})
+	apitest.AssertGolden(t, "knowledge-document.golden.json", DocumentDetail{
+		DocumentView: doc, Text: "# Marathon plan\nWeek 1: three easy runs.",
+		Headings: []HeadingView{{Level: 1, Text: "Marathon plan", Line: 1}},
+	})
 	apitest.AssertGolden(t, "knowledge-search.golden.json", SearchResults{Hits: []SearchHit{{
 		DocumentID: doc.ID, Title: doc.Title, HeadingPath: []string{"Marathon plan"}, Snippet: "Week 1: three easy runs.",
-		Segments: []SnippetSegment{{Text: "Week 1: three "}, {Text: "easy runs", Matched: true}, {Text: "."}}, StartLine: 2,
-	}}})
+		Segments: []SnippetSegment{{Text: "Week 1: three "}, {Text: "easy runs", Matched: true}, {Text: "."}}, StartLine: 2, EndLine: 2,
+	}}, HasMore: true})
 }
 
 // Raw snippets carry ts_headline's control-character markers. A client gets
@@ -40,5 +51,20 @@ func TestSearchHitsResolveHighlightMarkers(t *testing.T) {
 	}
 	if hit.HeadingPath == nil {
 		t.Error("headingPath must be an empty array, not null")
+	}
+}
+
+// A vector-only hit has no ts_headline snippet; the client gets the start of
+// the passage instead of an empty excerpt, as the web page shows it.
+func TestSearchHitWithoutSnippetFallsBackToContent(t *testing.T) {
+	t.Parallel()
+
+	hit := projectHit(Hit{Content: "Easy runs only in week one."})
+	if hit.Snippet != "Easy runs only in week one." {
+		t.Errorf("snippet = %q", hit.Snippet)
+	}
+	long := projectHit(Hit{Content: strings.Repeat("é", 200)})
+	if !utf8.ValidString(long.Snippet) || !strings.HasSuffix(long.Snippet, "…") {
+		t.Errorf("long snippet not cut cleanly: %q", long.Snippet)
 	}
 }
