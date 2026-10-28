@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +30,10 @@ import (
 // Config is what New needs from the process.
 type Config struct {
 	Logger *slog.Logger
+
+	// TrustedProxies decide whose X-Forwarded-For c.RealIP believes. Empty
+	// means the peer address, always.
+	TrustedProxies middleware.TrustedProxies
 }
 
 // New builds the Echo instance with the middleware every request runs
@@ -37,7 +42,11 @@ type Config struct {
 //   - RequestID first, so every later line can carry it;
 //   - the request logger, outside Recover so a panic is logged with the 500
 //     it became;
-//   - Recover, so one bad handler cannot take the process down.
+//   - Recover, so one bad handler cannot take the process down;
+//   - Secure, so every reply carries the browser hardening headers.
+//
+// c.RealIP() answers through cfg.TrustedProxies: see
+// middleware.TrustedProxies.IPExtractor for why Echo's defaults are not used.
 //
 // Groups do not register catch-all 404 routes for their middleware. Without
 // that, every group with a body limit or an auth check would claim its whole
@@ -52,13 +61,59 @@ func New(cfg Config) *echo.Echo {
 		Logger:                       log,
 		HTTPErrorHandler:             ErrorHandler,
 		NoGroupAutoRegister404Routes: true,
+		IPExtractor:                  cfg.TrustedProxies.IPExtractor(),
 	})
 
 	e.Use(RequestID())
 	e.Use(RequestLogger(log))
 	e.Use(echomw.Recover())
+	e.Use(Secure())
 
 	return e
+}
+
+// Secure sets the same hardening headers the production ingress adds
+// (charts/norviq-app security-headers in the infra repo), so a deployment
+// without that middleware — a laptop, another cluster — is not quietly
+// weaker. Where both run, the values agree.
+//
+// X-XSS-Protection is off: browsers removed the auditor it controlled, and
+// the header only ever enabled a cross-site leak. No CSP here; the browser
+// app's pages state their own.
+func Secure() echo.MiddlewareFunc {
+	return echomw.SecureWithConfig(echomw.SecureConfig{
+		ContentTypeNosniff: "nosniff",
+		XFrameOptions:      "DENY",
+		HSTSMaxAge:         31536000,
+		HSTSPreloadEnabled: true,
+		ReferrerPolicy:     "strict-origin-when-cross-origin",
+	})
+}
+
+// gzipMinLength is the smallest body worth compressing. Below it the gzip
+// header and the CPU cost more than they save.
+const gzipMinLength = 1024
+
+// Gzip compresses replies for clients that accept it, except Server-Sent
+// Events.
+//
+// A stream is skipped for two reasons, either of which marks it: the client
+// asked for text/event-stream, or the route is one of streams (Echo's route
+// template, as c.Path() reports it). The second exists because a client that
+// sends no Accept still gets a stream, and a compressor in front of a stream
+// is one buffering mistake away from delivering every token at the end.
+func Gzip(streams ...string) echo.MiddlewareFunc {
+	skip := make(map[string]bool, len(streams))
+	for _, path := range streams {
+		skip[path] = true
+	}
+	return echomw.GzipWithConfig(echomw.GzipConfig{
+		MinLength: gzipMinLength,
+		Skipper: func(c *echo.Context) bool {
+			return skip[c.Path()] ||
+				strings.Contains(c.Request().Header.Get(echo.HeaderAccept), "text/event-stream")
+		},
+	})
 }
 
 // maxRequestIDLength bounds an inbound X-Request-ID. Anything longer is not a

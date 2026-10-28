@@ -1077,7 +1077,7 @@ func routes(
 
 	// Echo is the server: request ids, the request log and panic recovery run
 	// for every request here, and the JSON API registers on it natively.
-	e := echox.New(echox.Config{Logger: slog.Default()})
+	e := echox.New(echox.Config{Logger: slog.Default(), TrustedProxies: cfg.TrustedProxies})
 
 	// r is the browser app, still on chi until the web front end moves out of
 	// this process. Echo hands it every request no Echo route claims.

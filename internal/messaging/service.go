@@ -102,7 +102,7 @@ type Service struct {
 	siteURL   string
 	outreach  OutreachAnswers
 
-	redeemLimit *ratelimit.Limiters
+	redeemLimit *ratelimit.Store
 
 	// now is overridable so a test can expire a code without sleeping.
 	now func() time.Time

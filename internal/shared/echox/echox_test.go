@@ -157,3 +157,87 @@ func TestAFlushThroughTheResponseReachesTheConnection(t *testing.T) {
 		t.Fatal("the flush did not reach the underlying writer")
 	}
 }
+
+func TestEveryReplyCarriesTheHardeningHeaders(t *testing.T) {
+	t.Parallel()
+	e := newTestEcho()
+	e.GET("/ok", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
+
+	// HSTS is sent only over HTTPS. Behind the ingress that is known from
+	// X-Forwarded-Proto, which Echo believes only from a private peer.
+	req := httptest.NewRequest(http.MethodGet, "/ok", nil)
+	req.RemoteAddr = "10.42.0.7:4000"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	for header, want := range map[string]string{
+		"X-Content-Type-Options":    "nosniff",
+		"X-Frame-Options":           "DENY",
+		"Referrer-Policy":           "strict-origin-when-cross-origin",
+		"Strict-Transport-Security": "max-age=31536000; includeSubdomains; preload",
+		"X-Xss-Protection":          "",
+	} {
+		if got := rec.Header().Get(header); got != want {
+			t.Errorf("%s = %q, want %q", header, got, want)
+		}
+	}
+}
+
+// RealIP must believe only the configured proxies. Echo's own default trusts
+// every private address, which on a cluster network is every pod.
+func TestRealIPBelievesOnlyTheConfiguredProxies(t *testing.T) {
+	t.Parallel()
+	trusted, err := middleware.ParseTrustedProxies("10.42.0.0/16")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := New(Config{Logger: slog.New(slog.DiscardHandler), TrustedProxies: trusted})
+	var seen string
+	e.GET("/ip", func(c *echo.Context) error {
+		seen = c.RealIP()
+		return c.NoContent(http.StatusOK)
+	})
+
+	for peer, want := range map[string]string{
+		"10.42.0.7:4000":   "198.51.100.1",
+		"192.168.1.5:4000": "192.168.1.5",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/ip", nil)
+		req.RemoteAddr = peer
+		req.Header.Set("X-Forwarded-For", "198.51.100.1")
+		e.ServeHTTP(httptest.NewRecorder(), req)
+		if seen != want {
+			t.Errorf("peer %s: RealIP = %q, want %q", peer, seen, want)
+		}
+	}
+}
+
+func TestGzipCompressesLargeRepliesButNeverAStream(t *testing.T) {
+	t.Parallel()
+	e := newTestEcho()
+	g := e.Group("/api", Gzip("/api/stream"))
+	big := strings.Repeat(`{"k":"v"},`, gzipMinLength)
+	g.GET("/list", func(c *echo.Context) error { return c.String(http.StatusOK, big) })
+	g.GET("/small", func(c *echo.Context) error { return c.String(http.StatusOK, "ok") })
+	g.GET("/stream", func(c *echo.Context) error { return c.String(http.StatusOK, big) })
+
+	gzipped := func(path string, header http.Header) bool {
+		header = header.Clone()
+		header.Set("Accept-Encoding", "gzip")
+		rec, _ := serve(t, e, http.MethodGet, path, header)
+		return rec.Header().Get("Content-Encoding") == "gzip"
+	}
+
+	if !gzipped("/api/list", http.Header{}) {
+		t.Error("a large reply was not compressed")
+	}
+	if gzipped("/api/small", http.Header{}) {
+		t.Error("a reply under the minimum was compressed")
+	}
+	if gzipped("/api/stream", http.Header{}) {
+		t.Error("a stream route was compressed")
+	}
+	if gzipped("/api/list", http.Header{"Accept": {"text/event-stream"}}) {
+		t.Error("a request for an event stream was compressed")
+	}
+}

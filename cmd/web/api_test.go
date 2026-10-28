@@ -185,3 +185,19 @@ func TestEveryPrivateAPIRouteRequiresABearerToken(t *testing.T) {
 		t.Fatal("walked no private routes; the bearer group is not mounted")
 	}
 }
+
+// gzip skips apiStreams by route template. A path that drifted from the route
+// it names would silently start compressing a stream.
+func TestEveryStreamRouteIsRegistered(t *testing.T) {
+	t.Parallel()
+
+	registered := map[string]bool{}
+	for _, ri := range apiRouter(t).Router().Routes() {
+		registered[ri.Path] = true
+	}
+	for _, path := range apiStreams {
+		if !registered[path] {
+			t.Errorf("apiStreams names %s, which no route registers", path)
+		}
+	}
+}

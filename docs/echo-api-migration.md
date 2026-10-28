@@ -11,13 +11,14 @@ half.
 ```text
 echox.Serve(ctx, srv)                 graceful shutdown on SIGTERM (echo.StartConfig)
 └── *echo.Echo (echox.New)
-    ├── RequestID → RequestLogger → Recover     every request
+    ├── RequestID → RequestLogger → Recover → Secure   every request
+    ├── IPExtractor (TrustedProxies)            what c.RealIP() answers
     ├── ErrorHandler                            every error a handler returns
-    ├── /api/v1                                 feature APIs, natively on Echo
+    ├── /api/v1   Locale + Gzip (not streams)   feature APIs, natively on Echo
     │   ├── public        BodyLimit(1 MiB)
     │   ├── bearer        BodyLimit(1 MiB) + auth.Bearer
     │   └── uploads       BodyLimit(media) + auth.Bearer
-    ├── /mcp, /oauth, /ingest/health, /webhooks/telegram
+    ├── /mcp, /oauth (+ CORS), /ingest/health, /webhooks/telegram
     └── RouteNotFound("/*") → chi browser app   until north-web-app ships
 ```
 
@@ -66,6 +67,34 @@ Rules:
 - The browser handlers in the same package (`handler.go`) stay on chi; only
   `api*.go` and their tests move.
 - `goals` is the reference conversion: `internal/goals/api.go`.
+
+## Echo's middleware, not ours
+
+Cross-cutting HTTP concerns use Echo's built-ins, configured once in
+`internal/shared/echox` or at the group that needs them. Do not hand-write a
+replacement.
+
+| Concern            | Echo built-in                         | Where                                    |
+| ------------------ | ------------------------------------- | ---------------------------------------- |
+| Request id         | `RequestIDWithConfig`                 | `echox.RequestID`                        |
+| Access log         | `RequestLoggerWithConfig`             | `echox.RequestLogger`                    |
+| Panics             | `Recover`                             | `echox.New`                              |
+| Hardening headers  | `SecureWithConfig`                    | `echox.Secure` — same values as Traefik  |
+| Compression        | `GzipWithConfig`                      | `echox.Gzip` on `/api/v1`, skips SSE     |
+| Body size          | `BodyLimit`                           | each group in `cmd/web`                  |
+| CORS               | `CORSWithConfig`                      | `mcpauth.machineCORS` (OAuth endpoints)  |
+| Client address     | `ExtractIPFromXFFHeader` + `TrustIPRange` | `TrustedProxies.IPExtractor`, `echo.Config.IPExtractor` |
+| Rate limit buckets | `RateLimiterMemoryStore`              | `ratelimit.New` (also used by services)  |
+| Graceful shutdown  | `StartConfig.Start`                   | `echox.Serve` (`cmd/web`, `cmd/mcp-server`) |
+
+Two settings differ from Echo's defaults on purpose:
+
+- The IP extractor trusts **only** `TRUSTED_PROXIES`. Echo's default trusts
+  every loopback, link-local and private peer, which on a cluster network is
+  every pod.
+- A route that streams Server-Sent Events goes in `apiStreams`
+  (`cmd/web/api.go`) so gzip never wraps it; a test fails if an entry stops
+  matching a route.
 
 ## Repositories and dependency injection
 
