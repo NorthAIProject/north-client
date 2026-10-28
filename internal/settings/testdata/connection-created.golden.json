@@ -4,7 +4,8 @@
     "name": "Laptop",
     "kind": "claude_code",
     "tokenPrefix": "nk_live_ab12",
-    "createdAt": "2026-09-24T07:15:00Z"
+    "createdAt": "2026-09-24T07:15:00Z",
+    "kindLabel": "Claude Code"
   },
   "token": "nk_live_ab12-example-token",
   "setup": {

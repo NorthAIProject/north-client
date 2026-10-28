@@ -6,7 +6,13 @@
       "label": "OpenRouter",
       "baseUrl": "https://openrouter.ai/api/v1",
       "defaultModel": "openai/gpt-4o-mini",
-      "keyHint": "sk-or-…"
+      "keyHint": "sk-or-…",
+      "note": "Hundreds of models behind one key."
+    },
+    {
+      "name": "hermes",
+      "label": "Hermes",
+      "requiresBaseUrl": true
     }
   ],
   "current": {
