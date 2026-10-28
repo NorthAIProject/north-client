@@ -59,6 +59,7 @@ func (a *API) Routes(r chi.Router) {
 
 	r.Get("/settings/connections", a.listConnections)
 	r.Post("/settings/connections", a.createConnection)
+	r.Get("/settings/connections/{connectionID}", a.getConnection)
 	r.Delete("/settings/connections/{connectionID}", a.revokeConnection)
 	r.Get("/settings/activity", a.activity)
 
@@ -343,6 +344,11 @@ type AIProvider struct {
 	BaseURL      string `json:"baseUrl,omitempty"`
 	DefaultModel string `json:"defaultModel,omitempty"`
 	KeyHint      string `json:"keyHint,omitempty"`
+	// Note is one line under the option, in the request's language.
+	Note string `json:"note,omitempty"`
+	// RequiresBaseURL is a backend with no public address of its own: the
+	// person names their gateway.
+	RequiresBaseURL bool `json:"requiresBaseUrl,omitempty"`
 }
 
 type AICurrent struct {
@@ -415,7 +421,10 @@ func (a *API) deleteAI(w http.ResponseWriter, r *http.Request) {
 func (a *API) aiSettings(ctx context.Context, userID uuid.UUID) (AISettings, error) {
 	out := AISettings{Enabled: a.h.aicreds.Enabled(), Providers: []AIProvider{}}
 	for _, p := range a.h.aicreds.Providers() {
-		out.Providers = append(out.Providers, AIProvider{Name: p.Name, Label: p.Label, BaseURL: p.BaseURL, DefaultModel: p.DefaultModel, KeyHint: p.KeyHint})
+		out.Providers = append(out.Providers, AIProvider{
+			Name: p.Name, Label: p.Label, BaseURL: p.BaseURL, DefaultModel: p.DefaultModel, KeyHint: p.KeyHint,
+			Note: p.NoteIn(i18n.LocaleFrom(ctx)), RequiresBaseURL: p.RequiresBaseURL,
+		})
 	}
 	if !out.Enabled {
 		return out, nil
@@ -445,12 +454,21 @@ type Connection struct {
 	TokenPrefix string     `json:"tokenPrefix"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	LastUsedAt  *time.Time `json:"lastUsedAt,omitempty"`
+	// KindLabel is the client as written for a person ("Claude Code").
+	KindLabel string `json:"kindLabel"`
+	// ExpiresAt is set for an OAuth grant, whose access token lasts an hour
+	// and is replaced in place: a past value means "needs refreshing".
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 }
 
 type ConnectionList struct {
 	Connections []Connection `json:"connections"`
 	// ConnectorURL is the MCP endpoint agents are pointed at.
 	ConnectorURL string `json:"connectorUrl"`
+	// Previews is the setup for each client, in the order the page offers
+	// them, with a placeholder where the key goes: what connecting involves,
+	// before a credential exists.
+	Previews []ConnectionSetup `json:"previews"`
 }
 
 type CreateConnectionRequest struct {
@@ -474,10 +492,31 @@ type ConnectionSetup struct {
 	Config      string `json:"config,omitempty"`
 	Export      string `json:"export,omitempty"`
 	Prompt      string `json:"prompt,omitempty"`
+	// Kind and KindLabel name the client the setup is for.
+	Kind      string `json:"kind,omitempty"`
+	KindLabel string `json:"kindLabel,omitempty"`
+	// Safe is the same configuration reading the token from an environment
+	// variable (set by Export), for a config file somebody might commit.
+	// SafeNote says why it exists. Empty for clients without a config file.
+	SafeLabel string `json:"safeLabel,omitempty"`
+	SafeLang  string `json:"safeLang,omitempty"`
+	Safe      string `json:"safe,omitempty"`
+	SafeNote  string `json:"safeNote,omitempty"`
 }
 
 func projectConnection(c connections.Connection) Connection {
-	return Connection{ID: c.ID, Name: c.Name, Kind: string(c.Kind), TokenPrefix: c.TokenPrefix, CreatedAt: c.CreatedAt, LastUsedAt: c.LastUsedAt}
+	return Connection{
+		ID: c.ID, Name: c.Name, Kind: string(c.Kind), TokenPrefix: c.TokenPrefix, CreatedAt: c.CreatedAt, LastUsedAt: c.LastUsedAt,
+		KindLabel: c.Kind.Label(), ExpiresAt: c.ExpiresAt,
+	}
+}
+
+func projectSetup(s connections.Setup) ConnectionSetup {
+	return ConnectionSetup{
+		URL: s.URL, ConfigLabel: s.ConfigLabel, ConfigLang: s.ConfigLang, Config: s.Config, Export: s.Export, Prompt: s.Prompt,
+		Kind: string(s.Kind), KindLabel: s.Kind.Label(),
+		SafeLabel: s.SafeLabel, SafeLang: s.SafeLang, Safe: s.Safe, SafeNote: s.SafeNote,
+	}
 }
 
 func (a *API) listConnections(w http.ResponseWriter, r *http.Request) {
@@ -486,11 +525,35 @@ func (a *API) listConnections(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err, "Your connections could not be loaded.")
 		return
 	}
-	out := ConnectionList{Connections: make([]Connection, 0, len(list)), ConnectorURL: a.h.connections.ConnectorURL()}
+	out := ConnectionList{
+		Connections:  make([]Connection, 0, len(list)),
+		ConnectorURL: a.h.connections.ConnectorURL(),
+		Previews:     make([]ConnectionSetup, 0, len(connections.ClientKinds)),
+	}
 	for _, c := range list {
 		out.Connections = append(out.Connections, projectConnection(c))
 	}
+	locale := i18n.LocaleFrom(r.Context())
+	for _, kind := range connections.ClientKinds {
+		out.Previews = append(out.Previews, projectSetup(a.h.connections.Preview(kind).In(locale)))
+	}
 	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// getConnection answers the "waiting for first use" poll: lastUsedAt appears
+// once an agent has authenticated with the key. A revoked one is a 404.
+func (a *API) getConnection(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "connectionID"))
+	if err != nil {
+		httpx.Error(w, apperr.ErrNotFound, "Not found.")
+		return
+	}
+	conn, err := a.h.connections.Get(r.Context(), id, auth.MustUser(r.Context()).ID)
+	if err != nil {
+		httpx.Error(w, err, "That connection could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, projectConnection(conn))
 }
 
 func (a *API) createConnection(w http.ResponseWriter, r *http.Request) {
@@ -507,10 +570,7 @@ func (a *API) createConnection(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, CreatedConnection{
 		Connection: projectConnection(issued.Connection),
 		Token:      issued.Token,
-		Setup: ConnectionSetup{
-			URL: setup.URL, ConfigLabel: setup.ConfigLabel, ConfigLang: setup.ConfigLang,
-			Config: setup.Config, Export: setup.Export, Prompt: setup.Prompt,
-		},
+		Setup:      projectSetup(setup),
 	})
 }
 

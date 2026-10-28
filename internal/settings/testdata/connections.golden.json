@@ -6,8 +6,26 @@
       "kind": "claude_code",
       "tokenPrefix": "nk_live_ab12",
       "createdAt": "2026-09-24T07:15:00Z",
-      "lastUsedAt": "2026-09-24T07:15:00Z"
+      "lastUsedAt": "2026-09-24T07:15:00Z",
+      "kindLabel": "Claude Code",
+      "expiresAt": "2026-09-24T07:15:00Z"
     }
   ],
-  "connectorUrl": "https://kheprios.com/mcp"
+  "connectorUrl": "https://kheprios.com/mcp",
+  "previews": [
+    {
+      "url": "https://kheprios.com/mcp",
+      "configLabel": "Terminal",
+      "configLang": "sh",
+      "config": "claude mcp add khepri …",
+      "export": "export KHEPRI_TOKEN=…",
+      "prompt": "Connect to Khepri…",
+      "kind": "claude_code",
+      "kindLabel": "Claude Code",
+      "safeLabel": ".mcp.json",
+      "safeLang": "json",
+      "safe": "{…}",
+      "safeNote": "Keeps the key out of the file."
+    }
+  ]
 }
