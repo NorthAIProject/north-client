@@ -36,6 +36,14 @@ type BiometricsView struct {
 	// DateOfBirth is a calendar day.
 	DateOfBirth string `json:"dateOfBirth"`
 	Sex         string `json:"sex"`
+	// AgeYears is the age the measurements are worked out at, today.
+	AgeYears int `json:"ageYears"`
+}
+
+// GoalCalories is what one objective would cost at the goal's TDEE.
+type GoalCalories struct {
+	Goal        string  `json:"goal"`
+	CalorieGoal float64 `json:"calorieGoal"`
 }
 
 type MacroGoalView struct {
@@ -49,6 +57,9 @@ type MacroGoalView struct {
 	FatG          float64   `json:"fatG"`
 	CarbG         float64   `json:"carbG"`
 	CreatedAt     time.Time `json:"createdAt"`
+	// Comparison is every objective's daily calories at this TDEE, in the
+	// order Options.Goals lists them.
+	Comparison []GoalCalories `json:"comparison"`
 }
 
 type CalculatorOptions struct {
@@ -124,6 +135,7 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
 		out.Biometrics = &BiometricsView{
 			WeightKg: bio.WeightKg, HeightCm: bio.HeightCm,
 			DateOfBirth: bio.DateOfBirth.Format("2006-01-02"), Sex: bio.Sex,
+			AgeYears: bio.AgeYears(time.Now()),
 		}
 	case !apperr.Is(err, apperr.ErrNotFound):
 		httpx.Error(w, err, "The calculator could not be loaded.")
@@ -136,6 +148,11 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
 			ActivityLevel: plan.ActivityLevel, Goal: plan.Goal, MacroSplit: plan.MacroSplit,
 			BMR: plan.BMR, TDEE: plan.TDEE, CalorieGoal: plan.CalorieGoal, ProteinG: plan.ProteinG, FatG: plan.FatG,
 			CarbG: plan.CarbG, CreatedAt: plan.CreatedAt,
+			Comparison: make([]GoalCalories, 0, len(macroplan.Goals)),
+		}
+		all := macroplan.AllGoals(plan.TDEE)
+		for _, g := range macroplan.Goals {
+			out.Goal.Comparison = append(out.Goal.Comparison, GoalCalories{Goal: g, CalorieGoal: all[g]})
 		}
 	case !apperr.Is(err, apperr.ErrNotFound):
 		httpx.Error(w, err, "The calculator could not be loaded.")
