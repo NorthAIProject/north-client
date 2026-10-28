@@ -110,6 +110,10 @@ type Config struct {
 	// WebAuthn relying party. RPID defaults to the host of BaseURL when empty.
 	WebAuthnRPID        string
 	WebAuthnDisplayName string
+	// WebAuthnRPOrigins are the page origins a passkey ceremony may come from.
+	// Empty means BaseURL alone, which is right whenever the web app shares the
+	// API's origin; a web app on another origin (local dev) lists its own.
+	WebAuthnRPOrigins []string
 
 	Telegram TelegramConfig
 
@@ -662,6 +666,7 @@ func Load() (*Config, error) {
 
 		WebAuthnRPID:        optional("WEBAUTHN_RP_ID", ""),
 		WebAuthnDisplayName: optional("WEBAUTHN_RP_DISPLAY_NAME", "Khepri"),
+		WebAuthnRPOrigins:   splitList(os.Getenv("WEBAUTHN_RP_ORIGINS")),
 
 		Telegram: TelegramConfig{
 			BotToken:      strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),

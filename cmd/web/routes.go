@@ -150,6 +150,7 @@ func routes(
 		AppleBundleID:       cfg.AppleBundleID,
 		WebAuthnRPID:        cfg.WebAuthnRPID,
 		WebAuthnDisplayName: cfg.WebAuthnDisplayName,
+		WebAuthnRPOrigins:   cfg.WebAuthnRPOrigins,
 		Log:                 slog.Default(),
 	}).WithFunnel(funnel)
 	authMW := auth.NewMiddleware(sessions, cfg.Env.IsProduction(), cfg.TrustedProxies)
