@@ -58,6 +58,7 @@
   "bestStreak": 23,
   "restDaysHeld": 0,
   "restDaysUsed": 1,
+  "previousRun": 0,
   "perfectWeek": false,
   "week": [
     {

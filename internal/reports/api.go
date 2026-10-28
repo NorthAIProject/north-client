@@ -1,6 +1,7 @@
 package reports
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/quota"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -17,16 +19,84 @@ import (
 // the helpful rating the coach learns from.
 type API struct {
 	svc *Service
+	// quotas bounds the routes that cost a model call, as the web handler's
+	// do. Nil leaves them unguarded (tests).
+	quotas *quota.Service
 }
 
 // NewAPI builds the routes; mount them behind auth.RequireBearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
+
+// WithQuotas guards generate, regenerate and briefing with the report quota.
+func (a *API) WithQuotas(q *quota.Service) *API {
+	a.quotas = q
+	return a
+}
 
 func (a *API) Routes(r chi.Router) {
 	r.Get("/reports", a.list)
 	r.Get("/reports/{reportID}", a.show)
 	r.Post("/reports/{reportID}/archive", a.archive)
 	r.Put("/reports/{reportID}/helpful", a.rate)
+
+	generating := r.With()
+	if a.quotas != nil {
+		generating = r.With(a.quotas.GuardJSON(quota.ReportGenerate))
+	}
+	generating.Post("/reports/generate", a.generate)
+	generating.Post("/reports/briefing", a.briefing)
+	generating.Post("/reports/{reportID}/regenerate", a.regenerate)
+}
+
+// generate asks for this week's review now. It answers at once with the
+// pending report; the text is written in the background.
+func (a *API) generate(w http.ResponseWriter, r *http.Request) {
+	rep, err := a.svc.RequestGenerate(r.Context(), auth.MustUser(r.Context()).ID, time.Time{})
+	if err != nil {
+		a.refuse(w, err, "The review could not be requested.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, detail(rep))
+}
+
+// briefing asks for today's briefing now, as the dashboard button does.
+func (a *API) briefing(w http.ResponseWriter, r *http.Request) {
+	rep, err := a.svc.RequestBriefing(r.Context(), auth.MustUser(r.Context()).ID)
+	if err != nil {
+		a.refuse(w, err, "The briefing could not be requested.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, detail(rep))
+}
+
+// regenerate rewrites a report. The answer may be a different report: the
+// one now being written in its place.
+func (a *API) regenerate(w http.ResponseWriter, r *http.Request) {
+	id, ok := reportID(w, r)
+	if !ok {
+		return
+	}
+	rep, err := a.svc.Regenerate(r.Context(), id, auth.MustUser(r.Context()).ID)
+	if err != nil {
+		a.refuse(w, err, "The review could not be rewritten.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, detail(rep))
+}
+
+// refuse writes a generation failure. A conflict carries a code, since the
+// web shows a different line for each: archived (the report is archived) or
+// cooldown (one was already generated this hour).
+func (a *API) refuse(w http.ResponseWriter, err error, message string) {
+	if !apperr.Is(err, apperr.ErrConflict) {
+		httpx.Error(w, err, message)
+		return
+	}
+	code := "cooldown"
+	if errors.Is(err, ErrArchived) {
+		code = "archived"
+	}
+	httpx.WriteJSON(w, http.StatusConflict, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: message, Code: code}})
 }
 
 type ReportSummary struct {

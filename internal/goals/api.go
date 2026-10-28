@@ -60,9 +60,12 @@ type MilestoneView struct {
 }
 
 type GoalSummary struct {
-	ID       uuid.UUID `json:"id"`
-	Title    string    `json:"title"`
-	Category string    `json:"category"`
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+	// Motivation is why the goal matters, as the web list shows under the
+	// title. GoalDetail carries it too.
+	Motivation string `json:"motivation,omitempty"`
+	Category   string `json:"category"`
 	// Status is active, achieved, paused or abandoned.
 	Status         string          `json:"status"`
 	TargetDate     string          `json:"targetDate,omitempty"`
@@ -76,6 +79,9 @@ type GoalList struct {
 	Goals []GoalSummary `json:"goals"`
 	// Categories are the life areas a goal can belong to, in display order.
 	Categories []string `json:"categories"`
+	// OverdueMilestones counts open milestones past their date, across all
+	// goals: the web list's "overdue" instrument.
+	OverdueMilestones int `json:"overdueMilestones"`
 }
 
 type GoalDetail struct {
@@ -109,12 +115,18 @@ type MilestoneRequest struct {
 }
 
 func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	goals, err := a.svc.List(r.Context(), auth.MustUser(r.Context()).ID)
+	userID := auth.MustUser(r.Context()).ID
+	goals, err := a.svc.List(r.Context(), userID)
 	if err != nil {
 		httpx.Error(w, err, "Goals could not be loaded.")
 		return
 	}
-	out := GoalList{Goals: make([]GoalSummary, 0, len(goals)), Categories: lifedomain.Domains}
+	overdue, err := a.svc.CountOverdueMilestones(r.Context(), userID)
+	if err != nil {
+		httpx.Error(w, err, "Goals could not be loaded.")
+		return
+	}
+	out := GoalList{Goals: make([]GoalSummary, 0, len(goals)), Categories: lifedomain.Domains, OverdueMilestones: overdue}
 	for _, g := range goals {
 		out.Goals = append(out.Goals, summarize(g))
 	}
@@ -308,7 +320,7 @@ func (a *API) writeDetail(w http.ResponseWriter, r *http.Request, status int, id
 
 func summarize(g Goal) GoalSummary {
 	out := GoalSummary{
-		ID: g.ID, Title: g.Title, Category: g.Category, Status: g.Status,
+		ID: g.ID, Title: g.Title, Motivation: g.Motivation, Category: g.Category, Status: g.Status,
 		TargetDate: formatDate(g.TargetDate), MilestoneTotal: g.MilestoneTotal, MilestoneDone: g.MilestoneDone,
 		CreatedAt: g.CreatedAt,
 	}

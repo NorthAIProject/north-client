@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -103,39 +104,100 @@ func (g *googleOAuth) enabled() bool { return g != nil && g.cfg != nil }
 
 // AuthCodeURL builds the Google consent URL for the given opaque state.
 func (s *Service) GoogleAuthCodeURL(state string) (string, error) {
-	if !s.GoogleEnabled() {
-		return "", apperr.New("google oauth is not configured")
+	return s.GoogleAuthCodeURLFor(state, "")
+}
+
+// GoogleAuthCodeURLFor is GoogleAuthCodeURL for a front end that serves the
+// callback itself (the SvelteKit web app). redirectURI must be a
+// /auth/google/callback URL; empty means this server's own. Google refuses a
+// redirect URI its console does not list, so the client ID and secret stay
+// here and the console needs no change while the callback path is the same.
+func (s *Service) GoogleAuthCodeURLFor(state, redirectURI string) (string, error) {
+	cfg, err := s.googleConfig(redirectURI)
+	if err != nil {
+		return "", err
 	}
-	return s.google.cfg.AuthCodeURL(state, oauth2.AccessTypeOnline, oauth2.SetAuthURLParam("prompt", "select_account")), nil
+	return cfg.AuthCodeURL(state, oauth2.AccessTypeOnline, oauth2.SetAuthURLParam("prompt", "select_account")), nil
+}
+
+// googleConfig is the web OAuth config, pointed at redirectURI when one is
+// given. A copy: the shared config is never mutated per request.
+func (s *Service) googleConfig(redirectURI string) (*oauth2.Config, error) {
+	if !s.GoogleEnabled() {
+		return nil, apperr.New("google oauth is not configured")
+	}
+	cfg := *s.google.cfg
+	redirectURI = strings.TrimSpace(redirectURI)
+	if redirectURI == "" {
+		return &cfg, nil
+	}
+	if !validGoogleRedirect(redirectURI) {
+		return nil, apperr.FieldErrors{}.Add("redirectUri", "redirectUri must be an absolute /auth/google/callback URL.")
+	}
+	cfg.RedirectURL = redirectURI
+	return &cfg, nil
+}
+
+// validGoogleRedirect accepts https://<host>/auth/google/callback, and plain
+// http only on a loopback host for local development. Google enforces the
+// registered list on top of this; the check here keeps an arbitrary URL out
+// of the exchange even before Google sees it.
+func validGoogleRedirect(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.Path != "/auth/google/callback" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return false
+	}
+	switch u.Scheme {
+	case "https":
+		return true
+	case "http":
+		host := u.Hostname()
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	default:
+		return false
+	}
 }
 
 // CompleteGoogleOAuth exchanges the authorization code, loads the Google
 // profile, finds or creates a Khepri account, and issues a session token.
 func (s *Service) CompleteGoogleOAuth(ctx context.Context, code string, meta Metadata) (users.User, string, error) {
-	if !s.GoogleEnabled() {
-		return users.User{}, "", apperr.New("google oauth is not configured")
+	user, token, _, err := s.CompleteGoogleOAuthFor(ctx, code, "", meta)
+	return user, token, err
+}
+
+// CompleteGoogleOAuthFor is CompleteGoogleOAuth for a code issued to
+// redirectURI (see GoogleAuthCodeURLFor), returning the session's expiry too.
+// Linking and account creation are FindOrCreateGoogleUser's, unchanged.
+func (s *Service) CompleteGoogleOAuthFor(ctx context.Context, code, redirectURI string, meta Metadata) (users.User, string, time.Time, error) {
+	cfg, err := s.googleConfig(redirectURI)
+	if err != nil {
+		return users.User{}, "", time.Time{}, err
 	}
 	code = strings.TrimSpace(code)
 	if code == "" {
-		return users.User{}, "", apperr.New("missing authorization code")
+		return users.User{}, "", time.Time{}, apperr.FieldErrors{}.Add("code", "code is required.")
 	}
 
-	profile, err := s.google.exchange(ctx, code)
+	profile, err := exchangeGoogleCode(ctx, cfg, code)
 	if err != nil {
-		return users.User{}, "", err
+		return users.User{}, "", time.Time{}, err
 	}
 
 	user, err := s.FindOrCreateGoogleUser(ctx, profile)
 	if err != nil {
-		return users.User{}, "", err
+		return users.User{}, "", time.Time{}, err
 	}
 
-	token, _, err := s.sessions.Create(ctx, user.ID, meta)
+	token, expiresAt, err := s.sessions.Create(ctx, user.ID, meta)
 	if err != nil {
-		return users.User{}, "", err
+		return users.User{}, "", time.Time{}, err
 	}
-	return user, token, nil
+	return user, token, expiresAt, nil
 }
+
+// NewGoogleState is the opaque value a web front end stores beside the
+// Google redirect and compares on the callback.
+func NewGoogleState() (string, error) { return newOpaqueToken(googleStateBytes) }
 
 // FindOrCreateGoogleUser resolves a Google profile to a Khepri user:
 //  1. existing auth_identities row for provider+subject
@@ -249,16 +311,16 @@ func (s *Service) linkGoogleIdentity(ctx context.Context, userID uuid.UUID, prof
 	return nil
 }
 
-func (g *googleOAuth) exchange(ctx context.Context, code string) (GoogleProfile, error) {
+func exchangeGoogleCode(ctx context.Context, cfg *oauth2.Config, code string) (GoogleProfile, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleHTTPTimeout)
 	defer cancel()
 
-	tok, err := g.cfg.Exchange(ctx, code)
+	tok, err := cfg.Exchange(ctx, code)
 	if err != nil {
 		return GoogleProfile{}, apperr.Wrap(err, "exchange google auth code")
 	}
 
-	client := g.cfg.Client(ctx, tok)
+	client := cfg.Client(ctx, tok)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleUserInfoURL, nil)
 	if err != nil {
 		return GoogleProfile{}, apperr.Wrap(err, "build google userinfo request")
