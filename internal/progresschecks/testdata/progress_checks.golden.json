@@ -15,11 +15,13 @@
       "photos": [
         {
           "pose": "front",
-          "url": "https://storage.test/front.jpg?sig=x"
+          "url": "https://storage.test/front.jpg?sig=x",
+          "mediaId": "99999999-9999-9999-9999-999999999991"
         },
         {
           "pose": "side",
-          "url": "https://storage.test/side.jpg?sig=x"
+          "url": "https://storage.test/side.jpg?sig=x",
+          "mediaId": "99999999-9999-9999-9999-999999999992"
         }
       ],
       "createdAt": "2026-10-15T08:30:00Z"

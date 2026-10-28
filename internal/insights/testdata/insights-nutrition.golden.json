@@ -55,5 +55,36 @@
   "highlights": [
     "Highest: Tuesday, 2400 kcal."
   ],
-  "hasData": true
+  "hasData": true,
+  "eating": {
+    "hasData": true,
+    "tiles": [
+      {
+        "label": "Average day",
+        "value": "2150 kcal",
+        "note": "140 g protein · 220 g carbs · 70 g fat"
+      }
+    ],
+    "slots": [
+      {
+        "label": "Lunch",
+        "value": "40%",
+        "pct": 40
+      }
+    ],
+    "foods": [
+      {
+        "label": "Oats",
+        "value": "×4",
+        "note": "380 kcal"
+      }
+    ],
+    "notes": [
+      {
+        "label": "Days logged",
+        "value": "5",
+        "note": ""
+      }
+    ]
+  }
 }
