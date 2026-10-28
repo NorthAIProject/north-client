@@ -15,15 +15,17 @@ import (
 	sleepdb "github.com/NorthAIProject/north-client/internal/sleep/db"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *sleepdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: sleepdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: sleepdb.New(pool)}
 }
 
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, date time.Time, in Log) (Log, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, date time.Time, in Log) (Log, error) {
 	var quality *int16
 	if in.Quality != nil {
 		quality = util.Ptr(int16(*in.Quality))
@@ -48,7 +50,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, date time.Tim
 
 // ForDate returns apperr.ErrNotFound when nothing was logged that night,
 // which is an ordinary state rather than a failure.
-func (r *Repository) ForDate(ctx context.Context, userID uuid.UUID, date time.Time) (Log, error) {
+func (r *PostgresRepository) ForDate(ctx context.Context, userID uuid.UUID, date time.Time) (Log, error) {
 	row, err := r.q.GetSleepLogForDate(ctx, sleepdb.GetSleepLogForDateParams{
 		UserID:    userID,
 		LocalDate: toDate(date),
@@ -62,7 +64,7 @@ func (r *Repository) ForDate(ctx context.Context, userID uuid.UUID, date time.Ti
 	return fromDB(row), nil
 }
 
-func (r *Repository) Recent(ctx context.Context, userID uuid.UUID, limit int) ([]Log, error) {
+func (r *PostgresRepository) Recent(ctx context.Context, userID uuid.UUID, limit int) ([]Log, error) {
 	rows, err := r.q.ListSleepLogs(ctx, sleepdb.ListSleepLogsParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list sleep logs")
@@ -77,7 +79,7 @@ func (r *Repository) Recent(ctx context.Context, userID uuid.UUID, limit int) ([
 
 // ListBetween returns the nights logged in the half-open window
 // [since, until), newest first.
-func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Log, error) {
+func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Log, error) {
 	rows, err := r.q.ListSleepLogsBetween(ctx, sleepdb.ListSleepLogsBetweenParams{
 		UserID:      userID,
 		LocalDate:   toDate(since),
@@ -94,7 +96,7 @@ func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, u
 	return out, nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	if err := r.q.DeleteSleepLog(ctx, sleepdb.DeleteSleepLogParams{ID: id, UserID: userID}); err != nil {
 		return apperr.Wrap(err, "delete sleep log")
 	}

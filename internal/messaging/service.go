@@ -88,7 +88,7 @@ type Service struct {
 	coach     Coach
 	threads   Threads
 	users     Users
-	links     *Repository
+	links     Repository
 	quotas    Quotas
 	images    Images
 	documents Attachments
@@ -112,7 +112,7 @@ type Options struct {
 	Coach   Coach
 	Threads Threads
 	Users   Users
-	Links   *Repository
+	Links   Repository
 
 	// Quotas meters platform turns. Nil leaves them unmetered, which is only
 	// correct in a test: a live adapter without this is a way to spend a paid
@@ -160,6 +160,23 @@ type Options struct {
 
 	// Now defaults to time.Now.
 	Now func() time.Time
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps platform links.
+type Repository interface {
+	ClaimUpdate(ctx context.Context, platform, externalID string, updateID int64, accountID string) (Link, error)
+	Get(ctx context.Context, platform, externalID string) (Link, error)
+	ListByUser(ctx context.Context, userID uuid.UUID) ([]Link, error)
+	Insert(ctx context.Context, userID uuid.UUID, platform, externalID string) (Link, error)
+	Delete(ctx context.Context, userID uuid.UUID, platform string) (bool, error)
+	InsertCode(ctx context.Context, codeHash []byte, userID uuid.UUID, platform string, expiresAt time.Time) error
+	RedeemCode(ctx context.Context, codeHash []byte, platform string) (uuid.UUID, error)
+	SaveOutboundRef(ctx context.Context, ref OutboundRef) error
+	GetOutboundRef(ctx context.Context, userID uuid.UUID, platform, kind, dedupeKey string) (OutboundRef, error)
+	DeleteOutboundRef(ctx context.Context, userID uuid.UUID, platform, kind, dedupeKey string) error
 }
 
 func NewService(opts Options) *Service {

@@ -14,15 +14,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *habitsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: habitsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: habitsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, name, domain string, days []time.Weekday) (Habit, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, name, domain string, days []time.Weekday) (Habit, error) {
 	row, err := r.q.CreateHabit(ctx, habitsdb.CreateHabitParams{
 		UserID:     userID,
 		Name:       name,
@@ -35,7 +37,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, name, domain 
 	return fromDB(row), nil
 }
 
-func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, name, domain string, days []time.Weekday, active bool) (Habit, error) {
+func (r *PostgresRepository) Update(ctx context.Context, id, userID uuid.UUID, name, domain string, days []time.Weekday, active bool) (Habit, error) {
 	row, err := r.q.UpdateHabit(ctx, habitsdb.UpdateHabitParams{
 		ID:         id,
 		UserID:     userID,
@@ -53,7 +55,7 @@ func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, name, dom
 	return fromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Habit, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Habit, error) {
 	row, err := r.q.GetHabit(ctx, habitsdb.GetHabitParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -64,7 +66,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Habit, erro
 	return fromDB(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, activeOnly bool) ([]Habit, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, activeOnly bool) ([]Habit, error) {
 	rows, err := r.q.ListHabits(ctx, habitsdb.ListHabitsParams{UserID: userID, ActiveOnly: activeOnly})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list habits")
@@ -77,7 +79,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, activeOnly bool
 	return out, nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	if err := r.q.DeleteHabit(ctx, habitsdb.DeleteHabitParams{ID: id, UserID: userID}); err != nil {
 		return apperr.Wrap(err, "delete habit")
 	}
@@ -86,7 +88,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 
 // Complete is idempotent: the query does nothing when the day is already
 // ticked, so a double tap is not an error.
-func (r *Repository) Complete(ctx context.Context, habitID, userID uuid.UUID, date time.Time) error {
+func (r *PostgresRepository) Complete(ctx context.Context, habitID, userID uuid.UUID, date time.Time) error {
 	err := r.q.CompleteHabit(ctx, habitsdb.CompleteHabitParams{
 		HabitID:   habitID,
 		UserID:    userID,
@@ -98,7 +100,7 @@ func (r *Repository) Complete(ctx context.Context, habitID, userID uuid.UUID, da
 	return nil
 }
 
-func (r *Repository) Uncomplete(ctx context.Context, habitID, userID uuid.UUID, date time.Time) error {
+func (r *PostgresRepository) Uncomplete(ctx context.Context, habitID, userID uuid.UUID, date time.Time) error {
 	err := r.q.UncompleteHabit(ctx, habitsdb.UncompleteHabitParams{
 		HabitID:   habitID,
 		UserID:    userID,
@@ -113,7 +115,7 @@ func (r *Repository) Uncomplete(ctx context.Context, habitID, userID uuid.UUID, 
 // CompletionsSince returns every completed date per habit, in one query
 // rather than one per habit: a page showing eight habits should not make
 // eight round trips to draw eight streaks.
-func (r *Repository) CompletionsSince(ctx context.Context, userID uuid.UUID, since time.Time) (map[uuid.UUID][]time.Time, error) {
+func (r *PostgresRepository) CompletionsSince(ctx context.Context, userID uuid.UUID, since time.Time) (map[uuid.UUID][]time.Time, error) {
 	rows, err := r.q.ListCompletionDatesSince(ctx, habitsdb.ListCompletionDatesSinceParams{
 		UserID:    userID,
 		LocalDate: toDate(since),
@@ -135,7 +137,7 @@ func (r *Repository) CompletionsSince(ctx context.Context, userID uuid.UUID, sin
 // CompletionsSince answers "which dates" per habit, for streaks. This answers
 // "what happened when", for the activity timeline, which is why it returns
 // rows rather than a map.
-func (r *Repository) CompletionsBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Completion, error) {
+func (r *PostgresRepository) CompletionsBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Completion, error) {
 	rows, err := r.q.ListCompletionsBetween(ctx, habitsdb.ListCompletionsBetweenParams{
 		UserID:      userID,
 		LocalDate:   toDate(since),

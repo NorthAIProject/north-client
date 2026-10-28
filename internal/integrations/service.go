@@ -19,7 +19,7 @@ type Calendar interface {
 }
 
 type Service struct {
-	repo     *Repository
+	repo     Repository
 	calendar Calendar
 	now      func() time.Time
 
@@ -33,7 +33,19 @@ func (s *Service) WithFunnel(f *analytics.Funnel) *Service {
 	return s
 }
 
-func NewService(repo *Repository, calendar Calendar) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps integration connections.
+type Repository interface {
+	Upsert(ctx context.Context, userID uuid.UUID, provider, endpoint, token string) (Connection, error)
+	Get(ctx context.Context, userID uuid.UUID, provider string) (Connection, error)
+	Token(ctx context.Context, userID uuid.UUID, provider string) (string, error)
+	Delete(ctx context.Context, userID uuid.UUID, provider string) error
+	MarkChecked(ctx context.Context, userID uuid.UUID, provider, status, reason string) error
+}
+
+func NewService(repo Repository, calendar Calendar) *Service {
 	return &Service{repo: repo, calendar: calendar, now: time.Now}
 }
 

@@ -57,7 +57,7 @@ type Grants interface {
 }
 
 type Service struct {
-	repo   *Repository
+	repo   Repository
 	grants Grants
 
 	// funnel is nil-safe, like everywhere else: no PostHog key, no events,
@@ -80,7 +80,32 @@ func (s *Service) WithLogger(log *slog.Logger) *Service {
 	return s
 }
 
-func NewService(repo *Repository, grants Grants, baseURL string) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps OAuth clients, requests, codes and refresh tokens.
+type Repository interface {
+	InsertClient(ctx context.Context, c Client, dedupeKey []byte) (Client, error)
+	ClientByDedupeKey(ctx context.Context, dedupeKey []byte) (Client, error)
+	Client(ctx context.Context, id string) (Client, error)
+	CountClients(ctx context.Context) (int64, error)
+	TouchClient(ctx context.Context, id string) error
+	InsertRequest(ctx context.Context, req Request, challenge, method string, verifierHash []byte) (Request, error)
+	Request(ctx context.Context, id uuid.UUID, verifierHash []byte) (storedRequest, error)
+	MarkRequestAccountCreated(ctx context.Context, id uuid.UUID, verifierHash []byte) error
+	ConsumeRequest(ctx context.Context, id uuid.UUID, verifierHash []byte) error
+	InsertCode(ctx context.Context, code storedCode) error
+	Code(ctx context.Context, hash []byte) (storedCode, error)
+	ConsumeCode(ctx context.Context, hash []byte, connectionID uuid.UUID) error
+	InsertRefreshToken(ctx context.Context, connectionID uuid.UUID, hash []byte, expiresAt time.Time) (uuid.UUID, error)
+	RefreshToken(ctx context.Context, hash []byte) (storedRefresh, error)
+	ConsumeRefreshToken(ctx context.Context, hash []byte, replacedBy uuid.UUID) error
+	LinkReplaced(ctx context.Context, hash []byte, replacedBy uuid.UUID) error
+	ConsumeAllRefreshTokens(ctx context.Context, connectionID uuid.UUID) error
+	Sweep(ctx context.Context) (Swept, error)
+}
+
+func NewService(repo Repository, grants Grants, baseURL string) *Service {
 	return &Service{
 		repo:    repo,
 		grants:  grants,
