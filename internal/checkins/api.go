@@ -79,6 +79,9 @@ type CheckInList struct {
 	RestDaysHeld int `json:"restDaysHeld"`
 	// RestDaysUsed is how many the current run has spent.
 	RestDaysUsed int `json:"restDaysUsed"`
+	// PreviousRun is the length of the run before the current one; the web
+	// names the best run on the first day of a new one after a long run.
+	PreviousRun int `json:"previousRun"`
 	// PerfectWeek is every day of this week so far checked in.
 	PerfectWeek bool `json:"perfectWeek"`
 	// Week is Monday to Sunday of the current week, always seven days.
@@ -99,6 +102,7 @@ func (l *CheckInList) setRun(run checkin.Run) {
 	l.BestStreak = run.Best
 	l.RestDaysHeld = run.RestsHeld
 	l.RestDaysUsed = run.RestsUsed
+	l.PreviousRun = run.PreviousRun
 	l.PerfectWeek = run.PerfectWeek
 	l.Week = weekView(run.Week)
 }
@@ -160,9 +164,9 @@ type CheckInRequest struct {
 	Stress       *int     `json:"stress,omitempty"`
 	SleepQuality *int     `json:"sleepQuality,omitempty"`
 	Tags         []string `json:"tags,omitempty"`
-	// Source is "ios", "siri", "widget" or "notification"; anything else is
-	// recorded as "ios". It is stored only when the request creates the day's
-	// check-in.
+	// Source is "ios", "siri", "widget", "notification" or "web" (the
+	// SvelteKit web app); anything else is recorded as "ios". It is stored
+	// only when the request creates the day's check-in.
 	Source string `json:"source,omitempty"`
 }
 
@@ -171,7 +175,7 @@ type CheckInRequest struct {
 func (req CheckInRequest) input() Input {
 	source := checkin.SourceIOS
 	switch s := checkin.Source(req.Source); s {
-	case checkin.SourceSiri, checkin.SourceWidget, checkin.SourceNotification:
+	case checkin.SourceSiri, checkin.SourceWidget, checkin.SourceNotification, checkin.SourceWeb:
 		source = s
 	}
 	return Input{

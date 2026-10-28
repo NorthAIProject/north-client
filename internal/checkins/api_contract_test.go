@@ -78,6 +78,7 @@ func TestSavedCheckInShapes(t *testing.T) {
 
 // The app names the surface that filed the check-in, so the widget and the
 // notification can be measured. Anything else it sends is recorded as ios.
+// "web" is the SvelteKit web app, which files check-ins through this API.
 func TestCheckInRequestRecordsTheNativeSurface(t *testing.T) {
 	t.Parallel()
 
@@ -86,7 +87,7 @@ func TestCheckInRequestRecordsTheNativeSurface(t *testing.T) {
 		"widget":       checkin.SourceWidget,
 		"notification": checkin.SourceNotification,
 		"":             checkin.SourceIOS,
-		"web":          checkin.SourceIOS,
+		"web":          checkin.SourceWeb,
 		"capture":      checkin.SourceIOS,
 	} {
 		if got := (CheckInRequest{Mood: 3, Energy: 3, Source: in}).input().Source; got != want {
