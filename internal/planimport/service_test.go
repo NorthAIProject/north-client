@@ -41,7 +41,7 @@ type fixture struct {
 	workouts    *workouts.Service
 	mealPlans   *meals.MealPlanService
 	ingredients *meals.IngredientService
-	repo        *meals.Repository
+	repo        meals.Repository
 	model       *fake.Client
 }
 

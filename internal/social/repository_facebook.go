@@ -19,7 +19,7 @@ var errFacebookTaken = errors.New("facebook account linked elsewhere")
 
 // SaveFacebookState stores a native connection's state hash, and drops
 // expired ones while it is here.
-func (r *Repository) SaveFacebookState(ctx context.Context, stateHash []byte, userID uuid.UUID, expiresAt time.Time) error {
+func (r *PostgresRepository) SaveFacebookState(ctx context.Context, stateHash []byte, userID uuid.UUID, expiresAt time.Time) error {
 	if err := r.q.DeleteExpiredFacebookOAuthStates(ctx); err != nil {
 		return apperr.Wrap(err, "prune facebook states")
 	}
@@ -29,7 +29,7 @@ func (r *Repository) SaveFacebookState(ctx context.Context, stateHash []byte, us
 
 // TakeFacebookState returns the account a state was issued to and removes
 // it. ErrNotFound covers unknown, expired and already-used states alike.
-func (r *Repository) TakeFacebookState(ctx context.Context, stateHash []byte) (uuid.UUID, error) {
+func (r *PostgresRepository) TakeFacebookState(ctx context.Context, stateHash []byte) (uuid.UUID, error) {
 	userID, err := r.q.TakeFacebookOAuthState(ctx, stateHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, apperr.ErrNotFound
@@ -43,7 +43,7 @@ func (r *Repository) TakeFacebookState(ctx context.Context, stateHash []byte) (u
 // LinkFacebook attaches the Facebook id to the account, replacing any other
 // Facebook account it had. An id held by a different account is refused,
 // never moved: whoever connected it first keeps it.
-func (r *Repository) LinkFacebook(ctx context.Context, userID uuid.UUID, subject string) error {
+func (r *PostgresRepository) LinkFacebook(ctx context.Context, userID uuid.UUID, subject string) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return apperr.Wrap(err, "begin link facebook")
@@ -74,7 +74,7 @@ func (r *Repository) LinkFacebook(ctx context.Context, userID uuid.UUID, subject
 }
 
 // UnlinkFacebook removes the link and whatever the last import found.
-func (r *Repository) UnlinkFacebook(ctx context.Context, userID uuid.UUID) error {
+func (r *PostgresRepository) UnlinkFacebook(ctx context.Context, userID uuid.UUID) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return apperr.Wrap(err, "begin unlink facebook")
@@ -90,7 +90,7 @@ func (r *Repository) UnlinkFacebook(ctx context.Context, userID uuid.UUID) error
 	return apperr.Wrap(tx.Commit(ctx), "commit unlink facebook")
 }
 
-func (r *Repository) FacebookConnected(ctx context.Context, userID uuid.UUID) (bool, error) {
+func (r *PostgresRepository) FacebookConnected(ctx context.Context, userID uuid.UUID) (bool, error) {
 	ok, err := r.q.IsFacebookConnected(ctx, userID)
 	if err != nil {
 		return false, apperr.Wrap(err, "facebook connected")
@@ -100,7 +100,7 @@ func (r *Repository) FacebookConnected(ctx context.Context, userID uuid.UUID) (b
 
 // FacebookFriendsHere maps Facebook ids to the accounts the viewer may be
 // shown; see the query.
-func (r *Repository) FacebookFriendsHere(ctx context.Context, viewerID uuid.UUID, subjects []string) ([]uuid.UUID, error) {
+func (r *PostgresRepository) FacebookFriendsHere(ctx context.Context, viewerID uuid.UUID, subjects []string) ([]uuid.UUID, error) {
 	ids, err := r.q.FacebookFriendsHere(ctx, socialdb.FacebookFriendsHereParams{Viewer: viewerID, Subjects: subjects})
 	if err != nil {
 		return nil, apperr.Wrap(err, "facebook friends here")
@@ -108,7 +108,7 @@ func (r *Repository) FacebookFriendsHere(ctx context.Context, viewerID uuid.UUID
 	return ids, nil
 }
 
-func (r *Repository) SaveFacebookImport(ctx context.Context, userID uuid.UUID, people []uuid.UUID, expiresAt time.Time) error {
+func (r *PostgresRepository) SaveFacebookImport(ctx context.Context, userID uuid.UUID, people []uuid.UUID, expiresAt time.Time) error {
 	if people == nil {
 		people = []uuid.UUID{}
 	}
@@ -118,7 +118,7 @@ func (r *Repository) SaveFacebookImport(ctx context.Context, userID uuid.UUID, p
 
 // FacebookImport is the last import's accounts and when it ran.
 // ErrNotFound when there is none or it has expired.
-func (r *Repository) FacebookImport(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, time.Time, error) {
+func (r *PostgresRepository) FacebookImport(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, time.Time, error) {
 	row, err := r.q.FacebookImport(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, time.Time{}, apperr.ErrNotFound
@@ -131,7 +131,7 @@ func (r *Repository) FacebookImport(ctx context.Context, userID uuid.UUID) ([]uu
 
 // PeopleByIDs is these accounts as the viewer may see them, with how the
 // viewer follows each.
-func (r *Repository) PeopleByIDs(ctx context.Context, viewerID uuid.UUID, ids []uuid.UUID) ([]Connection, error) {
+func (r *PostgresRepository) PeopleByIDs(ctx context.Context, viewerID uuid.UUID, ids []uuid.UUID) ([]Connection, error) {
 	rows, err := r.q.PeopleByIDs(ctx, socialdb.PeopleByIDsParams{Viewer: viewerID, Ids: ids})
 	if err != nil {
 		return nil, apperr.Wrap(err, "people by ids")

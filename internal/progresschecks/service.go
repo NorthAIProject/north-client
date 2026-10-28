@@ -32,12 +32,29 @@ type Weights interface {
 }
 
 type Service struct {
-	repo    *Repository
+	repo    Repository
 	photos  Photos
 	weights Weights
 	assist  *Assist
 	now     func() time.Time
 	awards  Awards
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps progress checks and their schedule.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, in Input, weightCarried bool, photos []Photo) (Check, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Check, error)
+	List(ctx context.Context, userID uuid.UUID, limit int) ([]Check, error)
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	Schedule(ctx context.Context, userID uuid.UUID) (Schedule, error)
+	SetSchedule(ctx context.Context, userID uuid.UUID, s Schedule) (Schedule, error)
+	ClearSchedule(ctx context.Context, userID uuid.UUID) error
+	FirstAndLatestWithPhotos(ctx context.Context, userID uuid.UUID) (first, latest Check, err error)
+	SaveComparison(ctx context.Context, userID uuid.UUID, c Comparison) error
+	Comparison(ctx context.Context, userID uuid.UUID) (Comparison, error)
 }
 
 // Awards checks a person's badges after a write. awards.Service satisfies it.
@@ -50,7 +67,7 @@ func (s *Service) WithAwards(a Awards) *Service {
 	return s
 }
 
-func NewService(repo *Repository, photos Photos, weights Weights) *Service {
+func NewService(repo Repository, photos Photos, weights Weights) *Service {
 	return &Service{repo: repo, photos: photos, weights: weights, now: time.Now}
 }
 

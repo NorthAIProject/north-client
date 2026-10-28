@@ -16,15 +16,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *milestonesdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: milestonesdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: milestonesdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, name string, last time.Time, interval *int) (Tracker, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, name string, last time.Time, interval *int) (Tracker, error) {
 	var iv *int16
 	if interval != nil {
 		iv = util.Ptr(int16(*interval))
@@ -42,7 +44,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, name string, 
 	return fromDB(row), nil
 }
 
-func (r *Repository) MarkDone(ctx context.Context, id, userID uuid.UUID, on time.Time) (Tracker, error) {
+func (r *PostgresRepository) MarkDone(ctx context.Context, id, userID uuid.UUID, on time.Time) (Tracker, error) {
 	row, err := r.q.MarkMilestoneDone(ctx, milestonesdb.MarkMilestoneDoneParams{ID: id, UserID: userID, LastDoneOn: pgtype.Date{Time: on, Valid: true}})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Tracker{}, apperr.ErrNotFound
@@ -53,7 +55,7 @@ func (r *Repository) MarkDone(ctx context.Context, id, userID uuid.UUID, on time
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	n, err := r.q.DeleteMilestone(ctx, milestonesdb.DeleteMilestoneParams{ID: id, UserID: userID})
 	if err != nil {
 		return apperr.Wrap(err, "delete milestone")
@@ -64,7 +66,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID) ([]Tracker, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID) ([]Tracker, error) {
 	rows, err := r.q.ListMilestones(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list milestones")

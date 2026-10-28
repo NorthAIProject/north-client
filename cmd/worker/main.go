@@ -189,10 +189,10 @@ func run() error {
 	// so a slow or rate-limited provider never holds a page open.
 	biometricSvc := biometrics.NewService(biometrics.NewRepository(pool))
 	// Imported workouts and check-ins from Telegram are achievements too.
-	achievementSvc := achievements.NewService(pool)
+	achievementSvc := achievements.NewService(achievements.NewRepository(pool))
 	// Badges checked after the writes this process makes (imports, Telegram,
 	// the coach), and swept nightly.
-	awardsSvc := awards.NewService(pool)
+	awardsSvc := awards.NewService(awards.NewRepository(pool))
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	stravaRepo := strava.NewRepository(pool, sealer)
 	stravaSvc := strava.NewService(strava.Options{
@@ -382,7 +382,7 @@ func run() error {
 	// what pays its XP.
 	worker.Register(jobs.KindSweepCrewChallenges,
 		crews.NewChallengeSweeper(userSvc,
-			crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)),
+			crews.NewService(crews.NewRepository(pool), crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc)),
 			achievementSvc, log).WithAwards(awardsSvc).HandleSweep)
 
 	// The nightly safety net for badges, and the daily rarity recount.
@@ -436,17 +436,17 @@ func run() error {
 
 	// Crew chat pushes each new message to the members who asked for it.
 	// Only the push job runs here; the web owns sending and the live hub.
-	crewChat := crews.NewChat(pool, moderation.NewService(pool), moderation.NewFilter(), queue).
+	crewChat := crews.NewChat(crews.NewRepository(pool), moderation.NewService(moderation.NewRepository(pool)), moderation.NewFilter(), queue).
 		WithPushers(apnsSvc, pushSvc)
 	worker.Register(jobs.KindCrewMessagePush, crewChat.HandlePushJob)
 
 	// The weekly review's focus sets each week's training volume, and the
 	// Sunday nudge asks for it.
-	weeklySvc := weekly.NewService(pool, goalSvc, reportSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
+	weeklySvc := weekly.NewService(weekly.NewRepository(pool), goalSvc, reportSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 
 	// The coach's suggestion for each captured inbox item, on the fast model:
 	// sorting one note does not need the strong one.
-	inboxSvc := inbox.NewService(pool, inbox.Options{
+	inboxSvc := inbox.NewService(inbox.NewRepository(pool), inbox.Options{
 		Suggester: inbox.NewAISuggester(runner, cfg.AI.FastModel), Goals: goalSvc, Users: userSvc, Log: log,
 	})
 	worker.Register(jobs.KindSuggestInbox, inboxSvc.HandleSuggestJob)
@@ -463,7 +463,7 @@ func run() error {
 	recoverySrc := insights.NewRecoverySource(healthReadings, stats.NewService(stats.Sources{
 		Sleep: sleep.NewService(sleep.NewRepository(pool)), Health: healthReadings,
 	}))
-	lighterSvc := lighterday.NewService(pool, recoverySrc, workoutSvc).WithAwards(awardsSvc)
+	lighterSvc := lighterday.NewService(lighterday.NewRepository(pool), recoverySrc, workoutSvc).WithAwards(awardsSvc)
 	workoutSvc.WithLighter(lighterSvc)
 
 	// The first week (internal/firstweek): days whose log turned up while the
@@ -502,7 +502,7 @@ func run() error {
 			FoodLog:   meals.NewFoodLogService(mealsRepo),
 		}).
 		// The evening note that crewmates checked in and you have not.
-		WithCrews(crews.NewService(pool, crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))).
+		WithCrews(crews.NewService(crews.NewRepository(pool), crews.CheckInsFrom(checkinSvc), crews.WorkoutsFrom(activitySvc))).
 		WithWeekly(weeklySvc).
 		// 30 and 90 days after a decision: did it hold?
 		WithDecisions(decisions.NewService(decisions.NewRepository(pool))).

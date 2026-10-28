@@ -28,7 +28,7 @@ type apiEnv struct {
 func newAPIEnv(t *testing.T, email string) *apiEnv {
 	t.Helper()
 	pool := testdb.New(t)
-	svc := awards.NewService(pool)
+	svc := awards.NewService(awards.NewRepository(pool))
 	r := echox.New(echox.Config{})
 	awards.NewAPI(svc).Register(r.Group(""))
 	u, err := users.NewService(users.NewRepository(pool)).Register(context.Background(), users.Registration{

@@ -13,7 +13,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-func (r *Repository) CreateReminder(ctx context.Context, userID uuid.UUID, label, timeOfDay string, daysOfWeek []int) (Reminder, error) {
+func (r *PostgresRepository) CreateReminder(ctx context.Context, userID uuid.UUID, label, timeOfDay string, daysOfWeek []int) (Reminder, error) {
 	row, err := r.q.CreateMealReminder(ctx, mealsdb.CreateMealReminderParams{
 		UserID: userID, Label: label, TimeOfDay: timeOfDay, DaysOfWeek: intsToInt16s(daysOfWeek),
 	})
@@ -23,7 +23,7 @@ func (r *Repository) CreateReminder(ctx context.Context, userID uuid.UUID, label
 	return reminderFromDB(row), nil
 }
 
-func (r *Repository) ListReminders(ctx context.Context, userID uuid.UUID) ([]Reminder, error) {
+func (r *PostgresRepository) ListReminders(ctx context.Context, userID uuid.UUID) ([]Reminder, error) {
 	rows, err := r.q.ListMealReminders(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list meal reminders")
@@ -35,7 +35,7 @@ func (r *Repository) ListReminders(ctx context.Context, userID uuid.UUID) ([]Rem
 	return out, nil
 }
 
-func (r *Repository) UpdateReminder(ctx context.Context, id, userID uuid.UUID, label, timeOfDay string, daysOfWeek []int) (Reminder, error) {
+func (r *PostgresRepository) UpdateReminder(ctx context.Context, id, userID uuid.UUID, label, timeOfDay string, daysOfWeek []int) (Reminder, error) {
 	row, err := r.q.UpdateMealReminder(ctx, mealsdb.UpdateMealReminderParams{
 		ID: id, UserID: userID, Label: label, TimeOfDay: timeOfDay, DaysOfWeek: intsToInt16s(daysOfWeek),
 	})
@@ -48,11 +48,11 @@ func (r *Repository) UpdateReminder(ctx context.Context, id, userID uuid.UUID, l
 	return reminderFromDB(row), nil
 }
 
-func (r *Repository) DeleteReminder(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) DeleteReminder(ctx context.Context, id, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.DeleteMealReminder(ctx, mealsdb.DeleteMealReminderParams{ID: id, UserID: userID}), "delete meal reminder")
 }
 
-func (r *Repository) SetReminderEnabled(ctx context.Context, id, userID uuid.UUID, enabled bool) (Reminder, error) {
+func (r *PostgresRepository) SetReminderEnabled(ctx context.Context, id, userID uuid.UUID, enabled bool) (Reminder, error) {
 	row, err := r.q.SetMealReminderEnabled(ctx, mealsdb.SetMealReminderEnabledParams{ID: id, UserID: userID, Enabled: enabled})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -66,7 +66,7 @@ func (r *Repository) SetReminderEnabled(ctx context.Context, id, userID uuid.UUI
 // NotYetFiredToday returns the user's enabled reminders that have not already
 // been marked fired for asOfDate — day-of-week and time-of-day matching
 // happens in Go via Reminder.DueOn.
-func (r *Repository) NotYetFiredToday(ctx context.Context, userID uuid.UUID, asOfDate time.Time) ([]Reminder, error) {
+func (r *PostgresRepository) NotYetFiredToday(ctx context.Context, userID uuid.UUID, asOfDate time.Time) ([]Reminder, error) {
 	rows, err := r.q.ListNotYetFiredMealReminders(ctx, mealsdb.ListNotYetFiredMealRemindersParams{UserID: userID, AsOfDate: toDate(asOfDate)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list not yet fired meal reminders")
@@ -78,7 +78,7 @@ func (r *Repository) NotYetFiredToday(ctx context.Context, userID uuid.UUID, asO
 	return out, nil
 }
 
-func (r *Repository) MarkFired(ctx context.Context, id uuid.UUID, asOfDate time.Time) error {
+func (r *PostgresRepository) MarkFired(ctx context.Context, id uuid.UUID, asOfDate time.Time) error {
 	return apperr.Wrap(r.q.MarkMealReminderFired(ctx, mealsdb.MarkMealReminderFiredParams{ID: id, LastFiredLocalDate: toDate(asOfDate)}), "mark meal reminder fired")
 }
 

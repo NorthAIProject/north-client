@@ -12,12 +12,14 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *checkinreplydb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: checkinreplydb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: checkinreplydb.New(pool)}
 }
 
 // stored is a note with the content it was written for.
@@ -27,7 +29,7 @@ type stored struct {
 }
 
 // Get is the note stored for a check-in. found is false when there is none.
-func (r *Repository) Get(ctx context.Context, checkInID, userID uuid.UUID) (stored, bool, error) {
+func (r *PostgresRepository) Get(ctx context.Context, checkInID, userID uuid.UUID) (stored, bool, error) {
 	row, err := r.q.GetReply(ctx, checkinreplydb.GetReplyParams{CheckInID: checkInID, UserID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return stored{}, false, nil
@@ -39,7 +41,7 @@ func (r *Repository) Get(ctx context.Context, checkInID, userID uuid.UUID) (stor
 }
 
 // Put stores a check-in's note, replacing one written for older content.
-func (r *Repository) Put(ctx context.Context, checkInID, userID uuid.UUID, hash string, reply Reply) error {
+func (r *PostgresRepository) Put(ctx context.Context, checkInID, userID uuid.UUID, hash string, reply Reply) error {
 	err := r.q.UpsertReply(ctx, checkinreplydb.UpsertReplyParams{
 		CheckInID: checkInID, UserID: userID, ContentHash: hash, Kind: reply.Kind, Text: reply.Text,
 	})

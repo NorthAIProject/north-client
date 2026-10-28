@@ -17,11 +17,21 @@ import (
 const maxEntryMG = 1000
 
 type Service struct {
-	repo *Repository
+	repo Repository
 	now  func() time.Time
 }
 
-func NewService(repo *Repository) *Service { return &Service{repo: repo, now: time.Now} }
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps caffeine entries.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, date time.Time, mg int, label string, at time.Time) (Entry, error)
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error)
+}
+
+func NewService(repo Repository) *Service { return &Service{repo: repo, now: time.Now} }
 
 // LogInput is one drink. A Preset fills MG and Label when they are empty; At
 // defaults to now, and may be set for a cup remembered after the fact.

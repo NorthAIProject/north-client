@@ -220,7 +220,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
 
 	// The tools below write for the person, so they check badges like the web does.
-	awardsSvc := awards.NewService(pool)
+	awardsSvc := awards.NewService(awards.NewRepository(pool))
 	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAwards(awardsSvc)
 	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAwards(awardsSvc)
 	memorySvc := memories.NewService(memories.NewRepository(pool))

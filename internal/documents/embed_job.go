@@ -35,12 +35,12 @@ const embedBatchSize = 64
 // So a missing vector is never an error state. It degrades retrieval to
 // full-text, which is what North did entirely until this existed.
 type Embedder struct {
-	repo   *Repository
+	repo   Repository
 	client ai.Embedder
 	log    *slog.Logger
 }
 
-func NewEmbedder(repo *Repository, client ai.Embedder, log *slog.Logger) *Embedder {
+func NewEmbedder(repo Repository, client ai.Embedder, log *slog.Logger) *Embedder {
 	if log == nil {
 		log = slog.Default()
 	}

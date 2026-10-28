@@ -11,17 +11,19 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-// Repository owns day_rules. The rest of a day is read through other slices'
+// PostgresRepository owns day_rules. The rest of a day is read through other slices'
 // services; this slice stores only what is its own.
-type Repository struct {
+type PostgresRepository struct {
 	q *daydb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: daydb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: daydb.New(pool)}
 }
 
-func (r *Repository) ListRules(ctx context.Context, userID uuid.UUID) ([]day.Rule, error) {
+func (r *PostgresRepository) ListRules(ctx context.Context, userID uuid.UUID) ([]day.Rule, error) {
 	rows, err := r.q.ListDayRules(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list day rules")
@@ -33,7 +35,7 @@ func (r *Repository) ListRules(ctx context.Context, userID uuid.UUID) ([]day.Rul
 	return out, nil
 }
 
-func (r *Repository) UpsertRule(ctx context.Context, userID uuid.UUID, rule day.Rule) (day.Rule, error) {
+func (r *PostgresRepository) UpsertRule(ctx context.Context, userID uuid.UUID, rule day.Rule) (day.Rule, error) {
 	row, err := r.q.UpsertDayRule(ctx, daydb.UpsertDayRuleParams{
 		UserID:  userID,
 		Kind:    string(rule.Kind),
@@ -46,7 +48,7 @@ func (r *Repository) UpsertRule(ctx context.Context, userID uuid.UUID, rule day.
 	return ruleFromDB(row), nil
 }
 
-func (r *Repository) DeleteRule(ctx context.Context, userID uuid.UUID, kind day.RuleKind) error {
+func (r *PostgresRepository) DeleteRule(ctx context.Context, userID uuid.UUID, kind day.RuleKind) error {
 	if err := r.q.DeleteDayRule(ctx, daydb.DeleteDayRuleParams{UserID: userID, Kind: string(kind)}); err != nil {
 		return apperr.Wrap(err, "delete day rule")
 	}

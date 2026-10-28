@@ -21,11 +21,21 @@ type BiometricsLookup interface {
 }
 
 type Service struct {
-	repo       *Repository
+	repo       Repository
 	biometrics BiometricsLookup
 }
 
-func NewService(repo *Repository, lookup BiometricsLookup) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps macro plans.
+type Repository interface {
+	RecordCurrent(ctx context.Context, userID uuid.UUID, plan MacroPlan) (MacroPlan, error)
+	Current(ctx context.Context, userID uuid.UUID) (MacroPlan, error)
+	History(ctx context.Context, userID uuid.UUID, limit int) ([]MacroPlan, error)
+}
+
+func NewService(repo Repository, lookup BiometricsLookup) *Service {
 	return &Service{repo: repo, biometrics: lookup}
 }
 

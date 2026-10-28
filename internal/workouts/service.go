@@ -61,13 +61,37 @@ type ActivityTracker interface {
 }
 
 type Service struct {
-	repo     *Repository
+	repo     Repository
 	runner   *ai.Runner
 	catalog  Catalog
 	model    string
 	activity ActivityTracker
 	volume   VolumeSource
 	lighter  LighterSource
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps intakes, plans and weeks.
+type Repository interface {
+	CreateIntake(ctx context.Context, userID uuid.UUID, in Intake) (StoredIntake, error)
+	CreateImportedIntake(ctx context.Context, userID uuid.UUID, daysPerWeek int) (StoredIntake, error)
+	GetIntake(ctx context.Context, id, userID uuid.UUID) (StoredIntake, error)
+	LatestIntake(ctx context.Context, userID uuid.UUID) (StoredIntake, error)
+	CreatePlan(ctx context.Context, p StoredPlan) (StoredPlan, error)
+	GetPlan(ctx context.Context, id, userID uuid.UUID) (StoredPlan, error)
+	LatestPlanForIntake(ctx context.Context, userID, intakeID uuid.UUID) (StoredPlan, error)
+	ListCurrentPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error)
+	ListPlans(ctx context.Context, userID uuid.UUID, limit int) ([]StoredPlan, error)
+	ActivePlan(ctx context.Context, userID uuid.UUID) (StoredPlan, error)
+	SetActivePlan(ctx context.Context, userID, intakeID uuid.UUID) error
+	GetWeek(ctx context.Context, userID uuid.UUID, start time.Time) (StoredWeek, bool, error)
+	InsertWeekIfAbsent(ctx context.Context, userID uuid.UUID, start time.Time, slots []Slot) error
+	UpsertWeek(ctx context.Context, userID uuid.UUID, week StoredWeek) error
+	DeleteWeek(ctx context.Context, userID uuid.UUID, start time.Time) error
+	PreviousWeekWithIntake(ctx context.Context, userID uuid.UUID, start time.Time, intakeID uuid.UUID) (StoredWeek, bool, error)
+	WeeksBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]StoredWeek, error)
 }
 
 func (s *Service) WithActivity(tracker ActivityTracker) *Service {
@@ -119,7 +143,7 @@ func (s *Service) volumeFor(ctx context.Context, user users.User, at time.Time) 
 }
 
 type Options struct {
-	Repository *Repository
+	Repository Repository
 	Runner     *ai.Runner
 
 	// Catalog may be nil, which turns the candidate list off and leaves the

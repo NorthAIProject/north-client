@@ -19,7 +19,7 @@ import (
 func TestPutSharingWithoutAwardsKeepsIt(t *testing.T) {
 	ctx := context.Background()
 	pool := testdb.New(t)
-	svc := achievements.NewService(pool)
+	svc := achievements.NewService(achievements.NewRepository(pool))
 	u := person(t, pool, "put-awards@north.test", "Pru")
 
 	e := echo.New()

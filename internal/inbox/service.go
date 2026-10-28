@@ -13,12 +13,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/goals"
-	inboxdb "github.com/NorthAIProject/north-client/internal/inbox/db"
 	"github.com/NorthAIProject/north-client/internal/inbox/item"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/mind"
@@ -66,7 +63,7 @@ type Users interface {
 }
 
 type Service struct {
-	q         *inboxdb.Queries
+	repo      Repository
 	queue     Enqueuer
 	suggester Suggester
 	goals     Goals
@@ -86,13 +83,26 @@ type Options struct {
 	Log       *slog.Logger
 }
 
-func NewService(pool *pgxpool.Pool, o Options) *Service {
+// Repository is the persistence Service depends on: the items people saved
+// and what became of them. NewRepository is what the process wires, and a
+// test can hand Service anything that keeps items.
+type Repository interface {
+	Add(ctx context.Context, userID uuid.UUID, source, text string) (Item, error)
+	ListOpen(ctx context.Context, userID uuid.UUID, limit int) ([]Item, error)
+	CountOpen(ctx context.Context, userID uuid.UUID) (int, error)
+	Get(ctx context.Context, itemID, userID uuid.UUID) (Item, error)
+	SetSuggestion(ctx context.Context, itemID, userID uuid.UUID, sug Suggestion) error
+	MarkFiled(ctx context.Context, itemID, userID uuid.UUID, destination string, ref uuid.UUID) error
+	Dismiss(ctx context.Context, itemID, userID uuid.UUID) error
+}
+
+func NewService(repo Repository, o Options) *Service {
 	log := o.Log
 	if log == nil {
 		log = slog.Default()
 	}
 	return &Service{
-		q: inboxdb.New(pool), queue: o.Queue, suggester: o.Suggester,
+		repo: repo, queue: o.Queue, suggester: o.Suggester,
 		goals: o.Goals, notes: o.Notes, journal: o.Journal, users: o.Users, log: log,
 	}
 }
@@ -114,35 +124,31 @@ func (s *Service) Add(ctx context.Context, userID uuid.UUID, source, text string
 	if err := errs.OrNil(); err != nil {
 		return Item{}, err
 	}
-	row, err := s.q.AddItem(ctx, inboxdb.AddItemParams{UserID: userID, Source: source, Text: text})
+	it, err := s.repo.Add(ctx, userID, source, text)
 	if err != nil {
-		return Item{}, apperr.Wrap(err, "save inbox item")
+		return Item{}, err
 	}
 	if s.queue != nil {
 		// The item is saved either way; a missing suggestion only means the
 		// person picks the home themselves.
-		if _, err := s.queue.Enqueue(ctx, jobs.KindSuggestInbox, jobs.SuggestInboxPayload{UserID: userID, ItemID: row.ID}); err != nil {
+		if _, err := s.queue.Enqueue(ctx, jobs.KindSuggestInbox, jobs.SuggestInboxPayload{UserID: userID, ItemID: it.ID}); err != nil {
 			s.log.Warn("could not queue inbox suggestion", slog.Any("error", err))
 		}
 	}
-	return fromDB(row), nil
+	return it, nil
 }
 
 // Open lists what is still waiting, newest first, and how many there are.
 func (s *Service) Open(ctx context.Context, userID uuid.UUID) ([]Item, int, error) {
-	rows, err := s.q.ListOpen(ctx, inboxdb.ListOpenParams{UserID: userID, Limit: listLimit})
+	out, err := s.repo.ListOpen(ctx, userID, listLimit)
 	if err != nil {
-		return nil, 0, apperr.Wrap(err, "list inbox")
+		return nil, 0, err
 	}
-	count, err := s.q.CountOpen(ctx, userID)
+	count, err := s.repo.CountOpen(ctx, userID)
 	if err != nil {
-		return nil, 0, apperr.Wrap(err, "count inbox")
+		return nil, 0, err
 	}
-	out := make([]Item, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, fromDB(r))
-	}
-	return out, int(count), nil
+	return out, count, nil
 }
 
 // HandleSuggestJob is the worker's handler for jobs.KindSuggestInbox.
@@ -160,14 +166,14 @@ func (s *Service) Suggest(ctx context.Context, userID, itemID uuid.UUID) error {
 	if s.suggester == nil {
 		return nil
 	}
-	row, err := s.q.GetItem(ctx, inboxdb.GetItemParams{ID: itemID, UserID: userID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	saved, err := s.repo.Get(ctx, itemID, userID)
+	if errors.Is(err, apperr.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
-		return apperr.Wrap(err, "load inbox item")
+		return err
 	}
-	if row.Status != item.StatusOpen {
+	if saved.Status != item.StatusOpen {
 		return nil
 	}
 	user, err := s.users.ByID(ctx, userID)
@@ -178,18 +184,11 @@ func (s *Service) Suggest(ctx context.Context, userID, itemID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	sug, err := s.suggester.Suggest(ctx, user, row.Text, active)
+	sug, err := s.suggester.Suggest(ctx, user, saved.Text, active)
 	if err != nil {
 		return err
 	}
-	raw, err := json.Marshal(sug)
-	if err != nil {
-		return apperr.Wrap(err, "encode inbox suggestion")
-	}
-	if err = s.q.SetSuggestion(ctx, inboxdb.SetSuggestionParams{ID: itemID, UserID: userID, Suggestion: raw}); err != nil {
-		return apperr.Wrap(err, "save inbox suggestion")
-	}
-	return nil
+	return s.repo.SetSuggestion(ctx, itemID, userID, sug)
 }
 
 // File writes an item where the person chose and marks it filed.
@@ -197,14 +196,11 @@ func (s *Service) File(ctx context.Context, userID, itemID uuid.UUID, f Filing) 
 	if !item.ValidDestination(f.Destination) {
 		return Item{}, apperr.FieldErrors{}.Add("destination", "Choose a goal, Knowledge or the journal.")
 	}
-	row, err := s.q.GetItem(ctx, inboxdb.GetItemParams{ID: itemID, UserID: userID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Item{}, apperr.ErrNotFound
-	}
+	saved, err := s.repo.Get(ctx, itemID, userID)
 	if err != nil {
-		return Item{}, apperr.Wrap(err, "load inbox item")
+		return Item{}, err
 	}
-	if row.Status != item.StatusOpen {
+	if saved.Status != item.StatusOpen {
 		return Item{}, apperr.FieldErrors{}.Add("item", "That was already filed or dismissed.")
 	}
 
@@ -214,47 +210,35 @@ func (s *Service) File(ctx context.Context, userID, itemID uuid.UUID, f Filing) 
 		if f.GoalID == uuid.Nil {
 			return Item{}, apperr.FieldErrors{}.Add("goal", "Choose the goal it is about.")
 		}
-		u, fileErr := s.goals.AddUpdate(ctx, f.GoalID, userID, row.Text, nil)
+		u, fileErr := s.goals.AddUpdate(ctx, f.GoalID, userID, saved.Text, nil)
 		if fileErr != nil {
 			return Item{}, fileErr
 		}
 		ref = u.ID
 	case item.DestinationKnowledge:
-		doc, fileErr := s.notes.CreateNote(ctx, userID, noteTitle(f.Title, row.Text), row.Text)
+		doc, fileErr := s.notes.CreateNote(ctx, userID, noteTitle(f.Title, saved.Text), saved.Text)
 		if fileErr != nil {
 			return Item{}, fileErr
 		}
 		ref = doc.ID
 	case item.DestinationJournal:
-		e, fileErr := s.journal.Create(ctx, userID, mind.Input{Content: row.Text})
+		e, fileErr := s.journal.Create(ctx, userID, mind.Input{Content: saved.Text})
 		if fileErr != nil {
 			return Item{}, fileErr
 		}
 		ref = e.ID
 	}
 
-	n, err := s.q.MarkFiled(ctx, inboxdb.MarkFiledParams{ID: itemID, UserID: userID, FiledAs: &f.Destination, FiledRef: &ref})
-	if err != nil {
-		return Item{}, apperr.Wrap(err, "mark inbox item filed")
+	if err = s.repo.MarkFiled(ctx, itemID, userID, f.Destination, ref); err != nil {
+		return Item{}, err
 	}
-	if n == 0 {
-		return Item{}, apperr.ErrNotFound
-	}
-	out := fromDB(row)
-	out.Status = item.StatusFiled
-	return out, nil
+	saved.Status = item.StatusFiled
+	return saved, nil
 }
 
 // Dismiss drops an item without filing it.
 func (s *Service) Dismiss(ctx context.Context, userID, itemID uuid.UUID) error {
-	n, err := s.q.Dismiss(ctx, inboxdb.DismissParams{ID: itemID, UserID: userID})
-	if err != nil {
-		return apperr.Wrap(err, "dismiss inbox item")
-	}
-	if n == 0 {
-		return apperr.ErrNotFound
-	}
-	return nil
+	return s.repo.Dismiss(ctx, itemID, userID)
 }
 
 // noteTitle is the chosen title, or the first line of the text cut to a
@@ -268,15 +252,4 @@ func noteTitle(title, text string) string {
 		return strings.TrimSpace(string(r[:60])) + "…"
 	}
 	return first
-}
-
-func fromDB(r inboxdb.InboxItem) Item {
-	it := Item{ID: r.ID, UserID: r.UserID, Source: r.Source, Text: r.Text, Status: r.Status, CreatedAt: r.CreatedAt}
-	if len(r.Suggestion) > 0 {
-		var sug Suggestion
-		if json.Unmarshal(r.Suggestion, &sug) == nil && item.ValidDestination(sug.Destination) {
-			it.Suggestion = &sug
-		}
-	}
-	return it
 }

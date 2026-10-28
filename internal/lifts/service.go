@@ -41,7 +41,7 @@ type MuscleLookup interface {
 }
 
 type Service struct {
-	repo    *Repository
+	repo    Repository
 	muscles MuscleLookup
 	now     func() time.Time
 
@@ -67,9 +67,24 @@ func (s *Service) WithAwards(a Awards) *Service {
 	return s
 }
 
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps logged sets.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, s Set, clientID *uuid.UUID) (Set, error)
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Set, error)
+	ListForExercises(ctx context.Context, userID uuid.UUID, keys []string, since time.Time) ([]Set, error)
+	ListForSession(ctx context.Context, userID, sessionID uuid.UUID) ([]Set, error)
+	ListForExercisesBefore(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error)
+	ListForSessions(ctx context.Context, sessionIDs []uuid.UUID) ([]Set, error)
+	ListForExercisesBetween(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error)
+}
+
 // NewService takes the exercise catalog for per-muscle sets; nil leaves
 // that breakdown empty.
-func NewService(repo *Repository, muscles MuscleLookup) *Service {
+func NewService(repo Repository, muscles MuscleLookup) *Service {
 	return &Service{repo: repo, muscles: muscles, now: time.Now}
 }
 

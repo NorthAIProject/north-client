@@ -60,7 +60,7 @@ func feedHas(t *testing.T, svc *achievements.Service, viewer uuid.UUID, title st
 func TestNewPersonSharesByDefault(t *testing.T) {
 	ctx := context.Background()
 	pool := testdb.New(t)
-	svc := achievements.NewService(pool)
+	svc := achievements.NewService(achievements.NewRepository(pool))
 	soc := social.NewService(social.NewRepository(pool))
 	a := person(t, pool, "default-a@north.test", "Ada")
 	b := person(t, pool, "default-b@north.test", "Bo")
@@ -88,7 +88,7 @@ func TestNewPersonSharesByDefault(t *testing.T) {
 func TestPinnedOffStaysOff(t *testing.T) {
 	ctx := context.Background()
 	pool := testdb.New(t)
-	svc := achievements.NewService(pool)
+	svc := achievements.NewService(achievements.NewRepository(pool))
 	soc := social.NewService(social.NewRepository(pool))
 	a := person(t, pool, "pinned-a@north.test", "Ada")
 	b := person(t, pool, "pinned-b@north.test", "Bo")
@@ -114,7 +114,7 @@ func TestPinnedOffStaysOff(t *testing.T) {
 func TestSharingDefaultsAwardsOn(t *testing.T) {
 	ctx := context.Background()
 	pool := testdb.New(t)
-	svc := achievements.NewService(pool)
+	svc := achievements.NewService(achievements.NewRepository(pool))
 	fresh := person(t, pool, "awards-fresh@north.test", "Fay")
 	pinned := person(t, pool, "awards-pinned@north.test", "Pip")
 	for _, c := range []string{"training", "streaks", "goals"} {

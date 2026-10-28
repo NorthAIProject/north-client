@@ -331,7 +331,7 @@ func TestUpdateRelatedGoalMustBelongToUser(t *testing.T) {
 
 // seedDays writes one check-in per offset, counted back from the user's local
 // today. Backdating cannot go through UpsertToday, which always writes today.
-func seedDays(t *testing.T, repo *checkins.Repository, user users.User, offsets ...int) {
+func seedDays(t *testing.T, repo checkins.Repository, user users.User, offsets ...int) {
 	t.Helper()
 	today := checkins.LocalDate(user, time.Now())
 	for _, offset := range offsets {

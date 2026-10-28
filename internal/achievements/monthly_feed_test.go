@@ -16,7 +16,7 @@ import (
 
 func TestMonthlyFeedCardLocalised(t *testing.T) {
 	pool := testdb.New(t)
-	ach := achievements.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
 	soc := social.NewService(social.NewRepository(pool))
 	ana, leo := person(t, pool, "mf-ana@north.test", "Ana"), person(t, pool, "mf-leo@north.test", "Leo")
 	follow(t, soc, leo, ana, "mfana")
@@ -70,7 +70,7 @@ func TestMonthlyFeedCardLocalised(t *testing.T) {
 func TestMonthlyFeedFollowsAwardsSwitch(t *testing.T) {
 	ctx := context.Background()
 	pool := testdb.New(t)
-	ach := achievements.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
 	soc := social.NewService(social.NewRepository(pool))
 	ana, leo := person(t, pool, "mg-ana@north.test", "Ana"), person(t, pool, "mg-leo@north.test", "Leo")
 	follow(t, soc, leo, ana, "mgana")
@@ -111,7 +111,7 @@ func TestMonthlyFeedFollowsAwardsSwitch(t *testing.T) {
 func TestRecapHighlightMonthlyIsLocalised(t *testing.T) {
 	ctx := i18n.WithLocale(context.Background(), "es")
 	pool := testdb.New(t)
-	ach := achievements.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
 	ana := person(t, pool, "rc-ana@north.test", "Ana")
 	at := time.Now().UTC().Add(-time.Hour)
 	if _, err := pool.Exec(ctx, `INSERT INTO monthly_challenges (user_id, month, metric, target) VALUES ($1, '2026-09-01', 'workouts', 12)`, ana.ID); err != nil {

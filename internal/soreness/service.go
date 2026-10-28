@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/soreness/sore"
@@ -12,11 +14,21 @@ import (
 )
 
 type Service struct {
-	repo *Repository
+	repo Repository
 	now  func() time.Time
 }
 
-func NewService(repo *Repository) *Service { return &Service{repo: repo, now: time.Now} }
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps soreness entries.
+type Repository interface {
+	Upsert(ctx context.Context, userID uuid.UUID, day time.Time, region string, severity int, note string) (Entry, error)
+	Delete(ctx context.Context, userID uuid.UUID, day time.Time, region string) error
+	ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error)
+}
+
+func NewService(repo Repository) *Service { return &Service{repo: repo, now: time.Now} }
 
 func (s *Service) today(user users.User) time.Time {
 	return timerange.StartOfDay(s.now().In(user.Location()))

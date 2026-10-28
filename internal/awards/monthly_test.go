@@ -211,7 +211,7 @@ func TestMonthlyMetOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	x := xp.NewService(e.pool, checkins.NewService(checkins.NewRepository(e.pool), goals.NewService(goals.NewRepository(e.pool))))
+	x := xp.NewService(xp.NewRepository(e.pool), checkins.NewService(checkins.NewRepository(e.pool), goals.NewService(goals.NewRepository(e.pool))))
 	before, err := x.Summary(ctx, user, clock)
 	if err != nil {
 		t.Fatal(err)

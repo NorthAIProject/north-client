@@ -15,17 +15,19 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *outreachdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: outreachdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: outreachdb.New(pool)}
 }
 
 // Claim records today's outreach. claimed is false when one already exists
 // for that day: the once-a-day limit.
-func (r *Repository) Claim(ctx context.Context, userID uuid.UUID, day time.Time, trigger string, facts Facts) (Outreach, bool, error) {
+func (r *PostgresRepository) Claim(ctx context.Context, userID uuid.UUID, day time.Time, trigger string, facts Facts) (Outreach, bool, error) {
 	raw, err := json.Marshal(facts)
 	if err != nil {
 		return Outreach{}, false, apperr.Wrap(err, "encode outreach facts")
@@ -44,7 +46,7 @@ func (r *Repository) Claim(ctx context.Context, userID uuid.UUID, day time.Time,
 }
 
 // ForDay is the outreach on the person's local day, ErrNotFound when none.
-func (r *Repository) ForDay(ctx context.Context, userID uuid.UUID, day time.Time) (Outreach, error) {
+func (r *PostgresRepository) ForDay(ctx context.Context, userID uuid.UUID, day time.Time) (Outreach, error) {
 	row, err := r.q.GetOutreachForDay(ctx, outreachdb.GetOutreachForDayParams{UserID: userID, Day: date(day)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Outreach{}, apperr.ErrNotFound
@@ -55,7 +57,7 @@ func (r *Repository) ForDay(ctx context.Context, userID uuid.UUID, day time.Time
 	return fromDB(row)
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Outreach, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Outreach, error) {
 	row, err := r.q.GetOutreach(ctx, outreachdb.GetOutreachParams{ID: id, UserID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Outreach{}, apperr.ErrNotFound
@@ -66,7 +68,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Outreach, e
 	return fromDB(row)
 }
 
-func (r *Repository) SetMessage(ctx context.Context, id, userID uuid.UUID, body string, messageID *uuid.UUID) error {
+func (r *PostgresRepository) SetMessage(ctx context.Context, id, userID uuid.UUID, body string, messageID *uuid.UUID) error {
 	if err := r.q.SetOutreachMessage(ctx, outreachdb.SetOutreachMessageParams{
 		ID: id, UserID: userID, Body: body, MessageID: messageID,
 	}); err != nil {
@@ -76,7 +78,7 @@ func (r *Repository) SetMessage(ctx context.Context, id, userID uuid.UUID, body 
 }
 
 // RecordAction stores the first answer. ErrConflict when one was already given.
-func (r *Repository) RecordAction(ctx context.Context, id, userID uuid.UUID, action string) (Outreach, error) {
+func (r *PostgresRepository) RecordAction(ctx context.Context, id, userID uuid.UUID, action string) (Outreach, error) {
 	row, err := r.q.RecordOutreachAction(ctx, outreachdb.RecordOutreachActionParams{ID: id, UserID: userID, Action: &action})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Outreach{}, apperr.Wrap(apperr.ErrConflict, "this was already answered")

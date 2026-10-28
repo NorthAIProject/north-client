@@ -8,15 +8,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
-	moderationdb "github.com/NorthAIProject/north-client/internal/moderation/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
 type Service struct {
-	pool      *pgxpool.Pool
-	q         *moderationdb.Queries
+	repo      Repository
 	hiders    map[string]Hider
 	operators []uuid.UUID
 	pushers   []ThreadSender
@@ -24,8 +21,24 @@ type Service struct {
 	now       func() time.Time
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool, q: moderationdb.New(pool), hiders: map[string]Hider{}, log: slog.Default(), now: time.Now}
+// Repository is the persistence Service depends on: reports, the record of
+// moderation actions, accepted terms and suspensions. NewRepository is what
+// the process wires, and a test can hand Service anything that keeps them.
+type Repository interface {
+	FileReport(ctx context.Context, reporterID uuid.UUID, sub Subject, reason, note string,
+		overThreshold func(reporters int64) (bool, error), hide func() error) (filed, hidden bool, err error)
+	OpenReports(ctx context.Context) ([]ReportGroup, error)
+	Decide(ctx context.Context, operatorID uuid.UUID, kind string, subjectID uuid.UUID, action, status string) error
+	ReportedBy(ctx context.Context, reporterID uuid.UUID, kind string, ids []uuid.UUID) (map[uuid.UUID]bool, error)
+	TermsAccepted(ctx context.Context, userID uuid.UUID) (bool, error)
+	AcceptTerms(ctx context.Context, userID uuid.UUID) error
+	Suspend(ctx context.Context, actorID *uuid.UUID, userID uuid.UUID, until *time.Time, reason string) error
+	Unsuspend(ctx context.Context, actorID *uuid.UUID, userID uuid.UUID) error
+	Suspended(ctx context.Context, userID uuid.UUID, now time.Time) (bool, error)
+}
+
+func NewService(repo Repository) *Service {
+	return &Service{repo: repo, hiders: map[string]Hider{}, log: slog.Default(), now: time.Now}
 }
 
 // WithOperators names who reviews reports and how they hear about new ones:
@@ -72,69 +85,22 @@ func (s *Service) Report(ctx context.Context, reporterID uuid.UUID, sub Subject,
 		return false, apperr.FieldErrors{}.Add("note", "Keep the note under 500 characters.")
 	}
 
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return false, apperr.Wrap(err, "begin report")
+	// Over the slice's threshold, the subject is hidden unless hiding was
+	// already decided. The threshold can fall below the count when a crew
+	// shrinks, so this is not equality.
+	overThreshold := func(reporters int64) (bool, error) {
+		threshold, tErr := h.Threshold(ctx, sub.ID)
+		if tErr != nil {
+			return false, tErr
+		}
+		return reporters >= int64(threshold), nil
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := s.q.WithTx(tx)
-	if err = q.LockSubject(ctx, moderationdb.LockSubjectParams{SubjectKind: sub.Kind, SubjectID: sub.ID.String()}); err != nil {
-		return false, apperr.Wrap(err, "lock subject")
-	}
-
-	// A subject with no author, a coach message for one, has nobody to
-	// point the report at.
-	var author *uuid.UUID
-	if sub.AuthorID != uuid.Nil {
-		author = &sub.AuthorID
-	}
-	inserted, err := q.InsertReport(ctx, moderationdb.InsertReportParams{
-		ReporterID: reporterID, SubjectKind: sub.Kind, SubjectID: sub.ID,
-		SubjectAuthorID: author, ScopeID: sub.ScopeID, Reason: reason, Note: note,
-	})
-	if err != nil {
-		return false, apperr.Wrap(err, "insert report")
-	}
-	if inserted == 0 {
-		return false, nil
-	}
-	count, err := q.CountReporters(ctx, moderationdb.CountReportersParams{SubjectKind: sub.Kind, SubjectID: sub.ID})
-	if err != nil {
-		return false, apperr.Wrap(err, "count reporters")
-	}
-	threshold, err := h.Threshold(ctx, sub.ID)
-	if err != nil {
+	// The slice hides in its own tables, outside the report's transaction;
+	// Hide is idempotent, so a failed commit after it only loses the record.
+	hide := func() error { return h.Hide(ctx, sub.ID) }
+	filed, hidden, err := s.repo.FileReport(ctx, reporterID, sub, reason, note, overThreshold, hide)
+	if err != nil || !filed {
 		return false, err
-	}
-	// At or past the threshold, hide unless hiding was already decided: by
-	// an earlier report, or by a moderator who unhid it. The threshold can
-	// fall below the count when a crew shrinks, so this is not equality.
-	if count >= int64(threshold) {
-		decided, decidedErr := q.HideDecided(ctx, moderationdb.HideDecidedParams{SubjectKind: sub.Kind, SubjectID: sub.ID})
-		if decidedErr != nil {
-			return false, apperr.Wrap(decidedErr, "hide decided")
-		}
-		if decided {
-			if err = tx.Commit(ctx); err != nil {
-				return false, apperr.Wrap(err, "commit report")
-			}
-			s.tellOperators(ctx, reason)
-			return false, nil
-		}
-		// The slice hides in its own tables, outside this transaction; Hide
-		// is idempotent, so a failed commit after it only loses the record.
-		if err = h.Hide(ctx, sub.ID); err != nil {
-			return false, err
-		}
-		if err = q.InsertAction(ctx, moderationdb.InsertActionParams{
-			SubjectKind: sub.Kind, SubjectID: sub.ID, Action: "hide", Reason: "reports",
-		}); err != nil {
-			return false, apperr.Wrap(err, "record hide")
-		}
-		hidden = true
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return false, apperr.Wrap(err, "commit report")
 	}
 	s.tellOperators(ctx, reason)
 	return hidden, nil
@@ -155,25 +121,17 @@ func (s *Service) tellOperators(ctx context.Context, reason string) {
 // OpenReports is the operator queue: every subject with open reports,
 // oldest first.
 func (s *Service) OpenReports(ctx context.Context) ([]ReportGroup, error) {
-	rows, err := s.q.OpenReports(ctx)
+	out, err := s.repo.OpenReports(ctx)
 	if err != nil {
-		return nil, apperr.Wrap(err, "open reports")
+		return nil, err
 	}
-	out := make([]ReportGroup, 0, len(rows))
-	for _, r := range rows {
-		g := ReportGroup{Kind: r.SubjectKind, SubjectID: r.SubjectID, Count: int(r.N), Hidden: r.Hidden, FirstAt: r.FirstAt, Reasons: map[string]int{}}
-		if r.AuthorID != uuid.Nil {
-			g.AuthorID = &r.AuthorID
-		}
-		for _, reason := range r.Reasons {
-			g.Reasons[reason]++
-		}
-		if h, ok := s.hiders[r.SubjectKind]; ok {
-			if g.Excerpt, err = h.Excerpt(ctx, r.SubjectID); err != nil {
+	for i := range out {
+		g := &out[i]
+		if h, ok := s.hiders[g.Kind]; ok {
+			if g.Excerpt, err = h.Excerpt(ctx, g.SubjectID); err != nil {
 				return nil, err
 			}
 		}
-		out = append(out, g)
 	}
 	return out, nil
 }
@@ -204,79 +162,36 @@ func (s *Service) Decide(ctx context.Context, operatorID uuid.UUID, kind string,
 	default:
 		return apperr.FieldErrors{}.Add("action", "Choose hide, unhide or dismiss.")
 	}
-	return s.inTx(ctx, "decide", func(q *moderationdb.Queries) error {
-		if action != DecideDismiss {
-			if err := q.InsertAction(ctx, moderationdb.InsertActionParams{
-				ActorID: &operatorID, SubjectKind: kind, SubjectID: subjectID, Action: action, Reason: "operator",
-			}); err != nil {
-				return err
-			}
-		}
-		return q.CloseReports(ctx, moderationdb.CloseReportsParams{Status: status, SubjectKind: kind, SubjectID: subjectID})
-	})
+	return s.repo.Decide(ctx, operatorID, kind, subjectID, action, status)
 }
 
 // ReportedBy says which of ids reporterID has reported, so a list can drop
 // them for that person straight away.
 func (s *Service) ReportedBy(ctx context.Context, reporterID uuid.UUID, kind string, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
-	rows, err := s.q.ReportedBy(ctx, moderationdb.ReportedByParams{ReporterID: reporterID, SubjectKind: kind, Ids: ids})
-	if err != nil {
-		return nil, apperr.Wrap(err, "reported by")
-	}
-	out := make(map[uuid.UUID]bool, len(rows))
-	for _, id := range rows {
-		out[id] = true
-	}
-	return out, nil
+	return s.repo.ReportedBy(ctx, reporterID, kind, ids)
 }
 
 func (s *Service) TermsAccepted(ctx context.Context, userID uuid.UUID) (bool, error) {
-	ok, err := s.q.TermsAccepted(ctx, moderationdb.TermsAcceptedParams{UserID: userID, Version: TermsVersion})
-	if err != nil {
-		return false, apperr.Wrap(err, "terms accepted")
-	}
-	return ok, nil
+	return s.repo.TermsAccepted(ctx, userID)
 }
 
 func (s *Service) AcceptTerms(ctx context.Context, userID uuid.UUID) error {
-	if err := s.q.AcceptTerms(ctx, moderationdb.AcceptTermsParams{UserID: userID, Version: TermsVersion}); err != nil {
-		return apperr.Wrap(err, "accept terms")
-	}
-	return nil
+	return s.repo.AcceptTerms(ctx, userID)
 }
 
 // Suspend stops userID posting until until, or until lifted when until is
 // nil. actorID is nil for an automatic suspension.
 func (s *Service) Suspend(ctx context.Context, actorID *uuid.UUID, userID uuid.UUID, until *time.Time, reason string) error {
-	return s.inTx(ctx, "suspend", func(q *moderationdb.Queries) error {
-		if err := q.Suspend(ctx, moderationdb.SuspendParams{UserID: userID, Until: until, Reason: reason}); err != nil {
-			return err
-		}
-		return q.InsertAction(ctx, moderationdb.InsertActionParams{
-			ActorID: actorID, SubjectKind: "user", SubjectID: userID, Action: "suspend", Reason: reason,
-		})
-	})
+	return s.repo.Suspend(ctx, actorID, userID, until, reason)
 }
 
 // Unsuspend lifts a suspension; lifting none is a no-op.
 func (s *Service) Unsuspend(ctx context.Context, actorID *uuid.UUID, userID uuid.UUID) error {
-	return s.inTx(ctx, "unsuspend", func(q *moderationdb.Queries) error {
-		n, err := q.Unsuspend(ctx, userID)
-		if err != nil || n == 0 {
-			return err
-		}
-		return q.InsertAction(ctx, moderationdb.InsertActionParams{
-			ActorID: actorID, SubjectKind: "user", SubjectID: userID, Action: "unsuspend",
-		})
-	})
+	return s.repo.Unsuspend(ctx, actorID, userID)
 }
 
 func (s *Service) Suspended(ctx context.Context, userID uuid.UUID, now time.Time) (bool, error) {
-	ok, err := s.q.Suspended(ctx, moderationdb.SuspendedParams{UserID: userID, Now: now})
-	if err != nil {
-		return false, apperr.Wrap(err, "suspended")
-	}
-	return ok, nil
+	return s.repo.Suspended(ctx, userID, now)
 }
 
 // CanPost is nil when userID may publish: the terms are accepted and no
@@ -295,21 +210,6 @@ func (s *Service) CanPost(ctx context.Context, userID uuid.UUID) error {
 	}
 	if suspended {
 		return ErrSuspended
-	}
-	return nil
-}
-
-func (s *Service) inTx(ctx context.Context, what string, fn func(*moderationdb.Queries) error) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return apperr.Wrap(err, "begin %s", what)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err = fn(s.q.WithTx(tx)); err != nil {
-		return apperr.Wrap(err, "%s", what)
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return apperr.Wrap(err, "commit %s", what)
 	}
 	return nil
 }

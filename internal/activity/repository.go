@@ -14,17 +14,19 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *activitydb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: activitydb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: activitydb.New(pool)}
 }
 
 // Create opens a session. planWeekday is empty unless a guided workout was
 // started from a plan day.
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, activityCode, planWeekday string, weightKg float64) (Session, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, activityCode, planWeekday string, weightKg float64) (Session, error) {
 	weekday := util.StrZeroPtr(planWeekday)
 	row, err := r.q.CreateActivitySession(ctx, activitydb.CreateActivitySessionParams{
 		UserID:           userID,
@@ -38,7 +40,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, activityCode,
 	return fromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Session, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Session, error) {
 	row, err := r.q.GetActivitySession(ctx, activitydb.GetActivitySessionParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -52,7 +54,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Session, er
 // Active returns the user's open session, if any. Unlike Get, "none open" is
 // a normal state, not an error, so it reports via the bool rather than
 // apperr.ErrNotFound.
-func (r *Repository) Active(ctx context.Context, userID uuid.UUID) (Session, bool, error) {
+func (r *PostgresRepository) Active(ctx context.Context, userID uuid.UUID) (Session, bool, error) {
 	row, err := r.q.ActiveActivitySession(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -63,7 +65,7 @@ func (r *Repository) Active(ctx context.Context, userID uuid.UUID) (Session, boo
 	return fromDB(row), true, nil
 }
 
-func (r *Repository) SetPaused(ctx context.Context, id, userID uuid.UUID) (Session, error) {
+func (r *PostgresRepository) SetPaused(ctx context.Context, id, userID uuid.UUID) (Session, error) {
 	row, err := r.q.PauseActivitySession(ctx, activitydb.PauseActivitySessionParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -74,7 +76,7 @@ func (r *Repository) SetPaused(ctx context.Context, id, userID uuid.UUID) (Sessi
 	return fromDB(row), nil
 }
 
-func (r *Repository) SetResumed(ctx context.Context, id, userID uuid.UUID, totalPausedSeconds int) (Session, error) {
+func (r *PostgresRepository) SetResumed(ctx context.Context, id, userID uuid.UUID, totalPausedSeconds int) (Session, error) {
 	row, err := r.q.ResumeActivitySession(ctx, activitydb.ResumeActivitySessionParams{
 		ID:                 id,
 		UserID:             userID,
@@ -89,7 +91,7 @@ func (r *Repository) SetResumed(ctx context.Context, id, userID uuid.UUID, total
 	return fromDB(row), nil
 }
 
-func (r *Repository) Complete(ctx context.Context, id, userID uuid.UUID, endedAt time.Time, calories float64) (Session, error) {
+func (r *PostgresRepository) Complete(ctx context.Context, id, userID uuid.UUID, endedAt time.Time, calories float64) (Session, error) {
 	row, err := r.q.CompleteActivitySession(ctx, activitydb.CompleteActivitySessionParams{
 		ID:             id,
 		UserID:         userID,
@@ -105,11 +107,11 @@ func (r *Repository) Complete(ctx context.Context, id, userID uuid.UUID, endedAt
 	return fromDB(row), nil
 }
 
-func (r *Repository) Cancel(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Cancel(ctx context.Context, id, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.CancelActivitySession(ctx, activitydb.CancelActivitySessionParams{ID: id, UserID: userID}), "cancel activity session")
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Session, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Session, error) {
 	rows, err := r.q.ListActivitySessions(ctx, activitydb.ListActivitySessionsParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list activity sessions")
@@ -122,7 +124,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]S
 	return out, nil
 }
 
-func (r *Repository) SumCaloriesSince(ctx context.Context, userID uuid.UUID, since time.Time) (float64, error) {
+func (r *PostgresRepository) SumCaloriesSince(ctx context.Context, userID uuid.UUID, since time.Time) (float64, error) {
 	total, err := r.q.SumActivityCaloriesSince(ctx, activitydb.SumActivityCaloriesSinceParams{UserID: userID, EndedAt: &since})
 	if err != nil {
 		return 0, apperr.Wrap(err, "sum activity calories")
@@ -133,7 +135,7 @@ func (r *Repository) SumCaloriesSince(ctx context.Context, userID uuid.UUID, sin
 // SumCaloriesBetween totals completed sessions in the half-open window
 // [since, until). The bounded form is what lets a window be compared against
 // the one before it without counting a boundary session twice.
-func (r *Repository) SumCaloriesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) (float64, error) {
+func (r *PostgresRepository) SumCaloriesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) (float64, error) {
 	total, err := r.q.SumActivityCaloriesBetween(ctx, activitydb.SumActivityCaloriesBetweenParams{
 		UserID:    userID,
 		EndedAt:   &since,
@@ -146,7 +148,7 @@ func (r *Repository) SumCaloriesBetween(ctx context.Context, userID uuid.UUID, s
 }
 
 // ListBetween returns the sessions finished in [since, until), newest first.
-func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Session, error) {
+func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Session, error) {
 	rows, err := r.q.ListActivitySessionsBetween(ctx, activitydb.ListActivitySessionsBetweenParams{
 		UserID:    userID,
 		EndedAt:   &since,
@@ -165,7 +167,7 @@ func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, u
 
 // CompletedByIDs is the completed sessions among ids, whoever owns them.
 // Callers authorize: nothing here checks that the reader may see them.
-func (r *Repository) CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]Session, error) {
+func (r *PostgresRepository) CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]Session, error) {
 	rows, err := r.q.CompletedSessionsByIDs(ctx, ids)
 	if err != nil {
 		return nil, apperr.Wrap(err, "completed activity sessions by ids")
@@ -175,7 +177,7 @@ func (r *Repository) CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]Ses
 
 // ListCompleted is one person's completed sessions that ended before a
 // point, newest first.
-func (r *Repository) ListCompleted(ctx context.Context, userID uuid.UUID, before time.Time, limit int) ([]Session, error) {
+func (r *PostgresRepository) ListCompleted(ctx context.Context, userID uuid.UUID, before time.Time, limit int) ([]Session, error) {
 	rows, err := r.q.ListCompletedSessions(ctx, activitydb.ListCompletedSessionsParams{UserID: userID, Before: &before, Lim: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list completed activity sessions")
@@ -184,7 +186,7 @@ func (r *Repository) ListCompleted(ctx context.Context, userID uuid.UUID, before
 }
 
 // CountCompleted is how many sessions the person has finished.
-func (r *Repository) CountCompleted(ctx context.Context, userID uuid.UUID) (int, error) {
+func (r *PostgresRepository) CountCompleted(ctx context.Context, userID uuid.UUID) (int, error) {
 	n, err := r.q.CountCompletedSessions(ctx, userID)
 	if err != nil {
 		return 0, apperr.Wrap(err, "count completed activity sessions")
@@ -256,7 +258,7 @@ func positive(v float64) *float64 {
 // row already existed — the ON CONFLICT DO NOTHING on
 // UNIQUE (source, external_id) makes re-importing the same activity a no-op
 // rather than an error, which is what lets a sync run as often as it likes.
-func (r *Repository) Import(ctx context.Context, in ImportInput) (Session, bool, error) {
+func (r *PostgresRepository) Import(ctx context.Context, in ImportInput) (Session, bool, error) {
 	endedAt := in.EndedAt
 	externalID := in.ExternalID
 
@@ -316,7 +318,7 @@ func (r *Repository) Import(ctx context.Context, in ImportInput) (Session, bool,
 // source is always manual; distinct from Create because the session arrives
 // complete. Distance is stored as NULL rather than zero when it was not
 // given: a yoga session did not go nowhere, it just was not measured.
-func (r *Repository) Log(ctx context.Context, userID uuid.UUID, in LogInput, weightKg, calories float64) (Session, error) {
+func (r *PostgresRepository) Log(ctx context.Context, userID uuid.UUID, in LogInput, weightKg, calories float64) (Session, error) {
 	endedAt := in.StartedAt.Add(in.Duration)
 
 	var distance *float64

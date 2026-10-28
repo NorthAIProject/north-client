@@ -9,7 +9,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-func (r *Repository) ListDiets(ctx context.Context) ([]Diet, error) {
+func (r *PostgresRepository) ListDiets(ctx context.Context) ([]Diet, error) {
 	rows, err := r.q.ListDiets(ctx)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list diets")
@@ -17,7 +17,7 @@ func (r *Repository) ListDiets(ctx context.Context) ([]Diet, error) {
 	return dietsFromDB(rows), nil
 }
 
-func (r *Repository) UserDiets(ctx context.Context, userID uuid.UUID) ([]Diet, error) {
+func (r *PostgresRepository) UserDiets(ctx context.Context, userID uuid.UUID) ([]Diet, error) {
 	rows, err := r.q.UserDiets(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "user diets")
@@ -27,7 +27,7 @@ func (r *Repository) UserDiets(ctx context.Context, userID uuid.UUID) ([]Diet, e
 
 // SetUserDiets replaces the full set in a transaction, so a reader never
 // sees a moment with neither the old nor the new selection.
-func (r *Repository) SetUserDiets(ctx context.Context, userID uuid.UUID, dietIDs []uuid.UUID) error {
+func (r *PostgresRepository) SetUserDiets(ctx context.Context, userID uuid.UUID, dietIDs []uuid.UUID) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return apperr.Wrap(err, "begin set diets transaction")
@@ -48,11 +48,11 @@ func (r *Repository) SetUserDiets(ctx context.Context, userID uuid.UUID, dietIDs
 	return apperr.Wrap(tx.Commit(ctx), "commit set diets transaction")
 }
 
-func (r *Repository) AddUserDiet(ctx context.Context, userID, dietID uuid.UUID) error {
+func (r *PostgresRepository) AddUserDiet(ctx context.Context, userID, dietID uuid.UUID) error {
 	return apperr.Wrap(r.q.AddUserDiet(ctx, mealsdb.AddUserDietParams{UserID: userID, DietID: dietID}), "add user diet")
 }
 
-func (r *Repository) RemoveUserDiet(ctx context.Context, userID, dietID uuid.UUID) error {
+func (r *PostgresRepository) RemoveUserDiet(ctx context.Context, userID, dietID uuid.UUID) error {
 	return apperr.Wrap(r.q.RemoveUserDiet(ctx, mealsdb.RemoveUserDietParams{UserID: userID, DietID: dietID}), "remove user diet")
 }
 

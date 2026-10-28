@@ -46,7 +46,7 @@ type fixture struct {
 	pool     *pgxpool.Pool
 	user     users.User
 	checkins *checkins.Service
-	repo     *checkins.Repository
+	repo     checkins.Repository
 	writer   *stubWriter
 	svc      *checkinreply.Service
 }

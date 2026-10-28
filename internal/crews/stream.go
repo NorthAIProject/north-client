@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 
-	crewsdb "github.com/NorthAIProject/north-client/internal/crews/db"
 	"github.com/NorthAIProject/north-client/internal/crews/live"
 )
 
@@ -88,7 +87,7 @@ func (c *Chat) viewerGate(viewerID uuid.UUID, name func(live.Event) (frame, bool
 	return func(ctx context.Context, ev live.Event) (frame, bool, bool) {
 		switch ev.Type {
 		case live.EventMessage, live.EventUpdate:
-			blocked, err := c.q.AuthorBlockedFor(ctx, crewsdb.AuthorBlockedForParams{Viewer: viewerID, ID: ev.MessageID})
+			blocked, err := c.repo.AuthorBlockedFor(ctx, viewerID, ev.MessageID)
 			if err != nil || blocked {
 				return frame{}, false, false
 			}

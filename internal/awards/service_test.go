@@ -40,7 +40,7 @@ func newUser(t *testing.T, pool *pgxpool.Pool, email, tz string) uuid.UUID {
 func newEnv(t *testing.T, tz string) *env {
 	t.Helper()
 	pool := testdb.New(t)
-	return &env{t: t, pool: pool, user: newUser(t, pool, "pat@example.com", tz), svc: awards.NewService(pool)}
+	return &env{t: t, pool: pool, user: newUser(t, pool, "pat@example.com", tz), svc: awards.NewService(awards.NewRepository(pool))}
 }
 
 func (e *env) exec(sql string, args ...any) {

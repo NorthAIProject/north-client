@@ -12,13 +12,15 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	pool *pgxpool.Pool
 	q    *nudgesdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, q: nudgesdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool, q: nudgesdb.New(pool)}
 }
 
 // Draft is a nudge to insert if the dedupe key is new.
@@ -45,7 +47,7 @@ type Draft struct {
 	Alarm bool
 }
 
-func (r *Repository) Insert(ctx context.Context, userID uuid.UUID, d Draft) (Nudge, bool, error) {
+func (r *PostgresRepository) Insert(ctx context.Context, userID uuid.UUID, d Draft) (Nudge, bool, error) {
 	row, err := r.q.InsertNudge(ctx, nudgesdb.InsertNudgeParams{
 		UserID:    userID,
 		Kind:      d.Kind,
@@ -63,7 +65,7 @@ func (r *Repository) Insert(ctx context.Context, userID uuid.UUID, d Draft) (Nud
 	return fromDB(row), true, nil
 }
 
-func (r *Repository) ListOpen(ctx context.Context, userID uuid.UUID, limit int) ([]Nudge, error) {
+func (r *PostgresRepository) ListOpen(ctx context.Context, userID uuid.UUID, limit int) ([]Nudge, error) {
 	rows, err := r.q.ListOpenNudges(ctx, nudgesdb.ListOpenNudgesParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -78,7 +80,7 @@ func (r *Repository) ListOpen(ctx context.Context, userID uuid.UUID, limit int) 
 	return out, nil
 }
 
-func (r *Repository) CountUnread(ctx context.Context, userID uuid.UUID) (int, error) {
+func (r *PostgresRepository) CountUnread(ctx context.Context, userID uuid.UUID) (int, error) {
 	n, err := r.q.CountUnreadNudges(ctx, userID)
 	if err != nil {
 		return 0, apperr.Wrap(err, "count unread nudges")
@@ -86,7 +88,7 @@ func (r *Repository) CountUnread(ctx context.Context, userID uuid.UUID) (int, er
 	return int(n), nil
 }
 
-func (r *Repository) MarkRead(ctx context.Context, id, userID uuid.UUID) (Nudge, error) {
+func (r *PostgresRepository) MarkRead(ctx context.Context, id, userID uuid.UUID) (Nudge, error) {
 	row, err := r.q.MarkNudgeRead(ctx, nudgesdb.MarkNudgeReadParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -97,7 +99,7 @@ func (r *Repository) MarkRead(ctx context.Context, id, userID uuid.UUID) (Nudge,
 	return fromDB(row), nil
 }
 
-func (r *Repository) Dismiss(ctx context.Context, id, userID uuid.UUID) (Nudge, error) {
+func (r *PostgresRepository) Dismiss(ctx context.Context, id, userID uuid.UUID) (Nudge, error) {
 	row, err := r.q.DismissNudge(ctx, nudgesdb.DismissNudgeParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -110,7 +112,7 @@ func (r *Repository) Dismiss(ctx context.Context, id, userID uuid.UUID) (Nudge, 
 
 // ResolveForDay closes every nudge of kind raised for the local day, and
 // returns them all — including ones the person had already dismissed.
-func (r *Repository) ResolveForDay(ctx context.Context, userID uuid.UUID, kind, day string) ([]Nudge, error) {
+func (r *PostgresRepository) ResolveForDay(ctx context.Context, userID uuid.UUID, kind, day string) ([]Nudge, error) {
 	rows, err := r.q.ResolveNudgesForDay(ctx, nudgesdb.ResolveNudgesForDayParams{UserID: userID, Kind: kind, Day: day})
 	if err != nil {
 		return nil, apperr.Wrap(err, "resolve nudges for day")
@@ -123,7 +125,7 @@ func (r *Repository) ResolveForDay(ctx context.Context, userID uuid.UUID, kind, 
 }
 
 // CountForDay is how many nudges of these kinds were raised for a local day.
-func (r *Repository) CountForDay(ctx context.Context, userID uuid.UUID, kinds []string, day string) (int, error) {
+func (r *PostgresRepository) CountForDay(ctx context.Context, userID uuid.UUID, kinds []string, day string) (int, error) {
 	n, err := r.q.CountNudgesForDay(ctx, nudgesdb.CountNudgesForDayParams{UserID: userID, Kinds: kinds, Day: day})
 	if err != nil {
 		return 0, apperr.Wrap(err, "count nudges for day")

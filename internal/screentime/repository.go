@@ -14,15 +14,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *screentimedb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: screentimedb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: screentimedb.New(pool)}
 }
 
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, date time.Time, minutes int, source string) (Day, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, date time.Time, minutes int, source string) (Day, error) {
 	row, err := r.q.UpsertScreenTime(ctx, screentimedb.UpsertScreenTimeParams{
 		UserID: userID, LocalDate: pgtype.Date{Time: date, Valid: true}, Minutes: int32(minutes), Source: source,
 	})
@@ -32,7 +34,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, date time.Tim
 	return fromDB(row), nil
 }
 
-func (r *Repository) ForDate(ctx context.Context, userID uuid.UUID, date time.Time) (Day, bool, error) {
+func (r *PostgresRepository) ForDate(ctx context.Context, userID uuid.UUID, date time.Time) (Day, bool, error) {
 	row, err := r.q.ScreenTimeForDate(ctx, screentimedb.ScreenTimeForDateParams{UserID: userID, LocalDate: pgtype.Date{Time: date, Valid: true}})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Day{}, false, nil
@@ -48,7 +50,7 @@ func fromDB(row screentimedb.ScreenTimeLog) Day {
 }
 
 // Between lists days in [since, until), newest first.
-func (r *Repository) Between(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Day, error) {
+func (r *PostgresRepository) Between(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Day, error) {
 	rows, err := r.q.ListScreenTimeBetween(ctx, screentimedb.ListScreenTimeBetweenParams{
 		UserID: userID, LocalDate: pgtype.Date{Time: since, Valid: true}, LocalDate_2: pgtype.Date{Time: until, Valid: true},
 	})

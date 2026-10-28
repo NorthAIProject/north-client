@@ -238,14 +238,14 @@ func purgeSimulated(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 type simWriter struct {
 	users         users.Repository
 	habits        habits.Repository
-	checkins      *checkins.Repository
+	checkins      checkins.Repository
 	sleep         sleep.Repository
 	hydration     hydration.Repository
-	health        *health.Repository
-	nudges        *nudges.Repository
-	workouts      *workouts.Repository
-	activity      *activity.Repository
-	meals         *meals.Repository
+	health        health.Repository
+	nudges        nudges.Repository
+	workouts      workouts.Repository
+	activity      activity.Repository
+	meals         meals.Repository
 	conversations conversations.Repository
 	pool          *pgxpool.Pool
 

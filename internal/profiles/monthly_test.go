@@ -194,8 +194,8 @@ func TestProfileSurvivesAFailedMonthlyRead(t *testing.T) {
 	ctx := context.Background()
 	leo, ana := person(t, w.pool, "leo-bk@n.test", "Leo"), person(t, w.pool, "ana-bk@n.test", "Ana")
 	w.handle(t, leo, "leobk")
-	awards.NewService(w.pool).Grant(ctx, leo.ID, time.Now().Add(-time.Hour), "workouts_1")
-	w.svc.WithAwards(brokenMonthly{awards.NewService(w.pool)})
+	awards.NewService(awards.NewRepository(w.pool)).Grant(ctx, leo.ID, time.Now().Add(-time.Hour), "workouts_1")
+	w.svc.WithAwards(brokenMonthly{awards.NewService(awards.NewRepository(w.pool))})
 
 	for _, viewer := range []users.User{ana, leo} {
 		v, err := w.svc.View(ctx, viewer, "leobk", oct20)

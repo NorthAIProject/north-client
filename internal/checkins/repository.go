@@ -16,12 +16,14 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *checkinsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: checkinsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: checkinsdb.New(pool)}
 }
 
 // Write is a check-in to store. Every field is written as given.
@@ -39,7 +41,7 @@ type Write struct {
 	Source checkin.Source
 }
 
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, w Write) (CheckIn, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, w Write) (CheckIn, error) {
 	row, err := r.q.UpsertCheckIn(ctx, checkinsdb.UpsertCheckInParams{
 		UserID:        userID,
 		LocalDate:     toDate(w.LocalDate),
@@ -60,7 +62,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, w Write) (Che
 	return fromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (CheckIn, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (CheckIn, error) {
 	row, err := r.q.GetCheckIn(ctx, checkinsdb.GetCheckInParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -71,7 +73,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (CheckIn, er
 	return fromDB(row), nil
 }
 
-func (r *Repository) GetByDate(ctx context.Context, userID uuid.UUID, localDate time.Time) (CheckIn, error) {
+func (r *PostgresRepository) GetByDate(ctx context.Context, userID uuid.UUID, localDate time.Time) (CheckIn, error) {
 	row, err := r.q.GetCheckInByDate(ctx, checkinsdb.GetCheckInByDateParams{
 		UserID:    userID,
 		LocalDate: toDate(localDate),
@@ -85,7 +87,7 @@ func (r *Repository) GetByDate(ctx context.Context, userID uuid.UUID, localDate 
 	return fromDB(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]CheckIn, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, limit int) ([]CheckIn, error) {
 	rows, err := r.q.ListCheckIns(ctx, checkinsdb.ListCheckInsParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -96,7 +98,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]C
 	return fromDBList(rows), nil
 }
 
-func (r *Repository) ListSince(ctx context.Context, userID uuid.UUID, since time.Time, limit int) ([]CheckIn, error) {
+func (r *PostgresRepository) ListSince(ctx context.Context, userID uuid.UUID, since time.Time, limit int) ([]CheckIn, error) {
 	rows, err := r.q.ListCheckInsSince(ctx, checkinsdb.ListCheckInsSinceParams{
 		UserID:    userID,
 		LocalDate: toDate(since),
@@ -110,7 +112,7 @@ func (r *Repository) ListSince(ctx context.Context, userID uuid.UUID, since time
 
 // ListBetween returns the check-ins in the half-open window [since, until).
 // Unlike ListSince there is no limit: the window is the limit.
-func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]CheckIn, error) {
+func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]CheckIn, error) {
 	rows, err := r.q.ListCheckInsBetween(ctx, checkinsdb.ListCheckInsBetweenParams{
 		UserID:      userID,
 		LocalDate:   toDate(since),
@@ -122,7 +124,7 @@ func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, u
 	return fromDBList(rows), nil
 }
 
-func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, w Write) (CheckIn, error) {
+func (r *PostgresRepository) Update(ctx context.Context, id, userID uuid.UUID, w Write) (CheckIn, error) {
 	row, err := r.q.UpdateCheckIn(ctx, checkinsdb.UpdateCheckInParams{
 		ID:            id,
 		UserID:        userID,
@@ -145,7 +147,7 @@ func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, w Write) 
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	n, err := r.q.DeleteCheckIn(ctx, checkinsdb.DeleteCheckInParams{ID: id, UserID: userID})
 	if err != nil {
 		return apperr.Wrap(err, "delete check-in")
@@ -156,7 +158,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return nil
 }
 
-func (r *Repository) Dates(ctx context.Context, userID uuid.UUID, limit int) ([]time.Time, error) {
+func (r *PostgresRepository) Dates(ctx context.Context, userID uuid.UUID, limit int) ([]time.Time, error) {
 	rows, err := r.q.ListCheckInDates(ctx, checkinsdb.ListCheckInDatesParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -239,7 +241,7 @@ func toDate(t time.Time) pgtype.Date {
 }
 
 // Count is how many days this person has ever checked in.
-func (r *Repository) Count(ctx context.Context, userID uuid.UUID) (int, error) {
+func (r *PostgresRepository) Count(ctx context.Context, userID uuid.UUID) (int, error) {
 	n, err := r.q.CountCheckIns(ctx, userID)
 	if err != nil {
 		return 0, apperr.Wrap(err, "count check-ins")
@@ -249,7 +251,7 @@ func (r *Repository) Count(ctx context.Context, userID uuid.UUID) (int, error) {
 
 // Version is a cheap fingerprint of every check-in this person has: it changes
 // on any save, edit or delete. The web's live displays poll it.
-func (r *Repository) Version(ctx context.Context, userID uuid.UUID) (string, error) {
+func (r *PostgresRepository) Version(ctx context.Context, userID uuid.UUID) (string, error) {
 	row, err := r.q.CheckInVersion(ctx, userID)
 	if err != nil {
 		return "", apperr.Wrap(err, "check-in version")

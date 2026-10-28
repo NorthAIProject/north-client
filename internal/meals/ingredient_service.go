@@ -11,10 +11,10 @@ import (
 )
 
 type IngredientService struct {
-	repo *Repository
+	repo Repository
 }
 
-func NewIngredientService(repo *Repository) *IngredientService {
+func NewIngredientService(repo Repository) *IngredientService {
 	return &IngredientService{repo: repo}
 }
 

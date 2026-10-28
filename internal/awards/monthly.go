@@ -6,12 +6,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/NorthAIProject/north-client/internal/awards/award"
-	awardsdb "github.com/NorthAIProject/north-client/internal/awards/db"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
-	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
 // MonthlyMetric is what a month's challenge counts.
@@ -120,15 +117,11 @@ func monthStartOf(t time.Time, loc *time.Location) time.Time {
 	return time.Date(l.Year(), l.Month(), 1, 0, 0, 0, 0, loc)
 }
 
-func pgDate(t time.Time) pgtype.Date {
-	return pgtype.Date{Time: time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), Valid: true}
-}
-
 // monthKey is "YYYY-MM".
 func monthKey(monthStart time.Time) string { return monthStart.Format("2006-01") }
 
 func (s *Service) location(ctx context.Context, userID uuid.UUID) (string, *time.Location, error) {
-	tz, err := s.q.Timezone(ctx, userID)
+	tz, err := s.repo.Timezone(ctx, userID)
 	if err != nil {
 		return "", nil, fmt.Errorf("awards: timezone: %w", err)
 	}
@@ -148,12 +141,12 @@ func (s *Service) Monthly(ctx context.Context, userID uuid.UUID, now time.Time) 
 		return MonthlyChallenge{}, err
 	}
 	start := monthStartOf(now, loc)
-	row, err := s.q.GetMonthlyChallenge(ctx, awardsdb.GetMonthlyChallengeParams{UserID: userID, Month: pgDate(start)})
-	if isNoRows(err) {
+	row, err := s.repo.MonthlyChallenge(ctx, userID, start)
+	if isNotFound(err) {
 		if err = s.createMonthly(ctx, userID, tz, start, now.In(loc)); err != nil {
 			return MonthlyChallenge{}, err
 		}
-		row, err = s.q.GetMonthlyChallenge(ctx, awardsdb.GetMonthlyChallengeParams{UserID: userID, Month: pgDate(start)})
+		row, err = s.repo.MonthlyChallenge(ctx, userID, start)
 	}
 	if err != nil {
 		return MonthlyChallenge{}, fmt.Errorf("awards: monthly challenge: %w", err)
@@ -175,10 +168,7 @@ func (s *Service) Monthly(ctx context.Context, userID uuid.UUID, now time.Time) 
 
 // recordMonthlyMet writes the once-only met row; a repeat is a no-op.
 func (s *Service) recordMonthlyMet(ctx context.Context, userID uuid.UUID, key string, now time.Time) error {
-	_, err := s.q.InsertMonthlyMet(ctx, awardsdb.InsertMonthlyMetParams{
-		UserID: userID, Title: i18n.Translate("en", "monthly.met"), OccurredAt: now, SourceKey: key,
-	})
-	if err != nil && !isNoRows(err) {
+	if err := s.repo.InsertMonthlyMet(ctx, userID, key, now); err != nil {
 		return fmt.Errorf("awards: record monthly met: %w", err)
 	}
 	return nil
@@ -193,8 +183,8 @@ func (s *Service) PeekMonthly(ctx context.Context, userID uuid.UUID, now time.Ti
 		return MonthlyChallenge{}, false, err
 	}
 	start := monthStartOf(now, loc)
-	row, err := s.q.GetMonthlyChallenge(ctx, awardsdb.GetMonthlyChallengeParams{UserID: userID, Month: pgDate(start)})
-	if isNoRows(err) {
+	row, err := s.repo.MonthlyChallenge(ctx, userID, start)
+	if isNotFound(err) {
 		return MonthlyChallenge{}, false, nil
 	}
 	if err != nil {
@@ -205,17 +195,17 @@ func (s *Service) PeekMonthly(ctx context.Context, userID uuid.UUID, now time.Ti
 }
 
 // liveMonthly adds live progress and the met state to a stored row.
-func (s *Service) liveMonthly(ctx context.Context, userID uuid.UUID, tz string, start time.Time, row awardsdb.MonthlyChallenge) (MonthlyChallenge, error) {
+func (s *Service) liveMonthly(ctx context.Context, userID uuid.UUID, tz string, start time.Time, row storedMonthly) (MonthlyChallenge, error) {
 	var err error
-	c := MonthlyChallenge{Month: start, Key: monthKey(start), Metric: MonthlyMetric(row.Metric), Target: int(row.Target)}
+	c := MonthlyChallenge{Month: start, Key: monthKey(start), Metric: row.Metric, Target: row.Target}
 	if c.Progress, err = s.monthlyProgress(ctx, userID, tz, start, c.Metric); err != nil {
 		return MonthlyChallenge{}, err
 	}
-	metAt, err := s.q.GetMonthlyMetAt(ctx, awardsdb.GetMonthlyMetAtParams{UserID: userID, SourceKey: c.Key})
+	metAt, err := s.repo.MonthlyMetAt(ctx, userID, c.Key)
 	switch {
 	case err == nil:
 		c.MetAt = &metAt
-	case !isNoRows(err):
+	case !isNotFound(err):
 		return MonthlyChallenge{}, fmt.Errorf("awards: monthly met: %w", err)
 	}
 	c.Met = c.MetAt != nil || c.Progress >= c.Target
@@ -223,15 +213,12 @@ func (s *Service) liveMonthly(ctx context.Context, userID uuid.UUID, tz string, 
 }
 
 func (s *Service) createMonthly(ctx context.Context, userID uuid.UUID, tz string, start, localNow time.Time) error {
-	h, err := s.q.MonthlyHistory(ctx, awardsdb.MonthlyHistoryParams{UserID: userID, MonthStart: pgDate(start), Tz: tz})
+	h, err := s.repo.MonthlyHistory(ctx, userID, start, tz)
 	if err != nil {
 		return fmt.Errorf("awards: monthly history: %w", err)
 	}
 	daysLeft := daysIn(start) - localNow.Day() + 1
-	metric, target := pickMonthly(monthlyHistory{
-		Months: int(h.Months), Workouts: int(h.Workouts), HabitDays: int(h.HabitDays),
-		CheckinDays: int(h.CheckinDays), ActiveHabit: h.ActiveHabit,
-	}, start)
+	metric, target := pickMonthly(h, start)
 	if metric != MetricWorkouts {
 		// Days already logged this month count toward the target, so a row
 		// created late must not start at or past it: that would hand out the
@@ -242,70 +229,30 @@ func (s *Service) createMonthly(ctx context.Context, userID uuid.UUID, tz string
 		}
 		target = reachableTarget(target, done, daysLeft)
 	}
-	if err := s.q.CreateMonthlyChallenge(ctx, awardsdb.CreateMonthlyChallengeParams{
-		UserID: userID, Month: pgDate(start), Metric: string(metric), Target: int32(target),
-	}); err != nil {
+	if err := s.repo.CreateMonthlyChallenge(ctx, userID, start, metric, target); err != nil {
 		return fmt.Errorf("awards: create monthly challenge: %w", err)
 	}
 	return nil
 }
 
 func (s *Service) monthlyProgress(ctx context.Context, userID uuid.UUID, tz string, start time.Time, m MonthlyMetric) (int, error) {
-	from, to := pgDate(start), pgDate(start.AddDate(0, 1, 0))
-	var n int32
-	var err error
-	switch m {
-	case MetricWorkouts:
-		n, err = s.q.CountMonthlyWorkouts(ctx, awardsdb.CountMonthlyWorkoutsParams{UserID: userID, Tz: tz, FromDay: from, ToDay: to})
-	case MetricHabitDays:
-		n, err = s.q.CountMonthlyHabitDays(ctx, awardsdb.CountMonthlyHabitDaysParams{UserID: userID, FromDay: from, ToDay: to})
-	case MetricCheckinDays:
-		n, err = s.q.CountMonthlyCheckinDays(ctx, awardsdb.CountMonthlyCheckinDaysParams{UserID: userID, FromDay: from, ToDay: to})
-	default:
-		return 0, fmt.Errorf("awards: unknown monthly metric %q", m)
-	}
-	if err != nil {
-		return 0, fmt.Errorf("awards: monthly progress: %w", err)
-	}
-	return int(n), nil
+	return s.repo.MonthlyProgress(ctx, userID, tz, start, m)
 }
 
 // MonthlyMedals is every month the person met, newest first.
 func (s *Service) MonthlyMedals(ctx context.Context, userID uuid.UUID) ([]MonthlyMedal, error) {
-	rows, err := s.q.ListMonthlyMedals(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("awards: monthly medals: %w", err)
-	}
-	out := make([]MonthlyMedal, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, MonthlyMedal{
-			AchievementID: r.ID, Key: r.SourceKey, Metric: MonthlyMetric(r.Metric),
-			Target: int(r.Target), At: r.OccurredAt,
-		})
-	}
-	return out, nil
+	return s.repo.MonthlyMedals(ctx, userID)
 }
 
 // UnseenMonthly is the met months not yet celebrated, oldest first.
 func (s *Service) UnseenMonthly(ctx context.Context, userID uuid.UUID) ([]MonthlyMedal, error) {
-	rows, err := s.q.ListUnseenMonthlyMedals(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("awards: unseen monthly medals: %w", err)
-	}
-	out := make([]MonthlyMedal, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, MonthlyMedal{
-			AchievementID: r.ID, Key: r.SourceKey, Metric: MonthlyMetric(r.Metric),
-			Target: int(r.Target), At: r.OccurredAt,
-		})
-	}
-	return out, nil
+	return s.repo.UnseenMonthlyMedals(ctx, userID)
 }
 
 // holdsMonthly is ErrValidation unless the person holds the medal of month key.
 func (s *Service) holdsMonthly(ctx context.Context, userID uuid.UUID, key string) error {
-	if _, err := s.q.GetMonthlyMetAt(ctx, awardsdb.GetMonthlyMetAtParams{UserID: userID, SourceKey: key}); err != nil {
-		if isNoRows(err) {
+	if _, err := s.repo.MonthlyMetAt(ctx, userID, key); err != nil {
+		if isNotFound(err) {
 			return apperr.ErrValidation
 		}
 		return fmt.Errorf("awards: monthly held: %w", err)
@@ -316,13 +263,13 @@ func (s *Service) holdsMonthly(ctx context.Context, userID uuid.UUID, key string
 // MarkMonthlySeen records that the person was shown the medal of month key. It
 // is ErrNotFound unless they hold it; a repeat is fine.
 func (s *Service) MarkMonthlySeen(ctx context.Context, userID uuid.UUID, key string) error {
-	if _, err := s.q.GetMonthlyMetAt(ctx, awardsdb.GetMonthlyMetAtParams{UserID: userID, SourceKey: key}); err != nil {
-		if isNoRows(err) {
+	if _, err := s.repo.MonthlyMetAt(ctx, userID, key); err != nil {
+		if isNotFound(err) {
 			return apperr.ErrNotFound
 		}
 		return fmt.Errorf("awards: monthly held: %w", err)
 	}
-	if err := s.q.MarkMonthlySeen(ctx, awardsdb.MarkMonthlySeenParams{UserID: userID, SourceKey: key}); err != nil {
+	if err := s.repo.MarkMonthlySeen(ctx, userID, key); err != nil {
 		return fmt.Errorf("awards: mark monthly seen: %w", err)
 	}
 	return nil

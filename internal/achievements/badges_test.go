@@ -28,8 +28,8 @@ func badgeFeed(t *testing.T, ach *achievements.Service, viewer uuid.UUID) []achi
 func TestPrivateBadgeNeverLeavesOwner(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
-	aw := awards.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
+	aw := awards.NewService(awards.NewRepository(pool))
 	soc := social.NewService(social.NewRepository(pool))
 	ana, leo := person(t, pool, "pb-ana@north.test", "Ana"), person(t, pool, "pb-leo@north.test", "Leo")
 	follow(t, soc, leo, ana, "pbana")
@@ -68,8 +68,8 @@ func TestPrivateBadgeNeverLeavesOwner(t *testing.T) {
 func TestOneCardPerMoment(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
-	aw := awards.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
+	aw := awards.NewService(awards.NewRepository(pool))
 	ana := person(t, pool, "om-ana@north.test", "Ana")
 	at := time.Now().Add(-time.Hour)
 	for _, id := range []string{"workouts_1", "pr_1", "century"} {
@@ -91,8 +91,8 @@ func TestOneCardPerMoment(t *testing.T) {
 func TestStreakBadgeHidesStreakReached(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
-	aw := awards.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
+	aw := awards.NewService(awards.NewRepository(pool))
 	ana := person(t, pool, "sb-ana@north.test", "Ana")
 	at := time.Now().Add(-time.Minute)
 	ach.StreakReached(ctx, ana.ID, 7, "2026-10-22", at)
@@ -109,8 +109,8 @@ func TestStreakBadgeHidesStreakReached(t *testing.T) {
 func TestAwardsSwitchOffHidesBadges(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
-	aw := awards.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
+	aw := awards.NewService(awards.NewRepository(pool))
 	soc := social.NewService(social.NewRepository(pool))
 	ana, leo := person(t, pool, "sw-ana@north.test", "Ana"), person(t, pool, "sw-leo@north.test", "Leo")
 	follow(t, soc, leo, ana, "swana")
@@ -132,8 +132,8 @@ func TestAwardsSwitchOffHidesBadges(t *testing.T) {
 func TestMomentIsNotSplitAcrossPages(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
-	aw := awards.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
+	aw := awards.NewService(awards.NewRepository(pool))
 	ana := person(t, pool, "pg-ana@north.test", "Ana")
 	base := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
 	for i := 0; i < 28; i++ {
@@ -164,8 +164,8 @@ func TestMomentIsNotSplitAcrossPages(t *testing.T) {
 
 func TestRecapHighlightsAreLocalisedAndFolded(t *testing.T) {
 	pool := testdb.New(t)
-	ach := achievements.NewService(pool)
-	aw := awards.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
+	aw := awards.NewService(awards.NewRepository(pool))
 	ana := person(t, pool, "hl-ana@north.test", "Ana")
 	at := time.Now().Add(-time.Hour)
 	aw.Grant(context.Background(), ana.ID, at, "workouts_1")
@@ -190,8 +190,8 @@ func TestRecapHighlightsAreLocalisedAndFolded(t *testing.T) {
 func TestMixedMomentCardLeadsSharedAndSumsKudos(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
-	aw := awards.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
+	aw := awards.NewService(awards.NewRepository(pool))
 	soc := social.NewService(social.NewRepository(pool))
 	ana, leo := person(t, pool, "mx-ana@north.test", "Ana"), person(t, pool, "mx-leo@north.test", "Leo")
 	follow(t, soc, leo, ana, "mxana")
@@ -221,7 +221,7 @@ func TestMixedMomentCardLeadsSharedAndSumsKudos(t *testing.T) {
 func TestUnknownBadgeRowIsDropped(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
 	soc := social.NewService(social.NewRepository(pool))
 	ana, leo := person(t, pool, "uk-ana@north.test", "Ana"), person(t, pool, "uk-leo@north.test", "Leo")
 	follow(t, soc, leo, ana, "ukana")

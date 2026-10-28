@@ -12,15 +12,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *minddb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: minddb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: minddb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, content string, mood *int) (JournalEntry, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, content string, mood *int) (JournalEntry, error) {
 	var moodParam *int16
 	if mood != nil {
 		moodParam = util.Ptr(int16(*mood))
@@ -33,7 +35,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, content strin
 	return fromDB(row), nil
 }
 
-func (r *Repository) Recent(ctx context.Context, userID uuid.UUID, limit int) ([]JournalEntry, error) {
+func (r *PostgresRepository) Recent(ctx context.Context, userID uuid.UUID, limit int) ([]JournalEntry, error) {
 	rows, err := r.q.ListJournalEntries(ctx, minddb.ListJournalEntriesParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list journal entries")
@@ -48,7 +50,7 @@ func (r *Repository) Recent(ctx context.Context, userID uuid.UUID, limit int) ([
 
 // ListBetween returns the entries written in the half-open window
 // [since, until), newest first.
-func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]JournalEntry, error) {
+func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]JournalEntry, error) {
 	rows, err := r.q.ListJournalEntriesBetween(ctx, minddb.ListJournalEntriesBetweenParams{
 		UserID:      userID,
 		CreatedAt:   since,

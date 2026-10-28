@@ -13,12 +13,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/awards/award"
-	awardsdb "github.com/NorthAIProject/north-client/internal/awards/db"
-	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
 // Earned is a badge a person holds.
@@ -29,19 +27,48 @@ type Earned struct {
 }
 
 type Service struct {
-	q   *awardsdb.Queries
-	log *slog.Logger
+	repo Repository
+	log  *slog.Logger
 	// failMetric makes one metric error; set only by tests.
 	failMetric metric
 	// now is the clock; tests replace it.
 	now func() time.Time
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{q: awardsdb.New(pool), log: slog.Default(), now: time.Now}
+// Repository is the persistence Service depends on: the badges people hold,
+// the history the rules count, the monthly challenges and the rarity
+// recount. NewRepository is what the process wires, and a test can hand
+// Service anything that keeps them.
+type Repository interface {
+	Timezone(ctx context.Context, userID uuid.UUID) (string, error)
+	Count(ctx context.Context, userID uuid.UUID, m metric, tz string, maxGap int) (int, error)
+	ProgressCadence(ctx context.Context, userID uuid.UUID) (string, error)
+	WorkSets(ctx context.Context, userID uuid.UUID) ([]lift.Set, error)
+	Badges(ctx context.Context, userID uuid.UUID) ([]heldBadge, error)
+	InsertBadge(ctx context.Context, userID uuid.UUID, b award.Badge, at time.Time) (uuid.UUID, bool, error)
+	MarkBadgeSeen(ctx context.Context, userID uuid.UUID, badgeID string) error
+	ActiveAreas(ctx context.Context, userID uuid.UUID, since time.Time) ([]award.Area, error)
+	MonthlyChallenge(ctx context.Context, userID uuid.UUID, start time.Time) (storedMonthly, error)
+	CreateMonthlyChallenge(ctx context.Context, userID uuid.UUID, start time.Time, m MonthlyMetric, target int) error
+	MonthlyHistory(ctx context.Context, userID uuid.UUID, start time.Time, tz string) (monthlyHistory, error)
+	MonthlyProgress(ctx context.Context, userID uuid.UUID, tz string, start time.Time, m MonthlyMetric) (int, error)
+	MonthlyMetAt(ctx context.Context, userID uuid.UUID, key string) (time.Time, error)
+	InsertMonthlyMet(ctx context.Context, userID uuid.UUID, key string, at time.Time) error
+	MarkMonthlySeen(ctx context.Context, userID uuid.UUID, key string) error
+	MonthlyMedals(ctx context.Context, userID uuid.UUID) ([]MonthlyMedal, error)
+	UnseenMonthlyMedals(ctx context.Context, userID uuid.UUID) ([]MonthlyMedal, error)
+	Rarities(ctx context.Context) (map[string]Rarity, error)
+	CountActiveUsers(ctx context.Context, since time.Time) (int, error)
+	CountBadgeEarners(ctx context.Context) (map[string]int, error)
+	UpsertRarity(ctx context.Context, r Rarity, at time.Time) error
 }
 
-func isNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
+func NewService(repo Repository) *Service {
+	return &Service{repo: repo, log: slog.Default(), now: time.Now}
+}
+
+// isNotFound reports a row the repository did not find.
+func isNotFound(err error) bool { return errors.Is(err, apperr.ErrNotFound) }
 
 // Check runs every rule of the areas and records each badge newly met. It is
 // best effort: an error is logged, never returned, because a badge is a side
@@ -63,7 +90,7 @@ func (s *Service) Evaluate(ctx context.Context, userID uuid.UUID, at time.Time, 
 	if err != nil {
 		return nil, err
 	}
-	c := newCounter(ctx, s.q, userID)
+	c := newCounter(ctx, s.repo, userID)
 	c.fail = s.failMetric
 	var out []Earned
 	var errs []error
@@ -112,7 +139,7 @@ func (s *Service) Progress(ctx context.Context, userID uuid.UUID) (map[string]in
 	if err != nil {
 		return nil, err
 	}
-	c := newCounter(ctx, s.q, userID)
+	c := newCounter(ctx, s.repo, userID)
 	out := make(map[string]int, len(award.Catalog()))
 	for _, b := range award.Catalog() {
 		if _, ok := ruleOf[b.ID]; !ok {
@@ -149,51 +176,48 @@ func (s *Service) Unseen(ctx context.Context, userID uuid.UUID) ([]Earned, error
 
 // MarkSeen records that the person was shown the badge. Safe to repeat.
 func (s *Service) MarkSeen(ctx context.Context, userID uuid.UUID, badgeID string) error {
-	if err := s.q.MarkBadgeSeen(ctx, awardsdb.MarkBadgeSeenParams{UserID: userID, SourceKey: badgeID}); err != nil {
+	if err := s.repo.MarkBadgeSeen(ctx, userID, badgeID); err != nil {
 		return fmt.Errorf("awards: mark seen: %w", err)
 	}
 	return nil
 }
 
 func (s *Service) list(ctx context.Context, userID uuid.UUID, unseenOnly bool) ([]Earned, error) {
-	rows, err := s.q.ListBadges(ctx, userID)
+	rows, err := s.repo.Badges(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("awards: list: %w", err)
 	}
 	out := make([]Earned, 0, len(rows))
 	for _, r := range rows {
-		b, ok := award.ByID(r.SourceKey)
-		if !ok || (unseenOnly && r.CelebratedAt != nil) {
+		b, ok := award.ByID(r.BadgeID)
+		if !ok || (unseenOnly && r.Celebrated) {
 			continue
 		}
-		out = append(out, Earned{AchievementID: r.ID, Badge: b, At: r.OccurredAt})
+		out = append(out, Earned{AchievementID: r.AchievementID, Badge: b, At: r.At})
 	}
 	return out, nil
 }
 
 func (s *Service) held(ctx context.Context, userID uuid.UUID) (map[string]bool, error) {
-	rows, err := s.q.ListBadges(ctx, userID)
+	rows, err := s.repo.Badges(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("awards: held: %w", err)
 	}
 	held := make(map[string]bool, len(rows))
 	for _, r := range rows {
-		held[r.SourceKey] = true
+		held[r.BadgeID] = true
 	}
 	return held, nil
 }
 
 // insert stores a badge once. ok is false when the person already had it.
 func (s *Service) insert(ctx context.Context, userID uuid.UUID, b award.Badge, at time.Time) (Earned, bool, error) {
-	id, err := s.q.InsertBadge(ctx, awardsdb.InsertBadgeParams{
-		UserID: userID, Title: i18n.Translate("en", "awards.badge."+b.ID+".name"),
-		OccurredAt: at, SourceKey: b.ID, Private: b.Area.Private(),
-	})
+	id, inserted, err := s.repo.InsertBadge(ctx, userID, b, at)
 	if err != nil {
-		if isNoRows(err) {
-			return Earned{}, false, nil
-		}
 		return Earned{}, false, fmt.Errorf("awards: insert %s: %w", b.ID, err)
+	}
+	if !inserted {
+		return Earned{}, false, nil
 	}
 	return Earned{AchievementID: id, Badge: b, At: at}, true, nil
 }
