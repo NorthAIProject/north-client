@@ -41,5 +41,5 @@ func (a *API) reply(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, ReplyView{Kind: reply.Kind, Text: reply.Text})
+	httpx.WriteJSON(w, http.StatusOK, ReplyView(reply))
 }

@@ -43,7 +43,7 @@ type Reply struct {
 // that would pay for a new note on every unchanged re-save.
 func contentHash(c checkin.CheckIn) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%d|%d|%s|%s|%s|%s|%s|%s",
+	_, _ = fmt.Fprintf(h, "%d|%d|%s|%s|%s|%s|%s|%s",
 		c.Mood, c.Energy, optional(c.Stress), optional(c.SleepQuality),
 		c.Wins, c.Challenges, c.Notes, strings.Join(c.Tags, ","))
 	return hex.EncodeToString(h.Sum(nil))
