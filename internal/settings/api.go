@@ -49,6 +49,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/settings/preferences", a.getPreferences)
 	r.Put("/settings/preferences", a.putPreferences)
 	r.Put("/settings/target-weight", a.putTargetWeight)
+	r.Put("/settings/appearance", a.putAppearance)
 	r.Get("/settings/notifications", a.getNotifications)
 	r.Put("/settings/notifications", a.putNotifications)
 
@@ -114,6 +115,33 @@ func requestedAppearance(s *string) *theme.Appearance {
 	}
 	a := theme.Appearance(*s)
 	return &a
+}
+
+// AppearanceRequest changes the appearance alone. The web client's public
+// switcher and its settings page need this: PUT /settings/profile replaces
+// the whole profile, and the switcher has nothing else to send.
+type AppearanceRequest struct {
+	Appearance string `json:"appearance"`
+	// Surface says where the change was made, for the funnel: "switcher"
+	// (the public pages' toggle) or "settings". Anything else is settings.
+	Surface string `json:"surface,omitempty"`
+}
+
+func (a *API) putAppearance(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	var req AppearanceRequest
+	if !read(w, r, &req) {
+		return
+	}
+	surface := analytics.AppearanceFromSettings
+	if req.Surface == "switcher" {
+		surface = analytics.AppearanceFromSwitcher
+	}
+	if _, err := a.h.users.SetAppearance(r.Context(), user.ID, req.Appearance, surface); err != nil {
+		httpx.Error(w, err, "Your appearance could not be saved.")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *API) getProfile(w http.ResponseWriter, r *http.Request) {
