@@ -17,6 +17,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/social/phone"
 	"github.com/NorthAIProject/north-client/internal/spend"
@@ -121,22 +122,6 @@ func run() error {
 
 	handler, runBackground := routes(cfg, pool, registry, storage, embedder, posthogClient, metricsReg)
 
-	srv := &http.Server{
-		Addr:    cfg.Addr(),
-		Handler: handler,
-
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
-
-	errCh := make(chan error, 1)
-	go func() {
-		log.Info("server listening", slog.String("addr", srv.Addr), slog.String("env", string(cfg.Env)))
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
-		}
-	}()
-
 	if runBackground != nil {
 		go func() {
 			if err := runBackground(ctx); err != nil {
@@ -145,18 +130,16 @@ func run() error {
 		}()
 	}
 
-	select {
-	case err := <-errCh:
+	// Serve returns once ctx is cancelled and the requests in flight have had
+	// their 30 seconds to finish: the same budget Kubernetes gives a pod
+	// between SIGTERM and SIGKILL.
+	log.Info("server starting", slog.String("addr", cfg.Addr()), slog.String("env", string(cfg.Env)))
+	if err := echox.Serve(ctx, handler, echox.ServerConfig{
+		Addr:            cfg.Addr(),
+		GracefulTimeout: 30 * time.Second,
+		Logger:          log,
+	}); err != nil {
 		return fmt.Errorf("server: %w", err)
-	case <-ctx.Done():
-		log.Info("shutdown signal received")
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("graceful shutdown: %w", err)
 	}
 
 	log.Info("server stopped")

@@ -144,3 +144,28 @@ func Error(w http.ResponseWriter, err error, message string) {
 
 	WriteJSON(w, status, ErrorBody{Error: detail})
 }
+
+// Failure is an error carrying the message its caller should read.
+//
+// An Echo handler returns one instead of writing the reply itself, and the
+// API's error handler answers with Error. The message travels with the error
+// because, as with Error, its wording belongs to the endpoint that knows what
+// it was trying to do.
+type Failure struct {
+	Err     error
+	Message string
+}
+
+// Fail wraps err with the message a client sees for it.
+func Fail(err error, message string) error {
+	return &Failure{Err: err, Message: message}
+}
+
+func (f *Failure) Error() string {
+	if f.Err == nil {
+		return f.Message
+	}
+	return f.Message + ": " + f.Err.Error()
+}
+
+func (f *Failure) Unwrap() error { return f.Err }
