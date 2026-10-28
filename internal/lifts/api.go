@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
@@ -31,6 +32,7 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 func (a *API) Routes(r chi.Router) {
 	r.Get("/lifts/stats", a.stats)
 	r.Get("/lifts/last", a.last)
+	r.Get("/lifts/today", a.today)
 	r.Post("/lifts/sets", a.log)
 	r.Delete("/lifts/sets/{setID}", a.undo)
 	r.Get("/lifts/sessions/{sessionID}/recap", a.recap)
@@ -355,13 +357,58 @@ func (a *API) last(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, ProjectLast(keys, last))
 }
 
+// LiftTodayView is the web's set logger: the sets logged since local
+// midnight, oldest first, and the names of exercises done in the last
+// fortnight, most recent first, to offer as suggestions.
+type LiftTodayView struct {
+	Sets   []LiftSetView `json:"sets"`
+	Recent []string      `json:"recent"`
+}
+
+func (a *API) today(w http.ResponseWriter, r *http.Request) {
+	sets, recent, err := a.svc.Today(r.Context(), auth.MustUser(r.Context()))
+	if err != nil {
+		httpx.Error(w, err, i18n.T(r.Context(), "lifts.err.generic"))
+		return
+	}
+	out := LiftTodayView{Sets: make([]LiftSetView, 0, len(sets)), Recent: recent}
+	if out.Recent == nil {
+		out.Recent = []string{}
+	}
+	for _, s := range sets {
+		out.Sets = append(out.Sets, ProjectSet(s))
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
 func (a *API) log(w http.ResponseWriter, r *http.Request) {
 	var req LiftSetRequest
 	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
 		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.body"))
 		return
 	}
-	set, err := a.svc.Log(r.Context(), auth.MustUser(r.Context()), LogInput(req))
+	user := auth.MustUser(r.Context())
+	// No set number is the web form's set: the server matches the name to
+	// the catalogue and numbers it as the next set of that exercise today,
+	// as the web handler always has.
+	if req.SetNumber == 0 && strings.TrimSpace(req.ExerciseName) != "" {
+		req.ExerciseName = strings.TrimSpace(req.ExerciseName)
+		if req.ExerciseSlug == "" {
+			slug, err := a.svc.MatchExercise(r.Context(), req.ExerciseName)
+			if err != nil {
+				httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.log"))
+				return
+			}
+			req.ExerciseSlug = slug
+		}
+		n, err := a.svc.NextSetNumber(r.Context(), user, req.ExerciseSlug, req.ExerciseName)
+		if err != nil {
+			httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.log"))
+			return
+		}
+		req.SetNumber = n
+	}
+	set, err := a.svc.Log(r.Context(), user, LogInput(req))
 	if err != nil {
 		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "lifts.api.log"))
 		return

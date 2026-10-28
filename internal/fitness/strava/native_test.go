@@ -66,3 +66,39 @@ func TestNativeConnectRefusesExpiredAndUnknownStates(t *testing.T) {
 		t.Errorf("unknown state = %v, want ErrNotFound", err)
 	}
 }
+
+// A connection begun on the web returns to the web app's own callback, and
+// finishing it refuses a state that was issued to somebody else.
+func TestWebConnectStateMustBelongToTheSignedInPerson(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "web-strava-owner@example.com")
+	other := seedUser(t, pool, "web-strava-other@example.com")
+	repo := strava.NewRepository(pool, nil)
+	svc := strava.NewService(strava.Options{Repository: repo, ClientID: "123", ClientSecret: "shh", BaseURL: "https://kheprios.test"})
+
+	callback := "https://app.kheprios.test" + strava.WebCallbackPath
+	consent, err := svc.BeginWebConnect(ctx, owner.ID, callback)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	parsed, err := url.Parse(consent)
+	if err != nil {
+		t.Fatalf("parse %q: %v", consent, err)
+	}
+	if got := parsed.Query().Get("redirect_uri"); got != callback {
+		t.Errorf("redirect_uri = %q, want %q", got, callback)
+	}
+	state := parsed.Query().Get("state")
+
+	if err := svc.FinishWebConnect(ctx, other.ID, state, "code"); !apperr.Is(err, apperr.ErrForbidden) {
+		t.Errorf("finish as another person = %v, want ErrForbidden", err)
+	}
+	// The refused attempt used the state up: it cannot be replayed by its owner.
+	if err := svc.FinishWebConnect(ctx, owner.ID, state, "code"); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Errorf("replay = %v, want ErrNotFound", err)
+	}
+	if err := svc.FinishWebConnect(ctx, owner.ID, "", "code"); !apperr.Is(err, apperr.ErrNotFound) {
+		t.Errorf("empty state = %v, want ErrNotFound", err)
+	}
+}
