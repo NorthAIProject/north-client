@@ -1,0 +1,80 @@
+{
+  "snapshot": {
+    "range": "week",
+    "checkedInToday": false,
+    "streak": 0,
+    "goalActivity7d": 0,
+    "pendingMemories": 0,
+    "goals": [],
+    "hydration": {
+      "todayML": 0,
+      "targetML": 0,
+      "percent": 0
+    },
+    "sleep": {
+      "logged": false,
+      "durationMinutes": 0
+    },
+    "activityCalories": 0,
+    "timeline": [],
+    "deltas": {
+      "hydration": {
+        "pct": 0,
+        "direction": 0,
+        "hasPrior": false
+      },
+      "sleepHours": {
+        "pct": 0,
+        "direction": 0,
+        "hasPrior": false
+      },
+      "calories": {
+        "pct": 0,
+        "direction": 0,
+        "hasPrior": false
+      },
+      "checkIns": {
+        "pct": 0,
+        "direction": 0,
+        "hasPrior": false
+      }
+    },
+    "nudges": []
+  },
+  "newsTickerEnabled": true,
+  "checkInVersion": "3:2026-09-24T07:15:00Z",
+  "planId": "66666666-6666-6666-6666-666666666666",
+  "nextSession": {
+    "weekday": "Thursday",
+    "focus": "Upper body",
+    "startTime": "18:30",
+    "exerciseCount": 5
+  },
+  "sessionToday": true,
+  "checkIns": [
+    {
+      "label": "23 Sep",
+      "mood": 0,
+      "energy": 0
+    },
+    {
+      "label": "24 Sep",
+      "mood": 4,
+      "energy": 3
+    }
+  ],
+  "habits": {
+    "hasHabits": true,
+    "rate": 75,
+    "kept": 6,
+    "scheduled": 8,
+    "bestStreak": 4
+  },
+  "hydrationDays": [
+    {
+      "label": "24 Sep",
+      "totalML": 1250,
+      "targetML": 2500
+    }
+  ]
+}

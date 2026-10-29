@@ -9,7 +9,8 @@
       "primaryMuscles": [
         "chest"
       ],
-      "hasArt": true
+      "hasArt": true,
+      "illustrationSlug": "push-up"
     }
   ],
   "total": 42

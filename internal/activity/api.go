@@ -65,6 +65,9 @@ type Overview struct {
 	Active *SessionView   `json:"active,omitempty"`
 	Recent []SessionView  `json:"recent"`
 	Kinds  []ActivityKind `json:"kinds"`
+	// TodayCalories is what completed sessions burned since local midnight,
+	// the line the web page leads with.
+	TodayCalories float64 `json:"todayCalories"`
 }
 
 type StartRequest struct {
@@ -83,7 +86,8 @@ type LogRequest struct {
 }
 
 func (a *API) overview(w http.ResponseWriter, r *http.Request) {
-	userID := auth.MustUser(r.Context()).ID
+	user := auth.MustUser(r.Context())
+	userID := user.ID
 	now := time.Now()
 
 	out := Overview{Recent: []SessionView{}, Kinds: make([]ActivityKind, 0, len(METTable))}
@@ -103,6 +107,12 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, m := range METTable {
 		out.Kinds = append(out.Kinds, ActivityKind{Code: m.Code, Name: m.Name, Category: m.Category})
+	}
+	local := now.In(user.Location())
+	since := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, user.Location())
+	if out.TodayCalories, err = a.svc.TotalCaloriesSince(r.Context(), userID, since); err != nil {
+		httpx.Error(w, err, "Activity could not be loaded.")
+		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }

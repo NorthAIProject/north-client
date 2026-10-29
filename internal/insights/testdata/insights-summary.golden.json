@@ -67,5 +67,22 @@
   ],
   "onTrack": 1,
   "judged": 1,
-  "empty": false
+  "empty": false,
+  "days": [
+    {
+      "label": "Mon 6",
+      "cells": [
+        {
+          "label": "Sleep",
+          "value": "7.2h",
+          "filled": true
+        },
+        {
+          "label": "Water",
+          "value": "—",
+          "filled": false
+        }
+      ]
+    }
+  ]
 }

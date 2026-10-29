@@ -3,7 +3,8 @@
     "weightKg": 72,
     "heightCm": 175,
     "dateOfBirth": "1990-05-01",
-    "sex": "female"
+    "sex": "female",
+    "ageYears": 36
   },
   "goal": {
     "activityLevel": "moderate",
@@ -15,7 +16,21 @@
     "proteinG": 142,
     "fatG": 76,
     "carbG": 256,
-    "createdAt": "2026-09-24T12:00:00Z"
+    "createdAt": "2026-09-24T12:00:00Z",
+    "comparison": [
+      {
+        "goal": "cutting",
+        "calorieGoal": 1824
+      },
+      {
+        "goal": "maintenance",
+        "calorieGoal": 2274
+      },
+      {
+        "goal": "bulking",
+        "calorieGoal": 2624
+      }
+    ]
   },
   "options": {
     "activityLevels": [

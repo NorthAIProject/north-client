@@ -19,7 +19,9 @@
       "label": "Check-in",
       "at": "2026-09-21T07:30:00Z",
       "title": "Mood 4, energy 3",
-      "detail": "Slept well."
+      "detail": "Slept well.",
+      "href": "/app/check-ins",
+      "icon": "smile"
     }
   ],
   "filters": [

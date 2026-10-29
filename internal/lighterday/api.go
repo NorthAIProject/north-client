@@ -9,15 +9,25 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/insights/score"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // API is the lighter-day offer for native clients. Mount behind
 // auth.RequireBearer.
 type API struct {
 	svc *Service
+	// coveredBy is the web handler's: a day the coach's own message already
+	// speaks about recovery, which the response reports as covered.
+	coveredBy func(context.Context, users.User) bool
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
+
+// WithCoveredBy reports, as covered, days the coach's message already covers.
+func (a *API) WithCoveredBy(covered func(context.Context, users.User) bool) *API {
+	a.coveredBy = covered
+	return a
+}
 
 func (a *API) Routes(r chi.Router) {
 	r.Get("/today/lighter", a.show)
@@ -52,6 +62,10 @@ type LighterView struct {
 	// morning itself. Absent with no choice. An open string. A lighter day
 	// is undone with PUT choice=keep.
 	Source string `json:"source,omitempty"`
+	// Covered is true when today's coach message already speaks about
+	// recovery with the same answers; the web card then stays out of the way
+	// rather than offering a second Undo.
+	Covered bool `json:"covered,omitempty"`
 }
 
 type ChoiceRequest struct {
@@ -59,12 +73,15 @@ type ChoiceRequest struct {
 }
 
 func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	t, err := a.svc.Today(r.Context(), auth.MustUser(r.Context()))
+	user := auth.MustUser(r.Context())
+	t, err := a.svc.Today(r.Context(), user)
 	if err != nil {
 		httpx.Error(w, err, "Today could not be loaded.")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, project(r.Context(), t))
+	v := project(r.Context(), t)
+	v.Covered = a.coveredBy != nil && a.coveredBy(r.Context(), user)
+	httpx.WriteJSON(w, http.StatusOK, v)
 }
 
 func (a *API) choose(w http.ResponseWriter, r *http.Request) {

@@ -75,18 +75,24 @@ func (h *Handler) progressSummary(ctx context.Context, userID uuid.UUID, date ti
 }
 
 // mealOptions lists the meals of every plan that can be logged today, for
-// the log-a-meal dropdown. MealPlanService has no "list all meals" query of
-// its own, so this loads each plan in full — fine at the size a person's own
-// meal plans realistically reach, not a per-message hot path.
+// the log-a-meal dropdown.
 func (h *Handler) mealOptions(ctx context.Context, userID uuid.UUID, today time.Weekday) ([]nutritionpages.MealOption, error) {
-	plans, err := h.plans.ListPlans(ctx, userID)
+	return mealOptionsFor(ctx, h.plans, userID, today)
+}
+
+// mealOptionsFor is mealOptions for the page and the API alike.
+// MealPlanService has no "list all meals" query of its own, so this loads
+// each plan in full — fine at the size a person's own meal plans
+// realistically reach, not a per-message hot path.
+func mealOptionsFor(ctx context.Context, plans *MealPlanService, userID uuid.UUID, today time.Weekday) ([]nutritionpages.MealOption, error) {
+	list, err := plans.ListPlans(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	full := make([]meal.MealPlan, 0, len(plans))
-	for _, p := range plans {
-		plan, err := h.plans.GetPlan(ctx, p.ID, userID)
+	full := make([]meal.MealPlan, 0, len(list))
+	for _, p := range list {
+		plan, err := plans.GetPlan(ctx, p.ID, userID)
 		if err != nil {
 			return nil, err
 		}

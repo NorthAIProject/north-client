@@ -52,5 +52,60 @@
   },
   "sessionCount": 1,
   "totalTime": "42m",
-  "hasSessions": true
+  "hasSessions": true,
+  "lifting": {
+    "hasSets": true,
+    "volume": "4200 kg",
+    "delta": {
+      "direction": 1,
+      "pct": 8,
+      "hasPrior": true
+    },
+    "sets": 18,
+    "workouts": 3,
+    "hasWeekly": true,
+    "weekly": {
+      "labels": [
+        "Mon",
+        "Tue",
+        "Wed"
+      ],
+      "series": [
+        {
+          "label": "Sleep",
+          "values": [
+            7.2,
+            6.8,
+            7.9
+          ]
+        }
+      ]
+    },
+    "exercises": [
+      {
+        "name": "Back squat",
+        "sets": 6,
+        "best": "100 kg",
+        "e1rm": "113.3 kg",
+        "volume": "2400 kg",
+        "changeKg": 2.5
+      }
+    ],
+    "records": [
+      {
+        "exercise": "Back squat",
+        "lift": "100 kg × 4",
+        "e1rm": "113.3 kg",
+        "gain": "2.5 kg",
+        "on": "Mon, Sep 21"
+      }
+    ],
+    "muscles": [
+      {
+        "name": "Quads",
+        "sets": 6,
+        "pct": 100
+      }
+    ]
+  }
 }

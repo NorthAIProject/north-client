@@ -25,7 +25,9 @@ import (
 // edit against a version that is no longer the newest answers 409 with the
 // newest one, for the client to show and retry against.
 type API struct {
-	svc *Service
+	svc    *Service
+	recaps Recaps
+	loads  Loads
 }
 
 // NewAPI builds the routes; mount them behind auth.RequireBearer.
@@ -37,6 +39,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/training/plans", a.listPlans)
 	r.Post("/training/plans", a.createPlan)
 	r.Get("/training/intake", a.latestIntake)
+	r.Get("/training/overview", a.overview)
 	r.Get("/training/plans/{planID}", a.showPlan)
 	r.Post("/training/plans/{planID}/activate", a.activatePlan)
 
@@ -133,9 +136,13 @@ type DayExercise struct {
 	// named that is not in the catalog.
 	CatalogSlug string `json:"catalogSlug,omitempty"`
 	// HasArt says the catalog entry has pose artwork to draw.
-	HasArt    bool     `json:"hasArt"`
-	Primary   []string `json:"primaryMuscles"`
-	Secondary []string `json:"secondaryMuscles"`
+	HasArt bool `json:"hasArt"`
+	// IllustrationSlug names the artwork's frames (/assets/exercises/{slug});
+	// absent when HasArt is false.
+	IllustrationSlug string   `json:"illustrationSlug,omitempty"`
+	Primary          []string `json:"primaryMuscles"`
+	Secondary        []string `json:"secondaryMuscles"`
+	Stabilizers      []string `json:"stabilizerMuscles"`
 }
 
 type IntakeRequest struct {
@@ -360,12 +367,22 @@ func (a *API) edit(w http.ResponseWriter, r *http.Request, withIndex bool, body 
 
 // MARK: Suggestions
 
+// Both suggestion routes take ?q=: a typed query searches the catalog among
+// the equipment the person has, as the web picker does; an empty one answers
+// with the ranked suggestions.
+
 func (a *API) suggestForDay(w http.ResponseWriter, r *http.Request) {
 	t, ok := parseAPITarget(w, r, false)
 	if !ok {
 		return
 	}
-	found, err := a.svc.SuggestForDay(r.Context(), auth.MustUser(r.Context()), t.plan, t.day)
+	user := auth.MustUser(r.Context())
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		found, err := a.svc.SearchCatalog(r.Context(), user, q)
+		writeExercises(w, found, err)
+		return
+	}
+	found, err := a.svc.SuggestForDay(r.Context(), user, t.plan, t.day)
 	writeExercises(w, found, err)
 }
 
@@ -374,7 +391,13 @@ func (a *API) suggestReplacements(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	found, err := a.svc.SuggestReplacements(r.Context(), auth.MustUser(r.Context()), t.plan, t.day, t.index)
+	user := auth.MustUser(r.Context())
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		found, err := a.svc.SearchCatalog(r.Context(), user, q)
+		writeExercises(w, found, err)
+		return
+	}
+	found, err := a.svc.SuggestReplacements(r.Context(), user, t.plan, t.day, t.index)
 	writeExercises(w, found, err)
 }
 
@@ -406,11 +429,15 @@ func projectDetail(p StoredPlan, problems []string, progress WeekProgress, activ
 			volume = VolumeDeload
 		}
 		for i, e := range d.Exercises {
-			exercises = append(exercises, DayExercise{
+			row := DayExercise{
 				Name: e.Name, Sets: e.Sets, ThisWeekSets: volume.SetsFor(i, e.Sets), Reps: e.Reps, Load: e.Load, RestSeconds: e.RestSeconds, Equipment: e.Equipment,
 				FormCues: e.FormCues, Substitute: e.Substitute, CatalogSlug: e.CatalogSlug, HasArt: e.HasIllustration(),
-				Primary: nonNil(e.Primary), Secondary: nonNil(e.Secondary),
-			})
+				Primary: nonNil(e.Primary), Secondary: nonNil(e.Secondary), Stabilizers: nonNil(e.Stabilizers),
+			}
+			if row.HasArt {
+				row.IllustrationSlug = e.IllustrationSlug
+			}
+			exercises = append(exercises, row)
 		}
 		days = append(days, Day{
 			Weekday: d.Weekday, StartTime: d.StartTime, Focus: d.Focus, Exercises: exercises,

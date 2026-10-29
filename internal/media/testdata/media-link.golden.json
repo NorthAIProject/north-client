@@ -1,0 +1,6 @@
+{
+  "id": "e0e0e0e0-e0e0-e0e0-e0e0-e0e0e0e0e0e0",
+  "url": "https://storage.example/media/e0e0.jpg?X-Amz-Expires=900\u0026X-Amz-Signature=abc",
+  "kind": "image",
+  "mimeType": "image/jpeg"
+}

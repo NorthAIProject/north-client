@@ -32,6 +32,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/lighterday"
+	"github.com/NorthAIProject/north-client/internal/mcpauth"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/medications"
@@ -46,6 +47,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/planimport"
 	"github.com/NorthAIProject/north-client/internal/profiles"
 	"github.com/NorthAIProject/north-client/internal/progresschecks"
+	"github.com/NorthAIProject/north-client/internal/push"
 	"github.com/NorthAIProject/north-client/internal/recaps"
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/screentime"
@@ -55,6 +57,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/stats"
 	"github.com/NorthAIProject/north-client/internal/supplements"
+	"github.com/NorthAIProject/north-client/internal/vault"
+	"github.com/NorthAIProject/north-client/internal/voice"
 	"github.com/NorthAIProject/north-client/internal/weekly"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/xp"
@@ -71,7 +75,7 @@ import (
 //   - uploads: bearer too, with a body cap that fits a file
 //
 // The body caps live here rather than around the mount, because one cap does
-// not fit both: JSON is a few kilobytes and a filmed set is up to 200 MB.
+// not fit both: JSON is a few kilobytes and a filmed set is up to 90 MB.
 func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 	r.Route("/api/v1", func(r chi.Router) {
 		// A guess from Accept-Language for the signed-out routes, so an account
@@ -89,6 +93,7 @@ func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 			r.Use(auth.RequireBearer(sessions))
 			apis.knowledge.UploadRoutes(r)
 			apis.coach.UploadRoutes(r)
+			apis.voice.UploadRoutes(r)
 			apis.formChecks.UploadRoutes(r)
 			apis.planImport.UploadRoutes(r)
 			apis.lifts.UploadRoutes(r)
@@ -108,13 +113,19 @@ const (
 
 func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 	apis.auth.PublicRoutes(r)
+	// The MCP consent screen's server half, for a web front end that renders
+	// the screen itself. Parking and account creation are public; the
+	// decision, below, needs the bearer.
+	apis.mcpAuth.PublicRoutes(r)
 	apis.social.PublicRoutes(r)
+	apis.crews.PublicRoutes(r)
 	apis.capture.Routes(r)
 	apis.fitness.PublicRoutes(r)
 
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireBearer(sessions))
 		apis.auth.Routes(r)
+		apis.mcpAuth.Routes(r)
 		apis.onboarding.Routes(r)
 		apis.dashboard.Routes(r)
 		apis.day.Routes(r)
@@ -129,6 +140,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.soreness.Routes(r)
 		apis.milestones.Routes(r)
 		apis.coach.Routes(r)
+		apis.voice.Routes(r)
 		apis.exercises.Routes(r)
 		apis.settings.Routes(r)
 		apis.training.Routes(r)
@@ -151,6 +163,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.nudges.Routes(r)
 		apis.devices.Routes(r)
 		apis.export.APIRoutes(r)
+		apis.vault.APIRoutes(r)
 		apis.calculator.Routes(r)
 		apis.news.Routes(r)
 		apis.social.Routes(r)
@@ -167,6 +180,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 		apis.lighter.Routes(r)
 		apis.outreach.Routes(r)
 		apis.firstWeek.Routes(r)
+		apis.push.Routes(r)
 	})
 }
 
@@ -174,6 +188,7 @@ func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 // growing parameter list: each phase of the native app adds one.
 type apiSet struct {
 	auth         *auth.API
+	mcpAuth      *mcpauth.API
 	capture      *capture.API
 	onboarding   *onboarding.API
 	dashboard    *dashboard.API
@@ -189,6 +204,7 @@ type apiSet struct {
 	soreness     *soreness.API
 	milestones   *milestones.API
 	coach        *coach.API
+	voice        *voice.API
 	exercises    *exercises.API
 	settings     *settings.API
 	training     *workouts.API
@@ -211,6 +227,7 @@ type apiSet struct {
 	nudges       *nudges.API
 	devices      *apns.API
 	export       *export.Handler
+	vault        *vault.Handler
 	calculator   *calculator.API
 	news         *news.API
 	social       *social.API
@@ -227,4 +244,5 @@ type apiSet struct {
 	lighter      *lighterday.API
 	outreach     *outreach.API
 	firstWeek    *firstweek.API
+	push         *push.API
 }

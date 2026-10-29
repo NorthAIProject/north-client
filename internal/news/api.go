@@ -21,6 +21,7 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
 func (a *API) Routes(r chi.Router) {
 	r.Get("/news", a.ticker)
+	a.settingsRoutes(r)
 }
 
 type NewsItemView struct {

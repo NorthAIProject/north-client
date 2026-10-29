@@ -26,4 +26,9 @@ func TestFormCheckShapes(t *testing.T) {
 	played := done
 	played.PlaybackURL = "https://storage.example/form/d0d0.mp4?X-Amz-Expires=900&X-Amz-Signature=abc"
 	apitest.AssertGolden(t, "form-check-playback.golden.json", played)
+
+	apitest.AssertGolden(t, "media-link.golden.json", MediaLinkView{
+		ID:  uuid.MustParse("e0e0e0e0-e0e0-e0e0-e0e0-e0e0e0e0e0e0"),
+		URL: "https://storage.example/media/e0e0.jpg?X-Amz-Expires=900&X-Amz-Signature=abc", Kind: "image", MIMEType: "image/jpeg",
+	})
 }

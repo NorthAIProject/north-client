@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/day"
 	dayd "github.com/NorthAIProject/north-client/internal/day/day"
@@ -55,6 +56,14 @@ func TestDayResponseShape(t *testing.T) {
 			Kind: dashboard.KindFood, At: at(15, 30), Title: "Chicken rice bowl", Detail: "650 kcal", Href: "/app/nutrition/log", Icon: "utensils",
 		}},
 		Markers: []dayd.Marker{{Kind: dayd.RuleKitchenCloses, At: at(20, 0)}},
+		Around: []dashboard.Entry{{
+			Kind: day.KindCaffeine, At: at(-2, 0), Title: "Espresso", Detail: "63 mg", Href: "/app", Icon: "coffee",
+		}},
+		Fasts: []dayd.Fast{{
+			StartedAt: at(2, 0), TargetHours: 16, Elapsed: 12*time.Hour + 46*time.Minute, Phase: "fat_burning", Fraction: 0.8,
+		}},
+		CheckInVersion: "3:2026-09-26T08:00:00Z",
+		TodayCheckIn:   &checkin.CheckIn{Mood: 4, Energy: 3, UpdatedAt: at(8, 0)},
 	}))
 }
 

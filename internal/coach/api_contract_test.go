@@ -29,7 +29,7 @@ func TestConversationDetailShape(t *testing.T) {
 		{
 			ID: uuid.MustParse("77777777-7777-7777-7777-777777777773"), Role: ai.RoleModel,
 			Content:      "Hands under shoulders, body in one line, lower until your chest nearly touches.",
-			EvidenceRefs: []string{"exercise:push-up", "memory:88888888-8888-8888-8888-888888888888"},
+			EvidenceRefs: []string{"exercise:push-up", "memory:88888888-8888-8888-8888-888888888888", "chunk:66666666-6666-6666-6666-666666666666"},
 			Helpful:      &yes, CreatedAt: contractAt.Add(time.Second),
 		},
 	}

@@ -47,6 +47,7 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/insights/coach", a.coach)
 	r.Get("/insights/spend", a.spend)
 	r.Get("/insights/areas", a.areas)
+	a.statsRoutes(r)
 }
 
 type Range struct {
@@ -120,6 +121,23 @@ type Summary struct {
 	Judged  int `json:"judged"`
 	// Empty means nothing is logged anywhere yet.
 	Empty bool `json:"empty"`
+	// Days is the window one day at a time (sleep, water, check-in marks);
+	// empty for a window too long to list or not counted in days.
+	Days []SummaryDay `json:"days"`
+}
+
+// SummaryDay is one row of the summary's day-by-day table.
+type SummaryDay struct {
+	Label string           `json:"label"`
+	Cells []SummaryDayCell `json:"cells"`
+}
+
+// SummaryDayCell is one metric's mark for one day. Filled false is a dash:
+// nothing was logged, which is not a zero.
+type SummaryDayCell struct {
+	Label  string `json:"label"`
+	Value  string `json:"value"`
+	Filled bool   `json:"filled"`
 }
 
 type Trend struct {
@@ -152,6 +170,9 @@ type MetricDetail struct {
 	HasData    bool        `json:"hasData"`
 	Health     bool        `json:"health,omitempty"`
 	Usual      *UsualRange `json:"usual,omitempty"`
+	// Href is the web page of the domain the metric belongs to, such as
+	// /app/insights/body; empty when it has none.
+	Href string `json:"href"`
 }
 
 // UsualRange is a latest day against the person's usual range. Text is the
@@ -363,6 +384,16 @@ func projectSummary(v insightpages.SummaryView) Summary {
 	out := Summary{
 		Range: projectRange(v.Range), Scores: []Score{}, Pinned: []Pinned{},
 		Highlights: nonNil(v.Highlights), OnTrack: v.OnTrack, Judged: v.Judged, Empty: v.Empty,
+		Days: []SummaryDay{},
+	}
+	if v.HasDays {
+		for _, d := range v.Days {
+			day := SummaryDay{Label: d.Label, Cells: []SummaryDayCell{}}
+			for _, c := range d.Cells {
+				day.Cells = append(day.Cells, SummaryDayCell{Label: c.Label, Value: c.Value, Filled: c.Filled})
+			}
+			out.Days = append(out.Days, day)
+		}
 	}
 	for _, s := range v.Scores {
 		score := Score{
@@ -400,6 +431,7 @@ func projectMetric(v insightpages.MetricView) MetricDetail {
 		Highlights: nonNil(v.Highlights),
 		HasData:    v.HasData,
 		Health:     v.Health,
+		Href:       v.Href,
 	}
 	if v.Usual != nil {
 		out.Usual = projectUsual(*v.Usual)

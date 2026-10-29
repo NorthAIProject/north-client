@@ -140,12 +140,7 @@ func (s *Service) PasskeyRegisterBegin(ctx context.Context, in PasskeyRegisterBe
 		displayName: clean.DisplayName,
 	}
 
-	creation, sessionData, err := s.webauthn.wa.BeginRegistration(waUser,
-		webauthn.WithResidentKeyRequirement(protocol.ResidentKeyRequirementPreferred),
-		webauthn.WithAuthenticatorSelection(protocol.AuthenticatorSelection{
-			UserVerification: protocol.VerificationPreferred,
-		}),
-	)
+	creation, sessionData, err := s.webauthn.wa.BeginRegistration(waUser, registrationOptions()...)
 	if err != nil {
 		return PasskeyCeremony{}, apperr.Wrap(err, "begin passkey registration")
 	}
@@ -554,4 +549,16 @@ func uuidFromBytes(b []byte) (uuid.UUID, error) {
 	var id uuid.UUID
 	copy(id[:], b)
 	return id, nil
+}
+
+// registrationOptions ask for a discoverable credential, so "Use a passkey"
+// works without typing an email first. Order matters: WithAuthenticatorSelection
+// replaces the whole selection, so the resident-key requirement goes after it.
+func registrationOptions() []webauthn.RegistrationOption {
+	return []webauthn.RegistrationOption{
+		webauthn.WithAuthenticatorSelection(protocol.AuthenticatorSelection{
+			UserVerification: protocol.VerificationPreferred,
+		}),
+		webauthn.WithResidentKeyRequirement(protocol.ResidentKeyRequirementPreferred),
+	}
 }

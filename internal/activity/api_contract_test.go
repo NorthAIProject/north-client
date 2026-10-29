@@ -24,6 +24,7 @@ func TestActivityShapes(t *testing.T) {
 			ID: uuid.MustParse("dededede-dede-dede-dede-dededededede"), ActivityCode: "running_9_8kmh", ActivityName: "Running (9.8 km/h)",
 			Source: SourceManual, Status: StatusCompleted, StartedAt: started.AddDate(0, 0, -1), ElapsedSeconds: 1800, CaloriesBurned: &kcal,
 		}},
-		Kinds: []ActivityKind{{Code: "strength_training", Name: "Strength training (general)", Category: "strength"}},
+		Kinds:         []ActivityKind{{Code: "strength_training", Name: "Strength training (general)", Category: "strength"}},
+		TodayCalories: 212.5,
 	})
 }

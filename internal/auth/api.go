@@ -52,6 +52,10 @@ func (a *API) PublicRoutes(r chi.Router) {
 	r.Post("/auth/apple", a.apple)
 	r.Post("/auth/logout", a.logout)
 	r.Post("/auth/forgot-password", a.forgotPassword)
+	r.Post("/auth/reset-password", a.resetPassword)
+	r.Get("/auth/options", a.options)
+	r.Post("/auth/google/start", a.googleStart)
+	r.Post("/auth/google/code", a.googleCode)
 	r.Post("/auth/passkey/register/begin", a.passkeyRegisterBegin)
 	r.Post("/auth/passkey/register/finish", a.passkeyRegisterFinish)
 	r.Post("/auth/passkey/login/begin", a.passkeyLoginBegin)
@@ -107,6 +111,10 @@ type APIUser struct {
 	DisplayName     string    `json:"displayName"`
 	Timezone        string    `json:"timezone"`
 	NeedsOnboarding bool      `json:"needsOnboarding"`
+	// Locale and Appearance let a web client render its first byte in the
+	// account's language and mode, as LoadUser does for the Go pages.
+	Locale     string `json:"locale,omitempty"`
+	Appearance string `json:"appearance,omitempty"`
 }
 
 type MeResponse struct {
@@ -240,5 +248,7 @@ func ProjectUser(user users.User) APIUser {
 		DisplayName:     user.DisplayName,
 		Timezone:        user.Timezone,
 		NeedsOnboarding: user.NeedsOnboarding(),
+		Locale:          string(user.Locale),
+		Appearance:      string(user.Appearance),
 	}
 }

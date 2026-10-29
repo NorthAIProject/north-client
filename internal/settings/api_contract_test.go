@@ -48,15 +48,19 @@ func TestSettingsShapes(t *testing.T) {
 	// The key is write-only: the response carries a hint and nothing else.
 	apitest.AssertGolden(t, "ai-settings.golden.json", AISettings{
 		Enabled:   true,
-		Providers: []AIProvider{{Name: "openrouter", Label: "OpenRouter", BaseURL: "https://openrouter.ai/api/v1", DefaultModel: "openai/gpt-4o-mini", KeyHint: "sk-or-…"}},
+		Providers: []AIProvider{{Name: "openrouter", Label: "OpenRouter", BaseURL: "https://openrouter.ai/api/v1", DefaultModel: "openai/gpt-4o-mini", KeyHint: "sk-or-…", Note: "Hundreds of models behind one key."}, {Name: "hermes", Label: "Hermes", RequiresBaseURL: true}},
 		Current:   &AICurrent{Provider: "openrouter", KeyHint: "…9f2c", Model: "openai/gpt-4o-mini", SupportsTools: &yes, UpdatedAt: contractAt},
 	})
 	apitest.AssertGolden(t, "connections.golden.json", ConnectionList{
-		Connections:  []Connection{{ID: id, Name: "Laptop", Kind: "claude_code", TokenPrefix: "nk_live_ab12", CreatedAt: contractAt, LastUsedAt: &contractAt}},
+		Connections:  []Connection{{ID: id, Name: "Laptop", Kind: "claude_code", KindLabel: "Claude Code", TokenPrefix: "nk_live_ab12", CreatedAt: contractAt, LastUsedAt: &contractAt, ExpiresAt: &contractAt}},
 		ConnectorURL: "https://kheprios.com/mcp",
+		Previews: []ConnectionSetup{{
+			URL: "https://kheprios.com/mcp", Kind: "claude_code", KindLabel: "Claude Code", ConfigLabel: "Terminal", ConfigLang: "sh", Config: "claude mcp add khepri …",
+			SafeLabel: ".mcp.json", SafeLang: "json", Safe: "{…}", SafeNote: "Keeps the key out of the file.", Export: "export KHEPRI_TOKEN=…", Prompt: "Connect to Khepri…",
+		}},
 	})
 	apitest.AssertGolden(t, "connection-created.golden.json", CreatedConnection{
-		Connection: Connection{ID: id, Name: "Laptop", Kind: "claude_code", TokenPrefix: "nk_live_ab12", CreatedAt: contractAt},
+		Connection: Connection{ID: id, Name: "Laptop", Kind: "claude_code", KindLabel: "Claude Code", TokenPrefix: "nk_live_ab12", CreatedAt: contractAt},
 		Token:      "nk_live_ab12-example-token",
 		Setup:      ConnectionSetup{URL: "https://kheprios.com/mcp", ConfigLabel: "Terminal", ConfigLang: "sh", Config: "claude mcp add khepri …"},
 	})

@@ -36,12 +36,17 @@ func (a *API) WithLive(chat *Chat, hub *live.Hub) *API {
 // WithHeartbeat changes how often a quiet stream pings, for tests.
 func (a *API) WithHeartbeat(d time.Duration) *API { a.heartbeat = d; return a }
 
+// PublicRoutes need no bearer: the crew behind a join link, which the
+// signed-out landing page at /i/c/{code} shows (the Go page shows it too).
+func (a *API) PublicRoutes(r chi.Router) {
+	r.Get("/crews/join/{code}", a.preview)
+}
+
 func (a *API) Routes(r chi.Router) {
 	r.Get("/crews/{crewID}/live", a.live)
 	a.chatRoutes(r)
 	r.Get("/crews", a.list)
 	r.Post("/crews", a.create)
-	r.Get("/crews/join/{code}", a.preview)
 	r.Post("/crews/join/{code}", a.join)
 	r.Get("/crews/{crewID}", a.board)
 	r.Delete("/crews/{crewID}/members/{userID}", a.remove)
