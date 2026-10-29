@@ -11,9 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/NorthAIProject/north-client/internal/mcpauth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 )
 
 func discardLog() *slog.Logger {
@@ -23,9 +22,9 @@ func discardLog() *slog.Logger {
 // machineRouter mounts the machine-facing endpoints the way cmd/web does.
 func (h harness) machineRouter(t *testing.T) http.Handler {
 	t.Helper()
-	r := chi.NewRouter()
-	mcpauth.NewMachineHandler(h.svc, discardLog(), nil).Routes(r)
-	return r
+	e := echox.New(echox.Config{Logger: discardLog()})
+	mcpauth.NewMachineHandler(h.svc, discardLog(), nil).Register(e.Group(""))
+	return e
 }
 
 // The discovery endpoints are what a pasted URL turns into. Both spellings of
@@ -81,8 +80,11 @@ func TestTheMachineEndpointsAreCallableFromABrowser(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run("preflight "+path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodOptions, path, nil)
+			req.Header.Set("Origin", "https://claude.ai")
+			req.Header.Set("Access-Control-Request-Method", http.MethodPost)
 			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, httptest.NewRequest(http.MethodOptions, path, nil))
+			router.ServeHTTP(rec, req)
 
 			if rec.Code != http.StatusNoContent {
 				t.Errorf("preflight returned %d, want 204", rec.Code)
@@ -97,6 +99,21 @@ func TestTheMachineEndpointsAreCallableFromABrowser(t *testing.T) {
 				if !strings.Contains(rec.Header().Get("Access-Control-Allow-Headers"), header) {
 					t.Errorf("Access-Control-Allow-Headers omits %s", header)
 				}
+			}
+		})
+
+		t.Run("call "+path, func(t *testing.T) {
+			method := http.MethodPost
+			if strings.HasPrefix(path, "/.well-known/") {
+				method = http.MethodGet
+			}
+			req := httptest.NewRequest(method, path, nil)
+			req.Header.Set("Origin", "https://claude.ai")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+				t.Errorf("Access-Control-Allow-Origin is %q, want *", got)
 			}
 		})
 	}

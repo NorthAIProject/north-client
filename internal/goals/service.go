@@ -19,7 +19,7 @@ import (
 const contextGoals = 8
 
 type Service struct {
-	repo         *Repository
+	repo         Repository
 	achievements Achievements
 	awards       Awards
 }
@@ -46,7 +46,32 @@ func (s *Service) WithAchievements(a Achievements) *Service {
 	return s
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps goals.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, g NewGoal) (Goal, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Goal, error)
+	List(ctx context.Context, userID uuid.UUID, limit int) ([]Goal, error)
+	ListActive(ctx context.Context, userID uuid.UUID, limit int) ([]Goal, error)
+	Update(ctx context.Context, id, userID uuid.UUID, g NewGoal) (Goal, error)
+	SetStatus(ctx context.Context, id, userID uuid.UUID, status string) (Goal, error)
+	Rank(ctx context.Context, userID uuid.UUID, ids []uuid.UUID) error
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	AddUpdate(ctx context.Context, goalID, userID uuid.UUID, note string, progress *int) (Update, error)
+	Updates(ctx context.Context, goalID, userID uuid.UUID, limit int) ([]Update, error)
+	UpdatesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]TimelineUpdate, error)
+	CreatedBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Goal, error)
+	AddMilestone(ctx context.Context, goalID, userID uuid.UUID, title string, targetDate time.Time) (Milestone, error)
+	UpdateMilestone(ctx context.Context, id, userID uuid.UUID, title string, targetDate time.Time) (Milestone, error)
+	SetMilestoneStatus(ctx context.Context, id, userID uuid.UUID, status string) (Milestone, error)
+	DeleteMilestone(ctx context.Context, id, userID uuid.UUID) error
+	Milestones(ctx context.Context, goalID, userID uuid.UUID) ([]Milestone, error)
+	CountOverdueMilestones(ctx context.Context, userID uuid.UUID) (int, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

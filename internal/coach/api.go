@@ -9,13 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/quota"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -37,23 +38,23 @@ type API struct {
 	attachmentURL attachmentURL
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service, quotas *quota.Service, media chatMedia) *API {
 	return &API{svc: svc, quotas: quotas, media: media}
 }
 
-// Routes mounts routes relative to /api/v1.
-func (a *API) Routes(r chi.Router) {
-	r.Get("/conversations", a.list)
-	r.Post("/conversations", a.start)
-	r.Get("/conversations/{id}", a.show)
-	r.Delete("/conversations/{id}", a.delete)
-	r.Post("/conversations/{id}/reply", a.reply)
-	r.Post("/conversations/{id}/resume", a.resume)
-	r.Post("/conversations/{id}/tools/{messageID}", a.decide)
-	r.Put("/conversations/{id}/messages/{messageID}/helpful", a.rate)
-	r.Get("/conversations/stats", a.stats)
-	r.Get("/conversations/{id}/attachments/{mediaID}", a.attachment)
+// Register registers routes relative to /api/v1.
+func (a *API) Register(g *echo.Group) {
+	g.GET("/conversations", a.list)
+	g.POST("/conversations", a.start)
+	g.GET("/conversations/:id", a.show)
+	g.DELETE("/conversations/:id", a.delete)
+	g.POST("/conversations/:id/reply", a.reply)
+	g.POST("/conversations/:id/resume", a.resume)
+	g.POST("/conversations/:id/tools/:messageID", a.decide)
+	g.PUT("/conversations/:id/messages/:messageID/helpful", a.rate)
+	g.GET("/conversations/stats", a.stats)
+	g.GET("/conversations/:id/attachments/:mediaID", a.attachment)
 }
 
 // attachmentURL resolves a stored chat attachment, owned by userID, to a URL
@@ -61,17 +62,17 @@ func (a *API) Routes(r chi.Router) {
 // so this package still does not import internal/media.
 type attachmentURL func(ctx context.Context, mediaID, userID uuid.UUID) (string, error)
 
-// WithAttachmentURLs turns on GET .../attachments/{mediaID}, which the web
+// WithAttachmentURLs turns on GET .../attachments/:mediaID, which the web
 // transcript uses for a photo's <img>.
 func (a *API) WithAttachmentURLs(resolve attachmentURL) *API {
 	a.attachmentURL = resolve
 	return a
 }
 
-// UploadRoutes are the routes that take a file; mount them in the upload
+// RegisterUploads registers the routes that take a file, in the upload
 // group, whose body cap fits one.
-func (a *API) UploadRoutes(r chi.Router) {
-	r.Post("/conversations/{id}/attachments", a.uploadAttachment)
+func (a *API) RegisterUploads(g *echo.Group) {
+	g.POST("/conversations/:id/attachments", a.uploadAttachment)
 }
 
 // ConversationSummary is a row in the conversation list.
@@ -191,27 +192,27 @@ type HelpfulRequest struct {
 	Helpful *bool `json:"helpful"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	list, err := a.svc.Conversations().List(r.Context(), user.ID, 50)
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	list, err := a.svc.Conversations().List(ctx, user.ID, 50)
 	if err != nil {
-		httpx.Error(w, err, "Conversations could not be loaded.")
-		return
+		return httpx.Fail(err, "Conversations could not be loaded.")
 	}
 	out := ConversationList{Conversations: make([]ConversationSummary, 0, len(list))}
-	for _, c := range list {
-		out.Conversations = append(out.Conversations, projectSummary(c))
+	for _, conversation := range list {
+		out.Conversations = append(out.Conversations, projectSummary(conversation))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) start(w http.ResponseWriter, r *http.Request) {
+func (a *API) start(c *echo.Context) error {
+	r := c.Request()
 	user := auth.MustUser(r.Context())
 	var req StartRequest
 	if r.ContentLength != 0 {
-		if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-			httpx.Error(w, err, "The request body must be a valid conversation request.")
-			return
+		if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body must be a valid conversation request."); err != nil {
+			return err
 		}
 	}
 
@@ -225,37 +226,33 @@ func (a *API) start(w http.ResponseWriter, r *http.Request) {
 	case conversations.KindReflection:
 		conversation, err = a.svc.StartReflection(r.Context(), user.ID)
 	default:
-		httpx.Error(w, apperr.FieldErrors{}.Add("kind", "Kind must be chat or reflection."), "Unknown conversation kind.")
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("kind", "Kind must be chat or reflection."), "Unknown conversation kind.")
 	}
 	if err != nil {
-		httpx.Error(w, err, "The conversation could not be started.")
-		return
+		return httpx.Fail(err, "The conversation could not be started.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, projectSummary(conversation))
+	return c.JSON(http.StatusCreated, projectSummary(conversation))
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+func (a *API) show(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	id, err := echox.UUIDParam(c, "id")
+	if err != nil {
+		return err
 	}
 
-	conversation, err := a.svc.Conversations().Get(r.Context(), id, user.ID)
+	conversation, err := a.svc.Conversations().Get(ctx, id, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "That conversation was not found.")
-		return
+		return httpx.Fail(err, "That conversation was not found.")
 	}
-	history, err := a.svc.Conversations().History(r.Context(), conversation.ID)
+	history, err := a.svc.Conversations().History(ctx, conversation.ID)
 	if err != nil {
-		httpx.Error(w, err, "The conversation could not be loaded.")
-		return
+		return httpx.Fail(err, "The conversation could not be loaded.")
 	}
-	pending, waiting, err := a.svc.PendingApproval(r.Context(), user, conversation.ID)
+	pending, waiting, err := a.svc.PendingApproval(ctx, user, conversation.ID)
 	if err != nil {
-		httpx.Error(w, err, "The conversation could not be loaded.")
-		return
+		return httpx.Fail(err, "The conversation could not be loaded.")
 	}
 
 	detail := ConversationDetail{
@@ -269,58 +266,56 @@ func (a *API) show(w http.ResponseWriter, r *http.Request) {
 	// Same rule the web page uses: a trailing tool result means the model
 	// was handed an answer and has not replied yet.
 	detail.AwaitingResume = !waiting && len(history) > 0 && len(history[len(history)-1].ToolResults) > 0
-	httpx.WriteJSON(w, http.StatusOK, detail)
+	return c.JSON(http.StatusOK, detail)
 }
 
 // stats counts threads and this week's messages, for the coach page's strip.
-func (a *API) stats(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	list, err := a.svc.Conversations().List(r.Context(), user.ID, 50)
+func (a *API) stats(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	list, err := a.svc.Conversations().List(ctx, user.ID, 50)
 	if err != nil {
-		httpx.Error(w, err, "Conversations could not be loaded.")
-		return
+		return httpx.Fail(err, "Conversations could not be loaded.")
 	}
-	stats, err := buildCoachStats(r.Context(), a.svc.Conversations(), list, time.Now())
+	stats, err := buildCoachStats(ctx, a.svc.Conversations(), list, time.Now())
 	if err != nil {
-		httpx.Error(w, err, "Conversations could not be loaded.")
-		return
+		return httpx.Fail(err, "Conversations could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, CoachStats{ThreadCount: stats.ThreadCount, MessagesThisWeek: stats.MessagesThisWeek})
+	return c.JSON(http.StatusOK, CoachStats{ThreadCount: stats.ThreadCount, MessagesThisWeek: stats.MessagesThisWeek})
 }
 
 // attachment redirects to a file a turn carried, for this account only.
-func (a *API) attachment(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	if _, ok := pathID(w, r, "id"); !ok {
-		return
+func (a *API) attachment(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	if _, err := echox.UUIDParam(c, "id"); err != nil {
+		return err
 	}
-	mediaID, ok := pathID(w, r, "mediaID")
-	if !ok {
-		return
+	mediaID, err := echox.UUIDParam(c, "mediaID")
+	if err != nil {
+		return err
 	}
 	if a.attachmentURL == nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Not found.")
 	}
-	url, err := a.attachmentURL(r.Context(), mediaID, user.ID)
+	url, err := a.attachmentURL(ctx, mediaID, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "That file is not available.")
-		return
+		return httpx.Fail(err, "That file is not available.")
 	}
-	http.Redirect(w, r, url, http.StatusFound)
+	return c.Redirect(http.StatusFound, url)
 }
 
-func (a *API) delete(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+func (a *API) delete(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	id, err := echox.UUIDParam(c, "id")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.Conversations().Delete(r.Context(), id, user.ID); err != nil {
-		httpx.Error(w, err, "The conversation could not be deleted.")
-		return
+	if err := a.svc.Conversations().Delete(ctx, id, user.ID); err != nil {
+		return httpx.Fail(err, "The conversation could not be deleted.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // reply stores the person's message and streams the coach's answer.
@@ -329,65 +324,60 @@ func (a *API) delete(w http.ResponseWriter, r *http.Request) {
 // ended conversation, spent quota) is refused before the stream starts, as a
 // normal JSON error with a status code. Once the stream is open, failures
 // arrive as `error` frames.
-func (a *API) reply(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+func (a *API) reply(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	id, err := echox.UUIDParam(c, "id")
+	if err != nil {
+		return err
 	}
 
 	var req ReplyRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must be a valid reply request.")
-		return
+	if err = echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 64 << 10}, "The request body must be a valid reply request."); err != nil {
+		return err
 	}
 
-	conversation, err := a.svc.Conversations().Get(r.Context(), id, user.ID)
+	conversation, err := a.svc.Conversations().Get(ctx, id, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "That conversation was not found.")
-		return
+		return httpx.Fail(err, "That conversation was not found.")
 	}
 	if conversation.Ended() {
-		httpx.Error(w, apperr.ErrConflict, "This reflection has ended.")
-		return
+		return httpx.Fail(apperr.ErrConflict, "This reflection has ended.")
 	}
 
 	in := Incoming{Text: strings.TrimSpace(req.Text)}
 	if req.MediaID != nil && a.media != nil {
 		// Built only from a record this account owns, as on the web.
-		attachment, loadErr := a.media.LoadChatAttachment(r.Context(), *req.MediaID, user.ID)
+		attachment, loadErr := a.media.LoadChatAttachment(ctx, *req.MediaID, user.ID)
 		if loadErr != nil {
-			httpx.Error(w, apperr.FieldErrors{}.Add("mediaId", "That file is not available."), "That file is not available.")
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("mediaId", "That file is not available."), "That file is not available.")
 		}
 		in.Attachments = []conversations.Attachment{attachment}
 	}
 	if !req.Begin {
 		if turnErr := conversations.ValidateTurn(in.Text, len(in.Attachments) > 0); turnErr != nil {
-			httpx.Error(w, apperr.FieldErrors{}.Add("text", "Type something first."), "Type something first.")
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("text", "Type something first."), "Type something first.")
 		}
 	}
 
 	// Spent here, where the model is reached, exactly as on the web stream.
-	decision, err := a.quotas.Consume(r.Context(), user.ID, string(user.Tier), quota.CoachMessage)
+	decision, err := a.quotas.Consume(ctx, user.ID, string(user.Tier), quota.CoachMessage)
 	if err == nil && !decision.Allowed {
-		w.Header().Set("Retry-After", fmt.Sprintf("%d", int(decision.RetryAfter.Seconds())+1))
-		httpx.WriteJSON(w, http.StatusTooManyRequests, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: quotaMessage(decision)}})
-		return
+		c.Response().Header().Set("Retry-After", fmt.Sprintf("%d", int(decision.RetryAfter.Seconds())+1))
+		return c.JSON(http.StatusTooManyRequests, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: quotaMessage(decision)}})
 	}
 
 	var stream <-chan ai.StreamChunk
 	if req.Begin {
-		stream, err = a.svc.BeginReflection(r.Context(), user, conversation.ID)
+		stream, err = a.svc.BeginReflection(ctx, user, conversation.ID)
 	} else {
-		stream, err = a.svc.SendIncoming(r.Context(), user, conversation.ID, in)
+		stream, err = a.svc.SendIncoming(ctx, user, conversation.ID, in)
 	}
 	if err != nil {
-		httpx.Error(w, err, friendly(err))
-		return
+		return httpx.Fail(err, friendly(err))
 	}
-	a.relay(w, r, conversation.ID, stream)
+	a.relay(c, conversation.ID, stream)
+	return nil
 }
 
 // uploadAttachment stores a photo or document for the next reply to carry, and
@@ -395,37 +385,33 @@ func (a *API) reply(w http.ResponseWriter, r *http.Request) {
 //
 // It spends no quota. Nothing reaches a model here; the reply that carries the
 // file is what costs a message.
-func (a *API) uploadAttachment(w http.ResponseWriter, r *http.Request) {
+func (a *API) uploadAttachment(c *echo.Context) error {
+	r := c.Request()
 	user := auth.MustUser(r.Context())
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+	id, err := echox.UUIDParam(c, "id")
+	if err != nil {
+		return err
 	}
-	if _, err := a.svc.Conversations().Get(r.Context(), id, user.ID); err != nil {
-		httpx.Error(w, err, "That conversation was not found.")
-		return
+	if _, err = a.svc.Conversations().Get(r.Context(), id, user.ID); err != nil {
+		return httpx.Fail(err, "That conversation was not found.")
 	}
 	if a.media == nil {
-		httpx.Error(w, apperr.ErrUnavailable, "Attachments are not available right now.")
-		return
+		return httpx.Fail(apperr.ErrUnavailable, "Attachments are not available right now.")
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxChatUpload)
-	if err := r.ParseMultipartForm(maxChatUpload); err != nil {
+	r.Body = http.MaxBytesReader(c.Response(), r.Body, maxChatUpload)
+	if err = r.ParseMultipartForm(maxChatUpload); err != nil {
 		var tooBig *http.MaxBytesError
 		if apperr.As(err, &tooBig) {
-			httpx.Error(w, httpx.ErrTooLarge, "That file is larger than 8 MB.")
-			return
+			return httpx.Fail(httpx.ErrTooLarge, "That file is larger than 8 MB.")
 		}
-		httpx.Error(w, apperr.FieldErrors{}.Add("file", "That upload could not be read."), "That upload could not be read.")
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("file", "That upload could not be read."), "That upload could not be read.")
 	}
 	defer func() { _ = r.MultipartForm.RemoveAll() }()
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("file", "Choose a file first."), "Choose a file first.")
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("file", "Choose a file first."), "Choose a file first.")
 	}
 	defer func() { _ = file.Close() }()
 
@@ -433,73 +419,70 @@ func (a *API) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var fields apperr.FieldErrors
 		if apperr.As(err, &fields) && len(fields) > 0 {
-			httpx.Error(w, err, fields[0].Message)
-			return
+			return httpx.Fail(err, fields[0].Message)
 		}
-		httpx.Error(w, err, "That file could not be stored.")
-		return
+		return httpx.Fail(err, "That file could not be stored.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, projectAttachment(stored))
+	return c.JSON(http.StatusCreated, projectAttachment(stored))
 }
 
 // resume streams the rest of a reply whose turn stopped for approval. It spends
 // no quota: answering a confirmation is not a second question.
-func (a *API) resume(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
-	}
-	stream, err := a.svc.Resume(r.Context(), user, id)
+func (a *API) resume(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	id, err := echox.UUIDParam(c, "id")
 	if err != nil {
-		httpx.Error(w, err, friendly(err))
-		return
+		return err
 	}
-	a.relay(w, r, id, stream)
+	stream, err := a.svc.Resume(ctx, user, id)
+	if err != nil {
+		return httpx.Fail(err, friendly(err))
+	}
+	a.relay(c, id, stream)
+	return nil
 }
 
 // decide runs or refuses the waiting tool calls. The tools run inside this
 // request, so a retried stream can never run a write twice.
-func (a *API) decide(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+func (a *API) decide(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	id, err := echox.UUIDParam(c, "id")
+	if err != nil {
+		return err
 	}
-	messageID, ok := pathID(w, r, "messageID")
-	if !ok {
-		return
+	messageID, err := echox.UUIDParam(c, "messageID")
+	if err != nil {
+		return err
 	}
 	var req DecisionRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must say approve true or false.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 1 << 10}, "The request body must say approve true or false."); err != nil {
+		return err
 	}
-	if err := a.svc.ResolvePending(r.Context(), user, id, messageID, req.Approve); err != nil {
-		httpx.Error(w, err, "That request could not be answered.")
-		return
+	if err := a.svc.ResolvePending(ctx, user, id, messageID, req.Approve); err != nil {
+		return httpx.Fail(err, "That request could not be answered.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) rate(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	messageID, ok := pathID(w, r, "messageID")
-	if !ok {
-		return
+func (a *API) rate(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	messageID, err := echox.UUIDParam(c, "messageID")
+	if err != nil {
+		return err
 	}
 	var req HelpfulRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must carry helpful true, false or null.")
-		return
+	if err = echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 1 << 10}, "The request body must carry helpful true, false or null."); err != nil {
+		return err
 	}
 	// The update scopes itself to the owner through the message's thread.
-	msg, err := a.svc.Conversations().SetMessageHelpful(r.Context(), messageID, user.ID, req.Helpful)
+	msg, err := a.svc.Conversations().SetMessageHelpful(ctx, messageID, user.ID, req.Helpful)
 	if err != nil {
-		httpx.Error(w, err, "That reply could not be rated.")
-		return
+		return httpx.Fail(err, "That reply could not be rated.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectMessage(msg))
+	return c.JSON(http.StatusOK, projectMessage(msg))
 }
 
 // Event frames on a reply or resume stream. Each is one SSE event whose data
@@ -547,10 +530,15 @@ type DoneEvent struct {
 // relay forwards the service's stream as frames, then reports what the caller
 // can only learn once it has closed: which exercises the reply drew on, and
 // whether it stopped to ask before writing something.
-func (a *API) relay(w http.ResponseWriter, r *http.Request, conversationID uuid.UUID, stream <-chan ai.StreamChunk) {
-	user := auth.MustUser(r.Context())
-	log := middleware.FromContext(r.Context())
+//
+// Once the stream has started nothing is returned to Echo's error handler: a
+// failure is an error frame, and the reply has already been committed.
+func (a *API) relay(c *echo.Context, conversationID uuid.UUID, stream <-chan ai.StreamChunk) {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	log := middleware.FromContext(ctx)
 
+	w := c.Response()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -567,7 +555,7 @@ func (a *API) relay(w http.ResponseWriter, r *http.Request, conversationID uuid.
 			break
 		}
 		if len(chunk.ToolCalls) > 0 {
-			writeEvent(w, rc, EventStatus, StatusEvent{Line: sseLine(toolStatus(r.Context(), chunk.ToolCalls))})
+			writeEvent(w, rc, EventStatus, StatusEvent{Line: sseLine(toolStatus(ctx, chunk.ToolCalls))})
 			continue
 		}
 		if chunk.Text != "" {
@@ -577,12 +565,12 @@ func (a *API) relay(w http.ResponseWriter, r *http.Request, conversationID uuid.
 
 	var done DoneEvent
 	if !failed {
-		if slugs, err := a.svc.LatestExerciseRefs(r.Context(), user, conversationID); err == nil && len(slugs) > 0 {
+		if slugs, err := a.svc.LatestExerciseRefs(ctx, user, conversationID); err == nil && len(slugs) > 0 {
 			writeEvent(w, rc, EventExercises, ExercisesEvent{Slugs: slugs})
 		}
-		if pending, waiting, err := a.svc.PendingApproval(r.Context(), user, conversationID); err == nil && waiting {
+		if pending, waiting, err := a.svc.PendingApproval(ctx, user, conversationID); err == nil && waiting {
 			writeEvent(w, rc, EventApproval, projectApproval(pending))
-		} else if history, err := a.svc.Conversations().History(r.Context(), conversationID); err == nil {
+		} else if history, err := a.svc.Conversations().History(ctx, conversationID); err == nil {
 			for i := len(history) - 1; i >= 0; i-- {
 				if history[i].IsModel() && !history[i].IsToolTurn() {
 					done.MessageID = &history[i].ID
@@ -603,15 +591,6 @@ func writeEvent(w http.ResponseWriter, rc *http.ResponseController, event string
 	}
 	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
 	_ = rc.Flush()
-}
-
-func pathID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, name))
-	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return uuid.Nil, false
-	}
-	return id, true
 }
 
 func projectSummary(c conversations.Conversation) ConversationSummary {

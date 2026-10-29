@@ -126,7 +126,7 @@ func (s *MealPlanService) LatestIntake(ctx context.Context, userID uuid.UUID) (*
 	return s.repo.LatestMealPlanIntake(ctx, userID)
 }
 
-func (r *Repository) CreateMealPlanIntake(ctx context.Context, userID uuid.UUID, in MealPlanIntake) (MealPlanIntake, error) {
+func (r *PostgresRepository) CreateMealPlanIntake(ctx context.Context, userID uuid.UUID, in MealPlanIntake) (MealPlanIntake, error) {
 	row, err := r.q.CreateMealPlanIntake(ctx, mealsdb.CreateMealPlanIntakeParams{
 		UserID:      userID,
 		Objective:   in.Objective,
@@ -142,7 +142,7 @@ func (r *Repository) CreateMealPlanIntake(ctx context.Context, userID uuid.UUID,
 	return intakeFromDB(row), nil
 }
 
-func (r *Repository) LatestMealPlanIntake(ctx context.Context, userID uuid.UUID) (*MealPlanIntake, error) {
+func (r *PostgresRepository) LatestMealPlanIntake(ctx context.Context, userID uuid.UUID) (*MealPlanIntake, error) {
 	row, err := r.q.LatestMealPlanIntake(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -178,7 +178,7 @@ func (s *IngredientService) SharedCatalog(ctx context.Context) ([]CatalogFood, e
 	return s.repo.SharedCatalog(ctx)
 }
 
-func (r *Repository) SharedCatalog(ctx context.Context) ([]CatalogFood, error) {
+func (r *PostgresRepository) SharedCatalog(ctx context.Context) ([]CatalogFood, error) {
 	rows, err := r.q.ListSharedIngredientMacros(ctx)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list shared ingredient macros")

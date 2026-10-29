@@ -70,7 +70,7 @@ func (s *Service) redeem(ctx context.Context, in InboundMessage) (uuid.UUID, err
 		return uuid.Nil, apperr.Wrap(apperr.ErrForbidden, "only a direct message can be linked")
 	}
 
-	if !s.redeemLimit.Allow(in.Platform + ":" + in.ExternalID) {
+	if ok, _ := s.redeemLimit.Allow(in.Platform + ":" + in.ExternalID); !ok {
 		return uuid.Nil, apperr.Wrap(apperr.ErrForbidden, "too many attempts")
 	}
 

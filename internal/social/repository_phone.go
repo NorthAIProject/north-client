@@ -30,7 +30,7 @@ type StartLimit struct {
 
 // VerifiedPhone is the account's number and when it was verified; empty and
 // zero when it has none.
-func (r *Repository) VerifiedPhone(ctx context.Context, userID uuid.UUID) (string, time.Time, error) {
+func (r *PostgresRepository) VerifiedPhone(ctx context.Context, userID uuid.UUID) (string, time.Time, error) {
 	row, err := r.q.GetPhone(ctx, userID)
 	if err != nil {
 		return "", time.Time{}, apperr.Wrap(err, "get phone")
@@ -43,7 +43,7 @@ func (r *Repository) VerifiedPhone(ctx context.Context, userID uuid.UUID) (strin
 
 // PendingVerification is the latest open text sent after since. ErrNotFound
 // when there is none.
-func (r *Repository) PendingVerification(ctx context.Context, userID uuid.UUID, since time.Time) (pendingVerification, error) {
+func (r *PostgresRepository) PendingVerification(ctx context.Context, userID uuid.UUID, since time.Time) (pendingVerification, error) {
 	row, err := r.q.PendingPhoneVerification(ctx, socialdb.PendingPhoneVerificationParams{UserID: userID, Since: since})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return pendingVerification{}, apperr.ErrNotFound
@@ -57,7 +57,7 @@ func (r *Repository) PendingVerification(ctx context.Context, userID uuid.UUID, 
 // ReserveVerification records a text about to be sent, unless the account or
 // the number has already had its limit, and closes any earlier open one. It
 // also prunes rows older than pruneBefore, which no limit looks at any more.
-func (r *Repository) ReserveVerification(ctx context.Context, userID uuid.UUID, number string,
+func (r *PostgresRepository) ReserveVerification(ctx context.Context, userID uuid.UUID, number string,
 	byUser, byNumber StartLimit, pruneBefore time.Time,
 ) (uuid.UUID, error) {
 	tx, err := r.pool.Begin(ctx)
@@ -100,17 +100,17 @@ func (r *Repository) ReserveVerification(ctx context.Context, userID uuid.UUID, 
 	return row.ID, nil
 }
 
-func (r *Repository) CloseVerification(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) CloseVerification(ctx context.Context, id uuid.UUID) error {
 	return apperr.Wrap(r.q.ClosePhoneVerification(ctx, id), "close phone verification")
 }
 
-func (r *Repository) CloseVerifications(ctx context.Context, userID uuid.UUID) error {
+func (r *PostgresRepository) CloseVerifications(ctx context.Context, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.ClosePhoneVerifications(ctx, userID), "close phone verifications")
 }
 
 // CountCheck records one code checked against a text and returns how many
 // have been, this one included.
-func (r *Repository) CountCheck(ctx context.Context, id uuid.UUID) (int, error) {
+func (r *PostgresRepository) CountCheck(ctx context.Context, id uuid.UUID) (int, error) {
 	n, err := r.q.CountPhoneCheck(ctx, id)
 	if err != nil {
 		return 0, apperr.Wrap(err, "count phone check")
@@ -120,7 +120,7 @@ func (r *Repository) CountCheck(ctx context.Context, id uuid.UUID) (int, error) 
 
 // VerifyPhone gives the account the number, takes it from any other account
 // holding it, and closes the text, in one transaction.
-func (r *Repository) VerifyPhone(ctx context.Context, userID, verificationID uuid.UUID, number string) error {
+func (r *PostgresRepository) VerifyPhone(ctx context.Context, userID, verificationID uuid.UUID, number string) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return apperr.Wrap(err, "begin verify phone")
@@ -139,6 +139,6 @@ func (r *Repository) VerifyPhone(ctx context.Context, userID, verificationID uui
 	return apperr.Wrap(tx.Commit(ctx), "commit verify phone")
 }
 
-func (r *Repository) ClearPhone(ctx context.Context, userID uuid.UUID) error {
+func (r *PostgresRepository) ClearPhone(ctx context.Context, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.ClearPhone(ctx, userID), "clear phone")
 }

@@ -46,7 +46,7 @@ type Answers interface {
 // without a proof a day is only done by a tap, and without users the sweep
 // only ends weeks.
 type Options struct {
-	Repository *Repository
+	Repository Repository
 	Goals      Goals
 	Users      Users
 	Proofs     map[string]Proof
@@ -58,7 +58,7 @@ type Options struct {
 }
 
 type Service struct {
-	repo    *Repository
+	repo    Repository
 	goals   Goals
 	users   Users
 	proofs  map[string]Proof
@@ -67,6 +67,20 @@ type Service struct {
 	answers Answers
 	log     *slog.Logger
 	now     func() time.Time
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps first-week programmes and their completions.
+type Repository interface {
+	Begin(ctx context.Context, p Programme) (Programme, error)
+	Get(ctx context.Context, userID uuid.UUID) (Programme, error)
+	End(ctx context.Context, userID uuid.UUID, status string) (Programme, bool, error)
+	ListActive(ctx context.Context, after uuid.UUID, limit int) ([]Programme, error)
+	Complete(ctx context.Context, userID uuid.UUID, day int, localDate time.Time, via string) (Completion, bool, error)
+	Completions(ctx context.Context, userID uuid.UUID) ([]Completion, error)
+	SetReview(ctx context.Context, userID uuid.UUID, review Review) (Programme, error)
 }
 
 func NewService(o Options) *Service {

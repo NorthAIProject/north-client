@@ -302,7 +302,7 @@ func TestExportIncludesCrewMessages(t *testing.T) {
 	ana := seedUser(t, pool, "ana@north.test")
 	leo := seedUser(t, pool, "leo@north.test")
 
-	svc := crews.NewService(pool, nil, nil)
+	svc := crews.NewService(crews.NewRepository(pool), nil, nil)
 	c, err := svc.Create(ctx, ana.ID, "Iron rats")
 	if err != nil {
 		t.Fatal(err)
@@ -310,8 +310,8 @@ func TestExportIncludesCrewMessages(t *testing.T) {
 	if _, err = svc.Join(ctx, leo.ID, c.Code); err != nil {
 		t.Fatal(err)
 	}
-	mod := moderation.NewService(pool)
-	chat := crews.NewChat(pool, mod, moderation.NewFilter(), jobs.NewQueue(pool))
+	mod := moderation.NewService(moderation.NewRepository(pool))
+	chat := crews.NewChat(crews.NewRepository(pool), mod, moderation.NewFilter(), jobs.NewQueue(pool))
 	channels, err := svc.Channels(ctx, c.ID, ana.ID)
 	if err != nil {
 		t.Fatal(err)

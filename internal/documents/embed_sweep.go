@@ -10,13 +10,13 @@ import (
 
 // EmbedSweeper enqueues embed jobs for users with missing vectors.
 type EmbedSweeper struct {
-	repo  *Repository
+	repo  Repository
 	queue *jobs.Queue
 	model string
 	log   *slog.Logger
 }
 
-func NewEmbedSweeper(repo *Repository, queue *jobs.Queue, model string, log *slog.Logger) *EmbedSweeper {
+func NewEmbedSweeper(repo Repository, queue *jobs.Queue, model string, log *slog.Logger) *EmbedSweeper {
 	if log == nil {
 		log = slog.Default()
 	}

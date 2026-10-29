@@ -18,7 +18,7 @@ type SyncHook interface {
 }
 
 type FoodLogService struct {
-	repo   *Repository
+	repo   Repository
 	sync   SyncHook
 	awards Awards
 }
@@ -28,7 +28,7 @@ type Awards interface {
 	Check(ctx context.Context, userID uuid.UUID, at time.Time, areas ...award.Area)
 }
 
-func NewFoodLogService(repo *Repository) *FoodLogService {
+func NewFoodLogService(repo Repository) *FoodLogService {
 	return &FoodLogService{repo: repo}
 }
 

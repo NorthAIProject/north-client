@@ -13,7 +13,7 @@ import (
 )
 
 type Service struct {
-	repo *Repository
+	repo Repository
 
 	// Set by WithWorkouts. Nil is the ordinary state for a deployment that
 	// only accepts readings.
@@ -36,7 +36,19 @@ func (s *Service) WithAwards(a Awards) *Service {
 	return s
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps health readings.
+type Repository interface {
+	HasFromSource(ctx context.Context, userID uuid.UUID, source string) (bool, error)
+	Save(ctx context.Context, userID uuid.UUID, source string, readings []Reading) (int, error)
+	Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]Stored, error)
+	Stats(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) (metricStats, error)
+	DeleteBySource(ctx context.Context, userID uuid.UUID, source string) error
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

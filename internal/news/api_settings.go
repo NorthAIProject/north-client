@@ -4,10 +4,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -37,95 +38,99 @@ type feedInput struct {
 	URL string `json:"url"`
 }
 
-func (a *API) settingsRoutes(r chi.Router) {
-	r.Get("/news/settings", a.settings)
-	r.Put("/news/settings", a.setSettings)
-	r.Post("/news/feeds", a.addFeed)
-	r.Delete("/news/feeds/{feedID}", a.removeFeed)
+func (a *API) registerSettings(g *echo.Group) {
+	g.GET("/news/settings", a.settings)
+	g.PUT("/news/settings", a.setSettings)
+	g.POST("/news/feeds", a.addFeed)
+	g.DELETE("/news/feeds/:feedID", a.removeFeed)
 }
 
-func (a *API) settings(w http.ResponseWriter, r *http.Request) {
-	if !a.available(w) {
-		return
+func (a *API) settings(c *echo.Context) error {
+	if err := a.available(); err != nil {
+		return err
 	}
-	a.writeSettings(w, r, http.StatusOK)
+	return a.writeSettings(c, http.StatusOK)
 }
 
-func (a *API) setSettings(w http.ResponseWriter, r *http.Request) {
-	if !a.available(w) {
-		return
+func (a *API) setSettings(c *echo.Context) error {
+	if err := a.available(); err != nil {
+		return err
 	}
 	var in newsSettingsInput
-	if err := httpx.ReadJSON(w, r, &in, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-		httpx.Error(w, apperr.ErrValidation, "That request could not be read.")
-		return
+	if err := readInput(c, &in, 1<<10); err != nil {
+		return err
 	}
-	if err := a.svc.SetEnabled(r.Context(), auth.MustUser(r.Context()), in.Enabled); err != nil {
-		httpx.Error(w, err, "The news settings could not be saved.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.SetEnabled(ctx, auth.MustUser(ctx), in.Enabled); err != nil {
+		return httpx.Fail(err, "The news settings could not be saved.")
 	}
-	a.writeSettings(w, r, http.StatusOK)
+	return a.writeSettings(c, http.StatusOK)
 }
 
 // addFeed answers 422 with fields.url when the address is refused, as the
 // settings form shows it.
-func (a *API) addFeed(w http.ResponseWriter, r *http.Request) {
-	if !a.available(w) {
-		return
+func (a *API) addFeed(c *echo.Context) error {
+	if err := a.available(); err != nil {
+		return err
 	}
 	var in feedInput
-	if err := httpx.ReadJSON(w, r, &in, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, apperr.ErrValidation, "That request could not be read.")
-		return
+	if err := readInput(c, &in, 4<<10); err != nil {
+		return err
 	}
-	if _, err := a.svc.AddFeed(r.Context(), auth.MustUser(r.Context()), strings.TrimSpace(in.URL)); err != nil {
-		httpx.Error(w, err, "That feed could not be added.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.AddFeed(ctx, auth.MustUser(ctx), strings.TrimSpace(in.URL)); err != nil {
+		return httpx.Fail(err, "That feed could not be added.")
 	}
-	a.writeSettings(w, r, http.StatusCreated)
+	return a.writeSettings(c, http.StatusCreated)
 }
 
 // removeFeed treats a feed that is already gone as removed.
-func (a *API) removeFeed(w http.ResponseWriter, r *http.Request) {
-	if !a.available(w) {
-		return
+func (a *API) removeFeed(c *echo.Context) error {
+	if err := a.available(); err != nil {
+		return err
 	}
-	id, err := uuid.Parse(chi.URLParam(r, "feedID"))
+	id, err := echox.UUIDParam(c, "feedID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	if err := a.svc.RemoveFeed(r.Context(), auth.MustUser(r.Context()), id); err != nil && !apperr.Is(err, apperr.ErrNotFound) {
-		httpx.Error(w, err, "That feed could not be removed.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.RemoveFeed(ctx, auth.MustUser(ctx), id); err != nil && !apperr.Is(err, apperr.ErrNotFound) {
+		return httpx.Fail(err, "That feed could not be removed.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) writeSettings(w http.ResponseWriter, r *http.Request, status int) {
-	user := auth.MustUser(r.Context())
-	enabled, err := a.svc.Enabled(r.Context(), user)
+func (a *API) writeSettings(c *echo.Context, status int) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	enabled, err := a.svc.Enabled(ctx, user)
 	if err != nil {
-		httpx.Error(w, err, "The news settings could not be loaded.")
-		return
+		return httpx.Fail(err, "The news settings could not be loaded.")
 	}
-	feeds, err := a.svc.Feeds(r.Context(), user)
+	feeds, err := a.svc.Feeds(ctx, user)
 	if err != nil {
-		httpx.Error(w, err, "The news settings could not be loaded.")
-		return
+		return httpx.Fail(err, "The news settings could not be loaded.")
 	}
 	out := NewsSettings{Enabled: enabled, Feeds: make([]FeedView, 0, len(feeds)), MaxFeeds: a.svc.MaxUserFeeds}
 	for _, f := range feeds {
 		out.Feeds = append(out.Feeds, FeedView{ID: f.ID, Title: f.Title, URL: f.URL})
 	}
-	httpx.WriteJSON(w, status, out)
+	return c.JSON(status, out)
+}
+
+// readInput decodes a settings body. Any body it cannot read is a validation
+// failure, whatever the reason, so the reply is the same 422 either way.
+func readInput(c *echo.Context, dst any, maxBytes int64) error {
+	if err := httpx.ReadJSON(c.Response(), c.Request(), dst, httpx.ReadOptions{MaxBytes: maxBytes}); err != nil {
+		return httpx.Fail(apperr.ErrValidation, "That request could not be read.")
+	}
+	return nil
 }
 
 // available answers 404 on a deployment without feeds configured.
-func (a *API) available(w http.ResponseWriter) bool {
+func (a *API) available() error {
 	if a.svc == nil {
-		httpx.Error(w, apperr.ErrNotFound, "News is not available here.")
-		return false
+		return httpx.Fail(apperr.ErrNotFound, "News is not available here.")
 	}
-	return true
+	return nil
 }

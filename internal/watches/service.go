@@ -21,12 +21,23 @@ type Users interface {
 }
 
 type Service struct {
-	repo  *Repository
+	repo  Repository
 	users Users
 	now   func() time.Time
 }
 
-func NewService(repo *Repository, accounts Users) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps watches.
+type Repository interface {
+	Create(ctx context.Context, userID, conversationID uuid.UUID, p Proposal, next time.Time) (Watch, error)
+	List(ctx context.Context, userID uuid.UUID) ([]Watch, error)
+	Due(ctx context.Context, now time.Time, limit int) ([]Watch, error)
+	Claim(ctx context.Context, id uuid.UUID, dueAt, next, now time.Time) (bool, error)
+}
+
+func NewService(repo Repository, accounts Users) *Service {
 	return &Service{repo: repo, users: accounts, now: time.Now}
 }
 

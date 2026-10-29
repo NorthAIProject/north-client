@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/labstack/echo/v5"
+
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/ratelimit"
 )
@@ -33,9 +35,9 @@ import (
 // which is a weakening rather than a break — but it is the point at which this
 // should move to the quota counter table.
 type Throttle struct {
-	ipBuckets    *ratelimit.Limiters
-	emailBuckets *ratelimit.Limiters
-	trusted      middleware.TrustedProxies
+	ipBuckets    *ratelimit.Store
+	emailBuckets *ratelimit.Store
+	clientIP     echo.IPExtractor
 	log          *slog.Logger
 }
 
@@ -51,7 +53,7 @@ type ThrottleConfig struct {
 
 	// TrustedProxies decide whether X-Forwarded-For may be believed. Empty
 	// means key on the peer address, which is right on a laptop and wrong
-	// behind an ingress — see middleware.ClientIP.
+	// behind an ingress — see middleware.TrustedProxies.IPExtractor.
 	TrustedProxies middleware.TrustedProxies
 }
 
@@ -79,7 +81,7 @@ func NewThrottle(cfg ThrottleConfig, log *slog.Logger) *Throttle {
 	return &Throttle{
 		ipBuckets:    ratelimit.New(cfg.PerMinute),
 		emailBuckets: ratelimit.New(cfg.PerEmailPerMinute),
-		trusted:      cfg.TrustedProxies,
+		clientIP:     cfg.TrustedProxies.IPExtractor(),
 		log:          log,
 	}
 }
@@ -96,15 +98,15 @@ func (t *Throttle) Guard(next http.Handler) http.Handler {
 			return
 		}
 
-		addr := middleware.ClientIP(r, t.trusted)
-		if !t.ipBuckets.Allow(addr) {
+		addr := t.clientIP(r)
+		if ok, _ := t.ipBuckets.Allow(addr); !ok {
 			t.refuse(w, r, "address", addr)
 			return
 		}
 
 		// Parsing the form here is safe: the handler calls the same method and
 		// gets the cached result, exactly as the CSRF middleware relies on.
-		if email := submittedEmail(r); email != "" && !t.emailBuckets.Allow(email) {
+		if email := submittedEmail(r); email != "" && !t.allowEmail(email) {
 			// The email is a bucket key and never reaches the log. Recording
 			// which accounts are being guessed would put a list of this
 			// deployment's users into whatever reads the logs.
@@ -140,4 +142,9 @@ func submittedEmail(r *http.Request) string {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(r.PostFormValue("email")))
+}
+
+func (t *Throttle) allowEmail(email string) bool {
+	ok, _ := t.emailBuckets.Allow(email)
+	return ok
 }

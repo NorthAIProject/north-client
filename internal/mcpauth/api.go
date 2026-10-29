@@ -6,12 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -54,19 +55,20 @@ func (a *API) WithFunnel(f *analytics.Funnel) *API {
 	return a
 }
 
-// PublicRoutes run before anybody is signed in: parking the request, showing
-// it, and creating or signing in to the account on the screen. Mount them
-// outside RequireBearer.
-func (a *API) PublicRoutes(r chi.Router) {
-	r.Post("/auth/oauth/authorize", a.begin)
-	r.Get("/auth/oauth/requests/{requestID}", a.show)
-	r.Post("/auth/oauth/requests/{requestID}/account", a.account)
+// RegisterPublic registers what runs before anybody is signed in: parking the
+// request, showing it, and creating or signing in to the account on the
+// screen. Register them on a group outside Bearer.
+func (a *API) RegisterPublic(g *echo.Group) {
+	g.POST("/auth/oauth/authorize", a.begin)
+	g.GET("/auth/oauth/requests/:requestID", a.show)
+	g.POST("/auth/oauth/requests/:requestID/account", a.account)
 }
 
-// Routes are the decision, which needs the person. Mount behind RequireBearer.
-func (a *API) Routes(r chi.Router) {
-	r.Post("/oauth/requests/{requestID}/approve", a.approve)
-	r.Post("/oauth/requests/{requestID}/deny", a.deny)
+// Register registers the decision, which needs the person, on a group behind
+// Bearer.
+func (a *API) Register(g *echo.Group) {
+	g.POST("/oauth/requests/:requestID/approve", a.approve)
+	g.POST("/oauth/requests/:requestID/deny", a.deny)
 }
 
 // VerifierHeader carries the north_oauth_req cookie's value on a read.
@@ -146,13 +148,13 @@ func projectRequest(req Request) *ConsentRequest {
 	}
 }
 
-func (a *API) begin(w http.ResponseWriter, r *http.Request) {
+func (a *API) begin(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var in AuthorizeRequest
-	if err := httpx.ReadJSON(w, r, &in, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.err.form"))
-		return
+	if err := echox.BindJSON(c, &in, httpx.ReadOptions{MaxBytes: 16 << 10}, i18n.T(ctx, "auth.err.form")); err != nil {
+		return err
 	}
-	req, verifier, err := a.svc.BeginAuthorization(r.Context(), AuthorizeParams{
+	req, verifier, err := a.svc.BeginAuthorization(ctx, AuthorizeParams{
 		ClientID:            in.ClientID,
 		RedirectURI:         in.RedirectURI,
 		ResponseType:        in.ResponseType,
@@ -165,40 +167,38 @@ func (a *API) begin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var fatal FatalAuthorizeError
 		if apperr.As(err, &fatal) {
-			httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: fatal.Reason, Code: "oauth_fatal"}})
-			return
+			return c.JSON(http.StatusBadRequest, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: fatal.Reason, Code: "oauth_fatal"}})
 		}
 		var redirectable RedirectableError
 		if apperr.As(err, &redirectable) {
-			httpx.WriteJSON(w, http.StatusOK, AuthorizeResponse{Redirect: redirectable.URL()})
-			return
+			return c.JSON(http.StatusOK, AuthorizeResponse{Redirect: redirectable.URL()})
 		}
 		a.log.Error("mcp oauth authorize failed", slog.Any("error", err))
-		httpx.Error(w, err, "The authorization request could not be started.")
-		return
+		return httpx.Fail(err, "The authorization request could not be started.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, AuthorizeResponse{Request: projectRequest(req), Verifier: verifier})
+	return c.JSON(http.StatusCreated, AuthorizeResponse{Request: projectRequest(req), Verifier: verifier})
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	req, ok := a.load(w, r, r.Header.Get(VerifierHeader))
+func (a *API) show(c *echo.Context) error {
+	req, ok := a.load(c, c.Request().Header.Get(VerifierHeader))
 	if !ok {
-		return
+		return writeExpired(c)
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectRequest(req))
+	return c.JSON(http.StatusOK, projectRequest(req))
 }
 
 // account delegates to internal/auth, as BrowserHandler.account does: the
 // validation, hashing, session and signup funnel event live there.
-func (a *API) account(w http.ResponseWriter, r *http.Request) {
+func (a *API) account(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	var in ConsentAccountRequest
-	if err := httpx.ReadJSON(w, r, &in, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.err.form"))
-		return
+	if err := echox.BindJSON(c, &in, httpx.ReadOptions{MaxBytes: 16 << 10}, i18n.T(ctx, "auth.err.form")); err != nil {
+		return err
 	}
-	req, ok := a.load(w, r, in.Verifier)
+	req, ok := a.load(c, in.Verifier)
 	if !ok {
-		return
+		return writeExpired(c)
 	}
 
 	var (
@@ -209,7 +209,7 @@ func (a *API) account(w http.ResponseWriter, r *http.Request) {
 	fresh := in.Mode != "login"
 	meta := a.authMW.RequestMetadata(r)
 	if fresh {
-		user, token, err = a.auth.Signup(r.Context(), auth.SignupInput{
+		user, token, err = a.auth.Signup(ctx, auth.SignupInput{
 			Email:       in.Email,
 			DisplayName: in.DisplayName,
 			Password:    in.Password,
@@ -219,64 +219,61 @@ func (a *API) account(w http.ResponseWriter, r *http.Request) {
 			Via:                  analytics.ViaOAuthConsent,
 		}, meta)
 	} else {
-		user, token, err = a.auth.Login(r.Context(), auth.LoginInput{Email: in.Email, Password: in.Password}, meta)
+		user, token, err = a.auth.Login(ctx, auth.LoginInput{Email: in.Email, Password: in.Password}, meta)
 	}
 	if err != nil {
 		var fields apperr.FieldErrors
 		switch {
 		case apperr.As(err, &fields):
-			httpx.Error(w, err, i18n.T(r.Context(), "auth.api.fields"))
+			return httpx.Fail(err, i18n.T(ctx, "auth.api.fields"))
 		case apperr.Is(err, auth.ErrInvalidCredentials):
-			httpx.WriteJSON(w, http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: i18n.T(r.Context(), "auth.err.credentials")}})
+			return c.JSON(http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: i18n.T(ctx, "auth.err.credentials")}})
 		default:
-			httpx.Error(w, err, i18n.T(r.Context(), "auth.api.generic"))
+			return httpx.Fail(err, i18n.T(ctx, "auth.api.generic"))
 		}
-		return
 	}
 
 	if fresh {
 		// The smallest honest profile, and onboarded: see
 		// onboarding.SeedForAgent. Logged, not fatal, as on the Go page.
-		if seeded, seedErr := a.onboarding.SeedForAgent(r.Context(), user, req.ClientName); seedErr != nil {
+		if seeded, seedErr := a.onboarding.SeedForAgent(ctx, user, req.ClientName); seedErr != nil {
 			a.log.Error("could not seed an account created in consent",
 				slog.Any("error", seedErr), slog.String("user_id", user.ID.String()))
 		} else {
 			user = seeded
 		}
-		if markErr := a.svc.MarkAccountCreated(r.Context(), req.ID, in.Verifier); markErr != nil {
+		if markErr := a.svc.MarkAccountCreated(ctx, req.ID, in.Verifier); markErr != nil {
 			a.log.Warn("could not record that consent created the account", slog.Any("error", markErr))
 		}
 	}
 
-	session, err := a.auth.Sessions().Resolve(r.Context(), token)
+	session, err := a.auth.Sessions().Resolve(ctx, token)
 	if err != nil {
 		a.log.Error("resolve consent session", slog.Any("error", err))
-		httpx.Error(w, apperr.ErrUnavailable, i18n.T(r.Context(), "auth.api.generic"))
-		return
+		return httpx.Fail(apperr.ErrUnavailable, i18n.T(ctx, "auth.api.generic"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, auth.AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: auth.ProjectUser(session.User)})
+	return c.JSON(http.StatusOK, auth.AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: auth.ProjectUser(session.User)})
 }
 
-func (a *API) approve(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) approve(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var in ConsentDecisionRequest
-	if err := httpx.ReadJSON(w, r, &in, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.err.form"))
-		return
+	if err := echox.BindJSON(c, &in, httpx.ReadOptions{MaxBytes: 4 << 10}, i18n.T(ctx, "auth.err.form")); err != nil {
+		return err
 	}
-	req, ok := a.load(w, r, in.Verifier)
+	req, ok := a.load(c, in.Verifier)
 	if !ok {
-		return
+		return writeExpired(c)
 	}
 
 	scope := ""
 	if in.ReadOnly {
 		scope = scopeRead()
 	}
-	redirect, err := a.svc.Approve(r.Context(), req.ID, in.Verifier, user.ID, scope)
+	redirect, err := a.svc.Approve(ctx, req.ID, in.Verifier, user.ID, scope)
 	if err != nil {
-		a.writeExpired(w, r)
-		return
+		return writeExpired(c)
 	}
 
 	a.log.Info("mcp oauth consent approved",
@@ -286,50 +283,47 @@ func (a *API) approve(w http.ResponseWriter, r *http.Request) {
 	if scope != "" {
 		granted = scope
 	}
-	a.funnel.MCPConsentApproved(r.Context(), user.ID, req.ClientName, granted, req.AccountCreated)
-	httpx.WriteJSON(w, http.StatusOK, ConsentDecisionResponse{Redirect: redirect})
+	a.funnel.MCPConsentApproved(ctx, user.ID, req.ClientName, granted, req.AccountCreated)
+	return c.JSON(http.StatusOK, ConsentDecisionResponse{Redirect: redirect})
 }
 
-func (a *API) deny(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) deny(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var in ConsentDecisionRequest
-	if err := httpx.ReadJSON(w, r, &in, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.err.form"))
-		return
+	if err := echox.BindJSON(c, &in, httpx.ReadOptions{MaxBytes: 4 << 10}, i18n.T(ctx, "auth.err.form")); err != nil {
+		return err
 	}
-	req, ok := a.load(w, r, in.Verifier)
+	req, ok := a.load(c, in.Verifier)
 	if !ok {
-		return
+		return writeExpired(c)
 	}
-	redirect, err := a.svc.Deny(r.Context(), req.ID, in.Verifier)
+	redirect, err := a.svc.Deny(ctx, req.ID, in.Verifier)
 	if err != nil {
-		a.writeExpired(w, r)
-		return
+		return writeExpired(c)
 	}
-	a.funnel.MCPConsentDenied(r.Context(), user.ID, req.ClientName)
-	httpx.WriteJSON(w, http.StatusOK, ConsentDecisionResponse{Redirect: redirect})
+	a.funnel.MCPConsentDenied(ctx, user.ID, req.ClientName)
+	return c.JSON(http.StatusOK, ConsentDecisionResponse{Redirect: redirect})
 }
 
 // load resolves the path's request id against the verifier. Any failure is
-// the one "expired" answer, so the response cannot tell a guessed id from a
-// wrong cookie.
-func (a *API) load(w http.ResponseWriter, r *http.Request, verifier string) (Request, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, "requestID"))
+// the one "expired" answer (writeExpired), so the response cannot tell a
+// guessed id from a wrong cookie.
+func (a *API) load(c *echo.Context, verifier string) (Request, bool) {
+	id, err := uuid.Parse(c.Param("requestID"))
 	if err != nil || strings.TrimSpace(verifier) == "" {
-		a.writeExpired(w, r)
 		return Request{}, false
 	}
-	req, err := a.svc.LoadRequest(r.Context(), id, verifier)
+	req, err := a.svc.LoadRequest(c.Request().Context(), id, verifier)
 	if err != nil {
-		a.writeExpired(w, r)
 		return Request{}, false
 	}
 	return req, true
 }
 
-func (a *API) writeExpired(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{Error: httpx.ErrorDetail{
-		Message: i18n.T(r.Context(), "oauth.error.expired"),
+func writeExpired(c *echo.Context) error {
+	return c.JSON(http.StatusNotFound, httpx.ErrorBody{Error: httpx.ErrorDetail{
+		Message: i18n.T(c.Request().Context(), "oauth.error.expired"),
 		Code:    "oauth_request_expired",
 	}})
 }

@@ -43,8 +43,8 @@ func newRoom(t *testing.T) room {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	r := room{pool: pool, svc: service(pool)}
-	r.mod = moderation.NewService(pool)
-	r.chat = crews.NewChat(pool, r.mod, moderation.NewFilter(), jobs.NewQueue(pool))
+	r.mod = moderation.NewService(moderation.NewRepository(pool))
+	r.chat = crews.NewChat(crews.NewRepository(pool), r.mod, moderation.NewFilter(), jobs.NewQueue(pool))
 	r.mod.Register(crews.MessageSubject, r.chat.Hider())
 	r.owner = handled(t, pool, "owner@north.test", "Owner", "owner")
 	r.ana = handled(t, pool, "ana@north.test", "Ana", "ana")
@@ -59,7 +59,7 @@ func newRoom(t *testing.T) room {
 		}
 	}
 	for _, u := range []users.User{r.owner, r.ana, r.leo} {
-		if err = moderation.NewService(pool).AcceptTerms(ctx, u.ID); err != nil {
+		if err = moderation.NewService(moderation.NewRepository(pool)).AcceptTerms(ctx, u.ID); err != nil {
 			t.Fatal(err)
 		}
 	}

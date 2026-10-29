@@ -15,15 +15,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *reportsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: reportsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: reportsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, period Period, kind Kind) (Report, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, period Period, kind Kind) (Report, error) {
 	row, err := r.q.CreateReport(ctx, reportsdb.CreateReportParams{
 		UserID:      userID,
 		Kind:        string(kind),
@@ -38,7 +40,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, period Period
 	return fromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Report, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Report, error) {
 	row, err := r.q.GetReport(ctx, reportsdb.GetReportParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -49,7 +51,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Report, err
 	return fromDB(row), nil
 }
 
-func (r *Repository) ActiveForWeek(ctx context.Context, userID uuid.UUID, kind Kind, start time.Time) (Report, error) {
+func (r *PostgresRepository) ActiveForWeek(ctx context.Context, userID uuid.UUID, kind Kind, start time.Time) (Report, error) {
 	row, err := r.q.GetActiveReportForWeek(ctx, reportsdb.GetActiveReportForWeekParams{
 		UserID:      userID,
 		Kind:        string(kind),
@@ -66,7 +68,7 @@ func (r *Repository) ActiveForWeek(ctx context.Context, userID uuid.UUID, kind K
 
 // List returns the person's reports, newest period first. An empty kind means
 // every kind; pass one to keep briefings out of the weekly review list.
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, kind Kind, includeArchived bool, limit int) ([]Report, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, kind Kind, includeArchived bool, limit int) ([]Report, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -87,7 +89,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, kind Kind, incl
 	return out, nil
 }
 
-func (r *Repository) Archive(ctx context.Context, id, userID uuid.UUID) (Report, error) {
+func (r *PostgresRepository) Archive(ctx context.Context, id, userID uuid.UUID) (Report, error) {
 	row, err := r.q.ArchiveReport(ctx, reportsdb.ArchiveReportParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -98,7 +100,7 @@ func (r *Repository) Archive(ctx context.Context, id, userID uuid.UUID) (Report,
 	return fromDB(row), nil
 }
 
-func (r *Repository) MarkPending(ctx context.Context, id, userID uuid.UUID) (Report, error) {
+func (r *PostgresRepository) MarkPending(ctx context.Context, id, userID uuid.UUID) (Report, error) {
 	row, err := r.q.MarkReportPending(ctx, reportsdb.MarkReportPendingParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -109,7 +111,7 @@ func (r *Repository) MarkPending(ctx context.Context, id, userID uuid.UUID) (Rep
 	return fromDB(row), nil
 }
 
-func (r *Repository) SaveGenerated(ctx context.Context, id, userID uuid.UUID, body string) (Report, error) {
+func (r *PostgresRepository) SaveGenerated(ctx context.Context, id, userID uuid.UUID, body string) (Report, error) {
 	row, err := r.q.SaveGeneratedReport(ctx, reportsdb.SaveGeneratedReportParams{
 		ID:     id,
 		UserID: userID,
@@ -124,7 +126,7 @@ func (r *Repository) SaveGenerated(ctx context.Context, id, userID uuid.UUID, bo
 	return fromDB(row), nil
 }
 
-func (r *Repository) MarkFailed(ctx context.Context, id, userID uuid.UUID, reason string) (Report, error) {
+func (r *PostgresRepository) MarkFailed(ctx context.Context, id, userID uuid.UUID, reason string) (Report, error) {
 	row, err := r.q.MarkReportFailed(ctx, reportsdb.MarkReportFailedParams{
 		ID:        id,
 		UserID:    userID,
@@ -142,7 +144,7 @@ func (r *Repository) MarkFailed(ctx context.Context, id, userID uuid.UUID, reaso
 // LatestReady is filtered by kind on purpose. The table holds both weekly
 // reviews and daily briefings, so an unfiltered "newest ready row" would hand
 // the dashboard card whichever kind happened to be generated last.
-func (r *Repository) LatestReady(ctx context.Context, userID uuid.UUID, kind Kind) (Report, error) {
+func (r *PostgresRepository) LatestReady(ctx context.Context, userID uuid.UUID, kind Kind) (Report, error) {
 	row, err := r.q.LatestReadyReport(ctx, reportsdb.LatestReadyReportParams{
 		UserID: userID,
 		Kind:   string(kind),
@@ -172,7 +174,7 @@ func fromDate(d pgtype.Date) time.Time {
 
 // SetHelpful records whether a report was worth reading, or clears the answer
 // when helpful is nil.
-func (r *Repository) SetHelpful(ctx context.Context, id, userID uuid.UUID, helpful *bool) (Report, error) {
+func (r *PostgresRepository) SetHelpful(ctx context.Context, id, userID uuid.UUID, helpful *bool) (Report, error) {
 	row, err := r.q.SetReportHelpful(ctx, reportsdb.SetReportHelpfulParams{
 		ID:      id,
 		UserID:  userID,

@@ -16,12 +16,14 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *documentsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: documentsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: documentsdb.New(pool)}
 }
 
 // NewDocument is a row to insert.
@@ -34,7 +36,7 @@ type NewDocument struct {
 	ByteSize   int64
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, d NewDocument) (Document, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, d NewDocument) (Document, error) {
 	row, err := r.q.CreateDocument(ctx, documentsdb.CreateDocumentParams{
 		UserID:     userID,
 		Title:      d.Title,
@@ -50,7 +52,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, d NewDocument
 	return fromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Document, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Document, error) {
 	row, err := r.q.GetDocument(ctx, documentsdb.GetDocumentParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -61,7 +63,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Document, e
 	return fromDB(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Document, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Document, error) {
 	rows, err := r.q.ListDocuments(ctx, documentsdb.ListDocumentsParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -72,7 +74,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]D
 	return fromDBList(rows), nil
 }
 
-func (r *Repository) ForIndexing(ctx context.Context, userID uuid.UUID) ([]Document, error) {
+func (r *PostgresRepository) ForIndexing(ctx context.Context, userID uuid.UUID) ([]Document, error) {
 	rows, err := r.q.ListDocumentsForIndexing(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list documents for indexing")
@@ -80,7 +82,7 @@ func (r *Repository) ForIndexing(ctx context.Context, userID uuid.UUID) ([]Docum
 	return fromDBList(rows), nil
 }
 
-func (r *Repository) MarkIndexed(ctx context.Context, id uuid.UUID, sha, fingerprint string, lineCount int) error {
+func (r *PostgresRepository) MarkIndexed(ctx context.Context, id uuid.UUID, sha, fingerprint string, lineCount int) error {
 	return apperr.Wrap(r.q.MarkDocumentIndexed(ctx, documentsdb.MarkDocumentIndexedParams{
 		ID:                 id,
 		ContentSha256:      sha,
@@ -89,14 +91,14 @@ func (r *Repository) MarkIndexed(ctx context.Context, id uuid.UUID, sha, fingerp
 	}), "mark document indexed")
 }
 
-func (r *Repository) MarkFailed(ctx context.Context, id uuid.UUID, reason string) error {
+func (r *PostgresRepository) MarkFailed(ctx context.Context, id uuid.UUID, reason string) error {
 	return apperr.Wrap(r.q.MarkDocumentFailed(ctx, documentsdb.MarkDocumentFailedParams{
 		ID:         id,
 		ParseError: reason,
 	}), "mark document failed")
 }
 
-func (r *Repository) SoftDelete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) SoftDelete(ctx context.Context, id, userID uuid.UUID) error {
 	return apperr.Wrap(r.q.SoftDeleteDocument(ctx, documentsdb.SoftDeleteDocumentParams{
 		ID:     id,
 		UserID: userID,
@@ -111,7 +113,7 @@ func (r *Repository) SoftDelete(ctx context.Context, id, userID uuid.UUID) error
 // landed in that window would silently have no knowledge to draw on.
 //
 // Returns how many rows were written and removed, for the run record.
-func (r *Repository) ReplaceChunks(ctx context.Context, doc Document, chunks []Chunk) (written, removed int, err error) {
+func (r *PostgresRepository) ReplaceChunks(ctx context.Context, doc Document, chunks []Chunk) (written, removed int, err error) {
 	keep := make([]string, 0, len(chunks))
 
 	for _, c := range chunks {
@@ -155,7 +157,7 @@ func (r *Repository) ReplaceChunks(ctx context.Context, doc Document, chunks []C
 // guessable in the sense that it appears in stored replies and logs, and the
 // row filter is the thing that stops one person's ref reading another person's
 // document.
-func (r *Repository) Chunk(ctx context.Context, chunkID string, userID uuid.UUID) (Hit, error) {
+func (r *PostgresRepository) Chunk(ctx context.Context, chunkID string, userID uuid.UUID) (Hit, error) {
 	row, err := r.q.GetChunk(ctx, documentsdb.GetChunkParams{
 		ChunkID: chunkID,
 		UserID:  userID,
@@ -178,7 +180,7 @@ func (r *Repository) Chunk(ctx context.Context, chunkID string, userID uuid.UUID
 //
 // Ids that no longer resolve are absent from the result rather than an error;
 // see the query.
-func (r *Repository) ChunksByIDs(ctx context.Context, userID uuid.UUID, ids []string) ([]Hit, error) {
+func (r *PostgresRepository) ChunksByIDs(ctx context.Context, userID uuid.UUID, ids []string) ([]Hit, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -206,7 +208,7 @@ func (r *Repository) ChunksByIDs(ctx context.Context, userID uuid.UUID, ids []st
 	return out, nil
 }
 
-func (r *Repository) Search(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Hit, error) {
+func (r *PostgresRepository) Search(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Hit, error) {
 	rows, err := r.q.SearchChunks(ctx, documentsdb.SearchChunksParams{
 		UserID:      userID,
 		Query:       query,
@@ -233,7 +235,7 @@ func (r *Repository) Search(ctx context.Context, userID uuid.UUID, query string,
 	return out, nil
 }
 
-func (r *Repository) Counts(ctx context.Context, userID uuid.UUID) (Counts, error) {
+func (r *PostgresRepository) Counts(ctx context.Context, userID uuid.UUID) (Counts, error) {
 	docs, err := r.q.DocumentCounts(ctx, userID)
 	if err != nil {
 		return Counts{}, apperr.Wrap(err, "count documents")
@@ -251,7 +253,7 @@ func (r *Repository) Counts(ctx context.Context, userID uuid.UUID) (Counts, erro
 	}, nil
 }
 
-func (r *Repository) StartRun(ctx context.Context, userID uuid.UUID, kind string) (IndexRun, error) {
+func (r *PostgresRepository) StartRun(ctx context.Context, userID uuid.UUID, kind string) (IndexRun, error) {
 	row, err := r.q.StartIndexRun(ctx, documentsdb.StartIndexRunParams{UserID: userID, Kind: kind})
 	if err != nil {
 		return IndexRun{}, apperr.Wrap(err, "start index run")
@@ -259,7 +261,7 @@ func (r *Repository) StartRun(ctx context.Context, userID uuid.UUID, kind string
 	return runFromDB(row), nil
 }
 
-func (r *Repository) CompleteRun(ctx context.Context, run IndexRun) error {
+func (r *PostgresRepository) CompleteRun(ctx context.Context, run IndexRun) error {
 	warnings, err := json.Marshal(orEmpty(run.Warnings))
 	if err != nil {
 		return apperr.Wrap(err, "encode index warnings")
@@ -279,7 +281,7 @@ func (r *Repository) CompleteRun(ctx context.Context, run IndexRun) error {
 	}), "complete index run")
 }
 
-func (r *Repository) LatestRun(ctx context.Context, userID uuid.UUID) (IndexRun, error) {
+func (r *PostgresRepository) LatestRun(ctx context.Context, userID uuid.UUID) (IndexRun, error) {
 	row, err := r.q.LatestIndexRun(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -367,7 +369,7 @@ type PendingChunk struct {
 	Content string
 }
 
-func (r *Repository) ChunksNeedingEmbedding(ctx context.Context, userID uuid.UUID, model string, limit int) ([]PendingChunk, error) {
+func (r *PostgresRepository) ChunksNeedingEmbedding(ctx context.Context, userID uuid.UUID, model string, limit int) ([]PendingChunk, error) {
 	rows, err := r.q.ChunksNeedingEmbedding(ctx, documentsdb.ChunksNeedingEmbeddingParams{
 		UserID:      userID,
 		Model:       model,
@@ -384,7 +386,7 @@ func (r *Repository) ChunksNeedingEmbedding(ctx context.Context, userID uuid.UUI
 	return out, nil
 }
 
-func (r *Repository) SaveEmbedding(ctx context.Context, chunkID string, userID uuid.UUID, provider, model string, vector []float32) error {
+func (r *PostgresRepository) SaveEmbedding(ctx context.Context, chunkID string, userID uuid.UUID, provider, model string, vector []float32) error {
 	v := pgvector.NewVector(vector)
 	return apperr.Wrap(r.q.UpsertChunkEmbedding(ctx, documentsdb.UpsertChunkEmbeddingParams{
 		ChunkID:   chunkID,
@@ -400,7 +402,7 @@ func (r *Repository) SaveEmbedding(ctx context.Context, chunkID string, userID u
 // Cosine distance comes back as 0 (identical) to 2 (opposite); it is turned
 // into a 0..1 similarity here so a caller never has to remember which direction
 // is better.
-func (r *Repository) SearchByVector(ctx context.Context, userID uuid.UUID, model string, vector []float32, limit int) ([]Hit, error) {
+func (r *PostgresRepository) SearchByVector(ctx context.Context, userID uuid.UUID, model string, vector []float32, limit int) ([]Hit, error) {
 	v := pgvector.NewVector(vector)
 
 	rows, err := r.q.SearchChunksByVector(ctx, documentsdb.SearchChunksByVectorParams{
@@ -429,7 +431,7 @@ func (r *Repository) SearchByVector(ctx context.Context, userID uuid.UUID, model
 	return out, nil
 }
 
-func (r *Repository) CountEmbedded(ctx context.Context, userID uuid.UUID, model string) (int, error) {
+func (r *PostgresRepository) CountEmbedded(ctx context.Context, userID uuid.UUID, model string) (int, error) {
 	n, err := r.q.CountEmbeddedChunks(ctx, documentsdb.CountEmbeddedChunksParams{UserID: userID, Model: model})
 	if err != nil {
 		return 0, apperr.Wrap(err, "count embedded chunks")
@@ -437,7 +439,7 @@ func (r *Repository) CountEmbedded(ctx context.Context, userID uuid.UUID, model 
 	return int(n), nil
 }
 
-func (r *Repository) GetByExternalPath(ctx context.Context, userID uuid.UUID, path string) (Document, error) {
+func (r *PostgresRepository) GetByExternalPath(ctx context.Context, userID uuid.UUID, path string) (Document, error) {
 	row, err := r.q.GetDocumentByExternalPath(ctx, documentsdb.GetDocumentByExternalPathParams{
 		UserID:       userID,
 		ExternalPath: &path,
@@ -451,7 +453,7 @@ func (r *Repository) GetByExternalPath(ctx context.Context, userID uuid.UUID, pa
 	return fromDB(row), nil
 }
 
-func (r *Repository) CreateVault(ctx context.Context, userID uuid.UUID, title, key, mime string, size int64, path string, mtime time.Time) (Document, error) {
+func (r *PostgresRepository) CreateVault(ctx context.Context, userID uuid.UUID, title, key, mime string, size int64, path string, mtime time.Time) (Document, error) {
 	row, err := r.q.CreateVaultDocument(ctx, documentsdb.CreateVaultDocumentParams{
 		UserID:        userID,
 		Title:         title,
@@ -467,7 +469,7 @@ func (r *Repository) CreateVault(ctx context.Context, userID uuid.UUID, title, k
 	return fromDB(row), nil
 }
 
-func (r *Repository) UpdateVault(ctx context.Context, id uuid.UUID, title, mime string, size int64, mtime time.Time) error {
+func (r *PostgresRepository) UpdateVault(ctx context.Context, id uuid.UUID, title, mime string, size int64, mtime time.Time) error {
 	return apperr.Wrap(r.q.UpdateVaultDocument(ctx, documentsdb.UpdateVaultDocumentParams{
 		ID:            id,
 		Title:         title,
@@ -477,7 +479,7 @@ func (r *Repository) UpdateVault(ctx context.Context, id uuid.UUID, title, mime 
 	}), "update vault document")
 }
 
-func (r *Repository) ListVaultPaths(ctx context.Context, userID uuid.UUID) (map[string]uuid.UUID, error) {
+func (r *PostgresRepository) ListVaultPaths(ctx context.Context, userID uuid.UUID) (map[string]uuid.UUID, error) {
 	rows, err := r.q.ListVaultDocumentPaths(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list vault paths")
@@ -491,7 +493,7 @@ func (r *Repository) ListVaultPaths(ctx context.Context, userID uuid.UUID) (map[
 	return out, nil
 }
 
-func (r *Repository) UsersWithEmbeddingGap(ctx context.Context, model string, limit int) ([]uuid.UUID, error) {
+func (r *PostgresRepository) UsersWithEmbeddingGap(ctx context.Context, model string, limit int) ([]uuid.UUID, error) {
 	rows, err := r.q.UsersWithEmbeddingGap(ctx, documentsdb.UsersWithEmbeddingGapParams{
 		Model:       model,
 		ResultLimit: int32(limit),

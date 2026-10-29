@@ -11,16 +11,18 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *pushdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: pushdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: pushdb.New(pool)}
 }
 
 // Upsert stores a subscription, replacing keys for an endpoint already known.
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Subscription, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Subscription, error) {
 	row, err := r.q.UpsertPushSubscription(ctx, pushdb.UpsertPushSubscriptionParams{
 		UserID:    userID,
 		Endpoint:  strings.TrimSpace(in.Endpoint),
@@ -34,7 +36,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in Input) (Su
 	return fromDB(row), nil
 }
 
-func (r *Repository) ListByUser(ctx context.Context, userID uuid.UUID) ([]Subscription, error) {
+func (r *PostgresRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]Subscription, error) {
 	rows, err := r.q.ListPushSubscriptions(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list push subscriptions")
@@ -46,7 +48,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID uuid.UUID) ([]Subscr
 	return out, nil
 }
 
-func (r *Repository) Count(ctx context.Context, userID uuid.UUID) (int, error) {
+func (r *PostgresRepository) Count(ctx context.Context, userID uuid.UUID) (int, error) {
 	n, err := r.q.CountPushSubscriptions(ctx, userID)
 	if err != nil {
 		return 0, apperr.Wrap(err, "count push subscriptions")
@@ -56,7 +58,7 @@ func (r *Repository) Count(ctx context.Context, userID uuid.UUID) (int, error) {
 
 // DeleteByEndpoint removes the person's own subscription for an endpoint.
 // Scoped to the user so nobody can unsubscribe a browser that is not theirs.
-func (r *Repository) DeleteByEndpoint(ctx context.Context, userID uuid.UUID, endpoint string) (bool, error) {
+func (r *PostgresRepository) DeleteByEndpoint(ctx context.Context, userID uuid.UUID, endpoint string) (bool, error) {
 	n, err := r.q.DeletePushSubscriptionByEndpoint(ctx, pushdb.DeletePushSubscriptionByEndpointParams{
 		UserID:   userID,
 		Endpoint: strings.TrimSpace(endpoint),
@@ -68,21 +70,21 @@ func (r *Repository) DeleteByEndpoint(ctx context.Context, userID uuid.UUID, end
 }
 
 // Delete removes a subscription the push service has declared gone.
-func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := r.q.DeletePushSubscription(ctx, id); err != nil {
 		return apperr.Wrap(err, "delete push subscription")
 	}
 	return nil
 }
 
-func (r *Repository) MarkUsed(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) MarkUsed(ctx context.Context, id uuid.UUID) error {
 	if err := r.q.MarkPushSubscriptionUsed(ctx, id); err != nil {
 		return apperr.Wrap(err, "mark push subscription used")
 	}
 	return nil
 }
 
-func (r *Repository) MarkFailed(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) MarkFailed(ctx context.Context, id uuid.UUID) error {
 	if err := r.q.MarkPushSubscriptionFailed(ctx, id); err != nil {
 		return apperr.Wrap(err, "mark push subscription failed")
 	}

@@ -5,13 +5,16 @@
 // property that makes the bound necessary: they are reachable from the open
 // internet with nothing but a token in front of them. A limit that only one of
 // them enforces is not a limit — an attacker picks the other door.
+//
+// The buckets are Echo's own memory store; this package only fixes the shape
+// every caller shares, so services that are not HTTP handlers (crew chat,
+// Telegram code redemption) count the same way the endpoints do.
 package ratelimit
 
 import (
-	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
+	echomw "github.com/labstack/echo/v5/middleware"
 )
 
 // DefaultPerMinute is used when a caller configures no bound. Generous for a
@@ -25,63 +28,29 @@ const DefaultPerMinute = 120
 // ever connected.
 const ttl = 30 * time.Minute
 
-// Limiters holds one rate limiter per key, whatever the caller is counting.
+// Store is Echo's in-memory token-bucket store. Allow never returns an error;
+// the error exists for stores backed by something that can fail.
+type Store = echomw.RateLimiterMemoryStore
+
+// New returns a store bounding each key to perMinute requests.
 //
-// The key is a string so the same type serves both stages: the account id after
-// authentication, and the remote address before it. Two near-identical maps
-// differing only in key type would be a worse answer than one conversion.
-type Limiters struct {
-	mu        sync.Mutex
-	perMinute int
-	buckets   map[string]*bucket
-	lastSweep time.Time
-}
-
-type bucket struct {
-	limiter  *rate.Limiter
-	lastSeen time.Time
-}
-
-// New returns limiters bounding each key to perMinute requests.
+// The key is whatever the caller is counting: the account id after
+// authentication, the remote address before it.
+//
+// Burst is a full minute's worth: a client that authenticates and then makes
+// several calls in quick succession is normal, and shaping that into a trickle
+// would make the server feel broken.
 //
 // A non-positive rate falls back to DefaultPerMinute rather than denying
 // everything: a configuration mistake should not be indistinguishable from an
 // outage.
-func New(perMinute int) *Limiters {
+func New(perMinute int) *Store {
 	if perMinute <= 0 {
 		perMinute = DefaultPerMinute
 	}
-	return &Limiters{perMinute: perMinute, buckets: make(map[string]*bucket), lastSweep: time.Now()}
-}
-
-// Allow reports whether this key may make a request now.
-func (l *Limiters) Allow(key string) bool {
-	now := time.Now()
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	// Swept on access rather than on a ticker: a handler with no goroutine
-	// behind it cannot leak one, and the only cost of sweeping late is a map
-	// that is briefly larger than it needs to be.
-	if now.Sub(l.lastSweep) > ttl {
-		for k, b := range l.buckets {
-			if now.Sub(b.lastSeen) > ttl {
-				delete(l.buckets, k)
-			}
-		}
-		l.lastSweep = now
-	}
-
-	b, ok := l.buckets[key]
-	if !ok {
-		// Burst is a full minute's worth: a client that authenticates and then
-		// makes several calls in quick succession is normal, and shaping that
-		// into a trickle would make the server feel broken.
-		b = &bucket{limiter: rate.NewLimiter(rate.Limit(float64(l.perMinute)/60.0), l.perMinute)}
-		l.buckets[key] = b
-	}
-	b.lastSeen = now
-
-	return b.limiter.Allow()
+	return echomw.NewRateLimiterMemoryStoreWithConfig(echomw.RateLimiterMemoryStoreConfig{
+		Rate:      float64(perMinute) / 60,
+		Burst:     perMinute,
+		ExpiresIn: ttl,
+	})
 }

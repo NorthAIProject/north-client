@@ -9,10 +9,22 @@ import (
 )
 
 type Service struct {
-	repo *Repository
+	repo Repository
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps notification preferences and schedules.
+type Repository interface {
+	Get(ctx context.Context, userID uuid.UUID) (Prefs, error)
+	Upsert(ctx context.Context, userID uuid.UUID, in Input) (Prefs, error)
+	GetSchedule(ctx context.Context, userID uuid.UUID, kind string) (Schedule, error)
+	ListSchedules(ctx context.Context, userID uuid.UUID) ([]Schedule, error)
+	UpsertSchedule(ctx context.Context, userID uuid.UUID, in ScheduleInput) (Schedule, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

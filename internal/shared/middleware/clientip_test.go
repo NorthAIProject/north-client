@@ -14,8 +14,8 @@ func TestWithoutTrustedProxiesTheHeaderIsIgnored(t *testing.T) {
 	r.RemoteAddr = "203.0.113.9:51234"
 	r.Header.Set("X-Forwarded-For", "1.2.3.4")
 
-	if got := middleware.ClientIP(r, nil); got != "203.0.113.9" {
-		t.Fatalf("ClientIP = %q, want the peer address", got)
+	if got := middleware.TrustedProxies(nil).IPExtractor()(r); got != "203.0.113.9" {
+		t.Fatalf("IPExtractor = %q, want the peer address", got)
 	}
 }
 
@@ -33,8 +33,8 @@ func TestAnUntrustedPeerCannotForgeItsAddress(t *testing.T) {
 	r.RemoteAddr = "203.0.113.9:51234"
 	r.Header.Set("X-Forwarded-For", "198.51.100.1")
 
-	if got := middleware.ClientIP(r, trusted); got != "203.0.113.9" {
-		t.Fatalf("ClientIP = %q, want the peer address for an untrusted peer", got)
+	if got := trusted.IPExtractor()(r); got != "203.0.113.9" {
+		t.Fatalf("IPExtractor = %q, want the peer address for an untrusted peer", got)
 	}
 }
 
@@ -47,8 +47,8 @@ func TestATrustedProxyRevealsTheCaller(t *testing.T) {
 	r.RemoteAddr = "10.42.0.7:44001"
 	r.Header.Set("X-Forwarded-For", "198.51.100.1")
 
-	if got := middleware.ClientIP(r, trusted); got != "198.51.100.1" {
-		t.Fatalf("ClientIP = %q, want the forwarded caller", got)
+	if got := trusted.IPExtractor()(r); got != "198.51.100.1" {
+		t.Fatalf("IPExtractor = %q, want the forwarded caller", got)
 	}
 }
 
@@ -63,8 +63,8 @@ func TestTheCallerCannotPrependAFakeHop(t *testing.T) {
 	r.RemoteAddr = "10.42.0.7:44001"
 	r.Header.Set("X-Forwarded-For", "9.9.9.9, 198.51.100.1, 10.42.0.3")
 
-	if got := middleware.ClientIP(r, trusted); got != "198.51.100.1" {
-		t.Fatalf("ClientIP = %q, want the last untrusted hop", got)
+	if got := trusted.IPExtractor()(r); got != "198.51.100.1" {
+		t.Fatalf("IPExtractor = %q, want the last untrusted hop", got)
 	}
 }
 
@@ -78,8 +78,8 @@ func TestRepeatedHeadersAreWalkedInOrder(t *testing.T) {
 	r.Header.Add("X-Forwarded-For", "198.51.100.1")
 	r.Header.Add("X-Forwarded-For", "10.42.0.3")
 
-	if got := middleware.ClientIP(r, trusted); got != "198.51.100.1" {
-		t.Fatalf("ClientIP = %q", got)
+	if got := trusted.IPExtractor()(r); got != "198.51.100.1" {
+		t.Fatalf("IPExtractor = %q", got)
 	}
 }
 
@@ -94,8 +94,8 @@ func TestAnUnparseableHopFallsBackToThePeer(t *testing.T) {
 	r.RemoteAddr = "10.42.0.7:44001"
 	r.Header.Set("X-Forwarded-For", "not-an-address, 10.42.0.3")
 
-	if got := middleware.ClientIP(r, trusted); got != "10.42.0.7" {
-		t.Fatalf("ClientIP = %q, want the peer", got)
+	if got := trusted.IPExtractor()(r); got != "10.42.0.7" {
+		t.Fatalf("IPExtractor = %q, want the peer", got)
 	}
 }
 
@@ -110,12 +110,14 @@ func TestAnIPv4MappedProxyIsStillTrusted(t *testing.T) {
 	r.RemoteAddr = "[::ffff:10.42.0.7]:44001"
 	r.Header.Set("X-Forwarded-For", "198.51.100.1")
 
-	if got := middleware.ClientIP(r, trusted); got != "198.51.100.1" {
-		t.Fatalf("ClientIP = %q, want the forwarded caller", got)
+	if got := trusted.IPExtractor()(r); got != "198.51.100.1" {
+		t.Fatalf("IPExtractor = %q, want the forwarded caller", got)
 	}
 }
 
-func TestWhenEveryHopIsOursThePeerIsUsed(t *testing.T) {
+// In-cluster traffic: nothing outside wrote any of it, so the furthest hop is
+// as true as the peer and is what Echo returns.
+func TestWhenEveryHopIsOursTheFurthestIsUsed(t *testing.T) {
 	t.Parallel()
 
 	trusted, _ := middleware.ParseTrustedProxies("10.42.0.0/16")
@@ -124,8 +126,24 @@ func TestWhenEveryHopIsOursThePeerIsUsed(t *testing.T) {
 	r.RemoteAddr = "10.42.0.7:44001"
 	r.Header.Set("X-Forwarded-For", "10.42.0.3")
 
-	if got := middleware.ClientIP(r, trusted); got != "10.42.0.7" {
-		t.Fatalf("ClientIP = %q", got)
+	if got := trusted.IPExtractor()(r); got != "10.42.0.3" {
+		t.Fatalf("IPExtractor = %q", got)
+	}
+}
+
+// Echo trusts every private and loopback peer unless told otherwise. On a
+// cluster network that is every pod, so the defaults must stay off.
+func TestAPrivatePeerOutsideTheListIsNotTrusted(t *testing.T) {
+	t.Parallel()
+
+	trusted, _ := middleware.ParseTrustedProxies("10.42.0.0/16")
+
+	r := httptest.NewRequest("POST", "/login", nil)
+	r.RemoteAddr = "192.168.1.5:44001"
+	r.Header.Set("X-Forwarded-For", "198.51.100.1")
+
+	if got := trusted.IPExtractor()(r); got != "192.168.1.5" {
+		t.Fatalf("IPExtractor = %q, want the untrusted private peer", got)
 	}
 }
 

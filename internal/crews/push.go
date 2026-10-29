@@ -7,7 +7,6 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -45,16 +44,16 @@ func (c *Chat) HandlePushJob(ctx context.Context, payload json.RawMessage) error
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return apperr.Wrap(err, "decode crew message push job")
 	}
-	m, err := c.q.PushMessage(ctx, p.MessageID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	m, err := c.repo.PushMessage(ctx, p.MessageID)
+	if errors.Is(err, apperr.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
-		return apperr.Wrap(err, "load message to push")
+		return err
 	}
-	to, err := c.q.PushRecipients(ctx, p.MessageID)
+	to, err := c.repo.PushRecipients(ctx, p.MessageID)
 	if err != nil {
-		return apperr.Wrap(err, "push recipients")
+		return err
 	}
 	title := m.CrewName + " · #" + m.ChannelName
 	body := m.AuthorName + ": " + excerpt(m.Body, pushExcerpt)

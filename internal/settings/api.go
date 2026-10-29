@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/account"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
@@ -20,6 +20,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -38,43 +39,43 @@ type API struct {
 	h *Handler
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(h *Handler) *API {
 	return &API{h: h}
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/settings/profile", a.getProfile)
-	r.Put("/settings/profile", a.putProfile)
-	r.Get("/settings/preferences", a.getPreferences)
-	r.Put("/settings/preferences", a.putPreferences)
-	r.Put("/settings/target-weight", a.putTargetWeight)
-	r.Put("/settings/appearance", a.putAppearance)
-	r.Get("/settings/notifications", a.getNotifications)
-	r.Put("/settings/notifications", a.putNotifications)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/settings/profile", a.getProfile)
+	g.PUT("/settings/profile", a.putProfile)
+	g.GET("/settings/preferences", a.getPreferences)
+	g.PUT("/settings/preferences", a.putPreferences)
+	g.PUT("/settings/target-weight", a.putTargetWeight)
+	g.PUT("/settings/appearance", a.putAppearance)
+	g.GET("/settings/notifications", a.getNotifications)
+	g.PUT("/settings/notifications", a.putNotifications)
 
-	r.Get("/settings/ai", a.getAI)
-	r.Put("/settings/ai", a.putAI)
-	r.Delete("/settings/ai", a.deleteAI)
+	g.GET("/settings/ai", a.getAI)
+	g.PUT("/settings/ai", a.putAI)
+	g.DELETE("/settings/ai", a.deleteAI)
 
-	r.Get("/settings/connections", a.listConnections)
-	r.Post("/settings/connections", a.createConnection)
-	r.Get("/settings/connections/{connectionID}", a.getConnection)
-	r.Delete("/settings/connections/{connectionID}", a.revokeConnection)
-	r.Get("/settings/activity", a.activity)
+	g.GET("/settings/connections", a.listConnections)
+	g.POST("/settings/connections", a.createConnection)
+	g.GET("/settings/connections/:connectionID", a.getConnection)
+	g.DELETE("/settings/connections/:connectionID", a.revokeConnection)
+	g.GET("/settings/activity", a.activity)
 
-	r.Get("/settings/telegram", a.getTelegram)
-	r.Post("/settings/telegram/code", a.telegramCode)
-	r.Delete("/settings/telegram", a.unlinkTelegram)
+	g.GET("/settings/telegram", a.getTelegram)
+	g.POST("/settings/telegram/code", a.telegramCode)
+	g.DELETE("/settings/telegram", a.unlinkTelegram)
 
-	r.Get("/settings/diets", a.getDiets)
-	r.Put("/settings/diets", a.putDiets)
+	g.GET("/settings/diets", a.getDiets)
+	g.PUT("/settings/diets", a.putDiets)
 
-	r.Get("/settings/calendar", a.getCalendar)
-	r.Put("/settings/calendar", a.putCalendar)
-	r.Delete("/settings/calendar", a.deleteCalendar)
+	g.GET("/settings/calendar", a.getCalendar)
+	g.PUT("/settings/calendar", a.putCalendar)
+	g.DELETE("/settings/calendar", a.deleteCalendar)
 
-	r.Post("/account/delete", a.deleteAccount)
+	g.POST("/account/delete", a.deleteAccount)
 }
 
 // MARK: Profile
@@ -128,34 +129,36 @@ type AppearanceRequest struct {
 	Surface string `json:"surface,omitempty"`
 }
 
-func (a *API) putAppearance(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) putAppearance(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var req AppearanceRequest
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
 	surface := analytics.AppearanceFromSettings
 	if req.Surface == "switcher" {
 		surface = analytics.AppearanceFromSwitcher
 	}
-	if _, err := a.h.users.SetAppearance(r.Context(), user.ID, req.Appearance, surface); err != nil {
-		httpx.Error(w, err, "Your appearance could not be saved.")
-		return
+	if _, err := a.h.users.SetAppearance(ctx, user.ID, req.Appearance, surface); err != nil {
+		return httpx.Fail(err, "Your appearance could not be saved.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) getProfile(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, projectProfile(auth.MustUser(r.Context())))
+func (a *API) getProfile(c *echo.Context) error {
+	ctx := c.Request().Context()
+	return c.JSON(http.StatusOK, projectProfile(auth.MustUser(ctx)))
 }
 
-func (a *API) putProfile(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) putProfile(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var req Profile
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
-	updated, err := a.h.users.UpdateProfile(r.Context(), user.ID, users.Profile{
+	updated, err := a.h.users.UpdateProfile(ctx, user.ID, users.Profile{
 		DisplayName:   strings.TrimSpace(req.DisplayName),
 		Timezone:      strings.TrimSpace(req.Timezone),
 		Locale:        users.ResolveLocale(req.Locale),
@@ -165,10 +168,9 @@ func (a *API) putProfile(w http.ResponseWriter, r *http.Request) {
 		Surface:       analytics.AppearanceFromIOS,
 	})
 	if err != nil {
-		httpx.Error(w, err, "Your profile could not be saved.")
-		return
+		return httpx.Fail(err, "Your profile could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectProfile(updated))
+	return c.JSON(http.StatusOK, projectProfile(updated))
 }
 
 // MARK: Preferences
@@ -180,28 +182,28 @@ type Preferences struct {
 	DefaultMacroSplit string `json:"defaultMacroSplit"`
 }
 
-func (a *API) getPreferences(w http.ResponseWriter, r *http.Request) {
-	p, err := a.h.preferences.Get(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) getPreferences(c *echo.Context) error {
+	ctx := c.Request().Context()
+	p, err := a.h.preferences.Get(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Your preferences could not be loaded.")
-		return
+		return httpx.Fail(err, "Your preferences could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, Preferences{UnitsSystem: p.UnitsSystem, DefaultGoal: p.DefaultGoal, DefaultMacroSplit: p.DefaultMacroSplit})
+	return c.JSON(http.StatusOK, Preferences{UnitsSystem: p.UnitsSystem, DefaultGoal: p.DefaultGoal, DefaultMacroSplit: p.DefaultMacroSplit})
 }
 
-func (a *API) putPreferences(w http.ResponseWriter, r *http.Request) {
+func (a *API) putPreferences(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req Preferences
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
-	p, err := a.h.preferences.Upsert(r.Context(), auth.MustUser(r.Context()).ID, preferences.Input{
+	p, err := a.h.preferences.Upsert(ctx, auth.MustUser(ctx).ID, preferences.Input{
 		UnitsSystem: req.UnitsSystem, DefaultGoal: req.DefaultGoal, DefaultMacroSplit: req.DefaultMacroSplit,
 	})
 	if err != nil {
-		httpx.Error(w, err, "Your preferences could not be saved.")
-		return
+		return httpx.Fail(err, "Your preferences could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, Preferences{UnitsSystem: p.UnitsSystem, DefaultGoal: p.DefaultGoal, DefaultMacroSplit: p.DefaultMacroSplit})
+	return c.JSON(http.StatusOK, Preferences{UnitsSystem: p.UnitsSystem, DefaultGoal: p.DefaultGoal, DefaultMacroSplit: p.DefaultMacroSplit})
 }
 
 // TargetWeight is the weight being aimed at. Null clears it.
@@ -209,17 +211,17 @@ type TargetWeight struct {
 	TargetWeightKg *float64 `json:"targetWeightKg"`
 }
 
-func (a *API) putTargetWeight(w http.ResponseWriter, r *http.Request) {
+func (a *API) putTargetWeight(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req TargetWeight
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
-	p, err := a.h.preferences.SetTargetWeight(r.Context(), auth.MustUser(r.Context()).ID, req.TargetWeightKg)
+	p, err := a.h.preferences.SetTargetWeight(ctx, auth.MustUser(ctx).ID, req.TargetWeightKg)
 	if err != nil {
-		httpx.Error(w, err, "The target weight could not be saved.")
-		return
+		return httpx.Fail(err, "The target weight could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, TargetWeight{TargetWeightKg: p.TargetWeightKg})
+	return c.JSON(http.StatusOK, TargetWeight{TargetWeightKg: p.TargetWeightKg})
 }
 
 // MARK: Notifications
@@ -269,28 +271,28 @@ type NotificationsUpdate struct {
 	CoachAdjustsTraining *bool `json:"coachAdjustsTraining,omitempty"`
 }
 
-func (a *API) getNotifications(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	n, err := a.h.notifications.Get(r.Context(), user.ID)
+func (a *API) getNotifications(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	n, err := a.h.notifications.Get(ctx, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "Your notification settings could not be loaded.")
-		return
+		return httpx.Fail(err, "Your notification settings could not be loaded.")
 	}
-	photo, err := a.h.notifications.PhotoSchedule(r.Context(), user.ID)
+	photo, err := a.h.notifications.PhotoSchedule(ctx, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "Your notification settings could not be loaded.")
-		return
+		return httpx.Fail(err, "Your notification settings could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectNotifications(n, photo))
+	return c.JSON(http.StatusOK, projectNotifications(n, photo))
 }
 
-func (a *API) putNotifications(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) putNotifications(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var req NotificationsUpdate
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
-	n, err := a.h.notifications.Upsert(r.Context(), user.ID, notifications.Input{
+	n, err := a.h.notifications.Upsert(ctx, user.ID, notifications.Input{
 		BriefingHour: req.BriefingHour, EveningReflection: req.EveningReflection, EveningHour: req.EveningHour,
 		CoachCheckIns: req.CoachCheckIns, CoachAdjustsTraining: req.CoachAdjustsTraining,
 		NudgeMissedCheckIn: req.NudgeMissedCheckIn, NudgeGoalDeadline: req.NudgeGoalDeadline,
@@ -300,17 +302,15 @@ func (a *API) putNotifications(w http.ResponseWriter, r *http.Request) {
 		QuietHoursEnabled:  req.QuietHoursEnabled, QuietStart: strings.TrimSpace(req.QuietStart), QuietEnd: strings.TrimSpace(req.QuietEnd),
 	})
 	if err != nil {
-		httpx.Error(w, err, "Your notification settings could not be saved.")
-		return
+		return httpx.Fail(err, "Your notification settings could not be saved.")
 	}
-	photo, err := a.h.notifications.UpsertSchedule(r.Context(), user.ID, notifications.ScheduleInput{
+	photo, err := a.h.notifications.UpsertSchedule(ctx, user.ID, notifications.ScheduleInput{
 		Kind: notifications.KindPhoto, Enabled: req.PhotoAskEnabled, EveryDays: req.PhotoEveryDays, ReminderDays: req.PhotoReminderDays,
 	})
 	if err != nil {
-		httpx.Error(w, err, "Your photo reminders could not be saved.")
-		return
+		return httpx.Fail(err, "Your photo reminders could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectNotifications(n, photo))
+	return c.JSON(http.StatusOK, projectNotifications(n, photo))
 }
 
 func projectNotifications(n notifications.Prefs, photo notifications.Schedule) Notifications {
@@ -372,50 +372,49 @@ type AIRequest struct {
 	BaseURL  string `json:"baseUrl"`
 }
 
-func (a *API) getAI(w http.ResponseWriter, r *http.Request) {
-	out, err := a.aiSettings(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) getAI(c *echo.Context) error {
+	ctx := c.Request().Context()
+	out, err := a.aiSettings(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Your AI provider could not be loaded.")
-		return
+		return httpx.Fail(err, "Your AI provider could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) putAI(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) putAI(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var req AIRequest
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
-	if _, err := a.h.aicreds.Save(r.Context(), user.ID, aicreds.Input{
+	if _, err := a.h.aicreds.Save(ctx, user.ID, aicreds.Input{
 		Provider: req.Provider, APIKey: req.APIKey, Model: req.Model, BaseURL: req.BaseURL,
 	}); err != nil {
-		httpx.Error(w, err, "That provider could not be saved.")
-		return
+		return httpx.Fail(err, "That provider could not be saved.")
 	}
 	// As on the web: find out in the background whether this provider will
 	// call the coach's tools. The answer appears on a later GET.
 	go func(userID uuid.UUID) {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), probeBudget)
+		probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), probeBudget)
 		defer cancel()
-		a.h.aicreds.ProbeTools(ctx, userID)
+		a.h.aicreds.ProbeTools(probeCtx, userID)
 	}(user.ID)
 
-	out, err := a.aiSettings(r.Context(), user.ID)
+	out, err := a.aiSettings(ctx, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "Your AI provider could not be loaded.")
-		return
+		return httpx.Fail(err, "Your AI provider could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) deleteAI(w http.ResponseWriter, r *http.Request) {
+func (a *API) deleteAI(c *echo.Context) error {
+	ctx := c.Request().Context()
 	// Already gone is the outcome the caller wanted.
-	if err := a.h.aicreds.Delete(r.Context(), auth.MustUser(r.Context()).ID); err != nil && !apperr.Is(err, apperr.ErrNotFound) {
-		httpx.Error(w, err, "Your AI provider could not be removed.")
-		return
+	if err := a.h.aicreds.Delete(ctx, auth.MustUser(ctx).ID); err != nil && !apperr.Is(err, apperr.ErrNotFound) {
+		return httpx.Fail(err, "Your AI provider could not be removed.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (a *API) aiSettings(ctx context.Context, userID uuid.UUID) (AISettings, error) {
@@ -519,72 +518,70 @@ func projectSetup(s connections.Setup) ConnectionSetup {
 	}
 }
 
-func (a *API) listConnections(w http.ResponseWriter, r *http.Request) {
-	list, err := a.h.connections.List(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) listConnections(c *echo.Context) error {
+	ctx := c.Request().Context()
+	list, err := a.h.connections.List(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Your connections could not be loaded.")
-		return
+		return httpx.Fail(err, "Your connections could not be loaded.")
 	}
 	out := ConnectionList{
 		Connections:  make([]Connection, 0, len(list)),
 		ConnectorURL: a.h.connections.ConnectorURL(),
 		Previews:     make([]ConnectionSetup, 0, len(connections.ClientKinds)),
 	}
-	for _, c := range list {
-		out.Connections = append(out.Connections, projectConnection(c))
+	for _, conn := range list {
+		out.Connections = append(out.Connections, projectConnection(conn))
 	}
-	locale := i18n.LocaleFrom(r.Context())
+	locale := i18n.LocaleFrom(ctx)
 	for _, kind := range connections.ClientKinds {
 		out.Previews = append(out.Previews, projectSetup(a.h.connections.Preview(kind).In(locale)))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // getConnection answers the "waiting for first use" poll: lastUsedAt appears
 // once an agent has authenticated with the key. A revoked one is a 404.
-func (a *API) getConnection(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "connectionID"))
+func (a *API) getConnection(c *echo.Context) error {
+	ctx := c.Request().Context()
+	id, err := echox.UUIDParam(c, "connectionID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	conn, err := a.h.connections.Get(r.Context(), id, auth.MustUser(r.Context()).ID)
+	conn, err := a.h.connections.Get(ctx, id, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "That connection could not be loaded.")
-		return
+		return httpx.Fail(err, "That connection could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectConnection(conn))
+	return c.JSON(http.StatusOK, projectConnection(conn))
 }
 
-func (a *API) createConnection(w http.ResponseWriter, r *http.Request) {
+func (a *API) createConnection(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req CreateConnectionRequest
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
-	issued, err := a.h.connections.Issue(r.Context(), auth.MustUser(r.Context()).ID, strings.TrimSpace(req.Name), connections.ClientKind(req.Kind))
+	issued, err := a.h.connections.Issue(ctx, auth.MustUser(ctx).ID, strings.TrimSpace(req.Name), connections.ClientKind(req.Kind))
 	if err != nil {
-		httpx.Error(w, err, "That connection could not be created.")
-		return
+		return httpx.Fail(err, "That connection could not be created.")
 	}
-	setup := a.h.connections.Instructions(issued.Kind, issued.Token).In(i18n.LocaleFrom(r.Context()))
-	httpx.WriteJSON(w, http.StatusCreated, CreatedConnection{
+	setup := a.h.connections.Instructions(issued.Kind, issued.Token).In(i18n.LocaleFrom(ctx))
+	return c.JSON(http.StatusCreated, CreatedConnection{
 		Connection: projectConnection(issued.Connection),
 		Token:      issued.Token,
 		Setup:      projectSetup(setup),
 	})
 }
 
-func (a *API) revokeConnection(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "connectionID"))
+func (a *API) revokeConnection(c *echo.Context) error {
+	ctx := c.Request().Context()
+	id, err := echox.UUIDParam(c, "connectionID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	if err := a.h.connections.Revoke(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "That connection could not be revoked.")
-		return
+	if err := a.h.connections.Revoke(ctx, id, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "That connection could not be revoked.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // Execution is one thing North did on this person's behalf, from the coach
@@ -605,11 +602,11 @@ type ActivityList struct {
 	Executions []Execution `json:"executions"`
 }
 
-func (a *API) activity(w http.ResponseWriter, r *http.Request) {
-	list, err := a.h.audit.List(r.Context(), auth.MustUser(r.Context()).ID, 0)
+func (a *API) activity(c *echo.Context) error {
+	ctx := c.Request().Context()
+	list, err := a.h.audit.List(ctx, auth.MustUser(ctx).ID, 0)
 	if err != nil {
-		httpx.Error(w, err, "Activity could not be loaded.")
-		return
+		return httpx.Fail(err, "Activity could not be loaded.")
 	}
 	out := ActivityList{Executions: make([]Execution, 0, len(list))}
 	for _, e := range list {
@@ -621,7 +618,7 @@ func (a *API) activity(w http.ResponseWriter, r *http.Request) {
 			ID: e.ID, Tool: e.Tool, Arguments: args, Surface: string(e.Surface), Outcome: string(e.Outcome), Detail: e.Detail, CreatedAt: e.CreatedAt,
 		})
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // MARK: Telegram
@@ -642,13 +639,13 @@ type TelegramCode struct {
 	DeepLink string `json:"deepLink,omitempty"`
 }
 
-func (a *API) getTelegram(w http.ResponseWriter, r *http.Request) {
+func (a *API) getTelegram(c *echo.Context) error {
+	ctx := c.Request().Context()
 	out := TelegramSettings{Enabled: a.h.telegram.Enabled(), BotUsername: a.h.telegram.BotUsername}
 	if out.Enabled {
-		links, err := a.h.messaging.Links(r.Context(), auth.MustUser(r.Context()).ID)
+		links, err := a.h.messaging.Links(ctx, auth.MustUser(ctx).ID)
 		if err != nil {
-			httpx.Error(w, err, "Telegram could not be checked.")
-			return
+			return httpx.Fail(err, "Telegram could not be checked.")
 		}
 		for _, link := range links {
 			if link.Platform == messaging.PlatformTelegram {
@@ -657,32 +654,31 @@ func (a *API) getTelegram(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) telegramCode(w http.ResponseWriter, r *http.Request) {
+func (a *API) telegramCode(c *echo.Context) error {
+	ctx := c.Request().Context()
 	if !a.h.telegram.Enabled() {
-		httpx.Error(w, apperr.ErrNotFound, "Telegram is not available on this server.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Telegram is not available on this server.")
 	}
-	code, err := a.h.messaging.IssueCode(r.Context(), auth.MustUser(r.Context()).ID, messaging.PlatformTelegram)
+	code, err := a.h.messaging.IssueCode(ctx, auth.MustUser(ctx).ID, messaging.PlatformTelegram)
 	if err != nil {
-		httpx.Error(w, err, "A link code could not be issued.")
-		return
+		return httpx.Fail(err, "A link code could not be issued.")
 	}
 	out := TelegramCode{Code: code}
 	if a.h.telegram.BotUsername != "" {
 		out.DeepLink = "https://t.me/" + url.PathEscape(a.h.telegram.BotUsername) + "?start=" + url.QueryEscape(code)
 	}
-	httpx.WriteJSON(w, http.StatusCreated, out)
+	return c.JSON(http.StatusCreated, out)
 }
 
-func (a *API) unlinkTelegram(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.h.messaging.Unlink(r.Context(), auth.MustUser(r.Context()).ID, messaging.PlatformTelegram); err != nil {
-		httpx.Error(w, err, "Telegram could not be disconnected.")
-		return
+func (a *API) unlinkTelegram(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if _, err := a.h.messaging.Unlink(ctx, auth.MustUser(ctx).ID, messaging.PlatformTelegram); err != nil {
+		return httpx.Fail(err, "Telegram could not be disconnected.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // MARK: Diets
@@ -706,25 +702,25 @@ type DietsRequest struct {
 	DietIDs []uuid.UUID `json:"dietIds"`
 }
 
-func (a *API) getDiets(w http.ResponseWriter, r *http.Request) {
-	out, err := a.diets(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) getDiets(c *echo.Context) error {
+	ctx := c.Request().Context()
+	out, err := a.diets(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Your diets could not be loaded.")
-		return
+		return httpx.Fail(err, "Your diets could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) putDiets(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) putDiets(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var req DietsRequest
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
-	all, err := a.h.diets.ListDiets(r.Context())
+	all, err := a.h.diets.ListDiets(ctx)
 	if err != nil {
-		httpx.Error(w, err, "Your diets could not be saved.")
-		return
+		return httpx.Fail(err, "Your diets could not be saved.")
 	}
 	// The web form can only post ids it rendered; a JSON client can send
 	// anything, so an unknown id is named rather than left to the database.
@@ -734,20 +730,17 @@ func (a *API) putDiets(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, id := range req.DietIDs {
 		if !known[id] {
-			httpx.Error(w, apperr.FieldErrors{}.Add("dietIds", "That diet does not exist."), "That diet does not exist.")
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("dietIds", "That diet does not exist."), "That diet does not exist.")
 		}
 	}
-	if err = a.h.diets.SetUserDiets(r.Context(), user.ID, req.DietIDs); err != nil {
-		httpx.Error(w, err, "Your diets could not be saved.")
-		return
+	if err = a.h.diets.SetUserDiets(ctx, user.ID, req.DietIDs); err != nil {
+		return httpx.Fail(err, "Your diets could not be saved.")
 	}
-	out, err := a.diets(r.Context(), user.ID)
+	out, err := a.diets(ctx, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "Your diets could not be loaded.")
-		return
+		return httpx.Fail(err, "Your diets could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 func (a *API) diets(ctx context.Context, userID uuid.UUID) (DietSettings, error) {
@@ -798,52 +791,48 @@ type CalendarRequest struct {
 	Token    string `json:"token"`
 }
 
-func (a *API) getCalendar(w http.ResponseWriter, r *http.Request) {
-	out, err := a.calendar(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) getCalendar(c *echo.Context) error {
+	ctx := c.Request().Context()
+	out, err := a.calendar(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Your calendar could not be checked.")
-		return
+		return httpx.Fail(err, "Your calendar could not be checked.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) putCalendar(w http.ResponseWriter, r *http.Request) {
+func (a *API) putCalendar(c *echo.Context) error {
+	ctx := c.Request().Context()
 	if a.h.integrations == nil {
-		httpx.Error(w, apperr.ErrNotFound, "Calendars are not available on this server.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Calendars are not available on this server.")
 	}
-	user := auth.MustUser(r.Context())
+	user := auth.MustUser(ctx)
 	var req CalendarRequest
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
-	if err := a.h.integrations.Connect(r.Context(), user.ID, req.Endpoint, req.Token); err != nil {
+	if err := a.h.integrations.Connect(ctx, user.ID, req.Endpoint, req.Token); err != nil {
 		// Validation and unreachable-endpoint errors are written for the person.
 		if apperr.Is(err, apperr.ErrValidation) || apperr.Is(err, apperr.ErrUnavailable) {
-			httpx.Error(w, apperr.FieldErrors{}.Add("endpoint", err.Error()), err.Error())
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("endpoint", err.Error()), err.Error())
 		}
-		httpx.Error(w, err, "That calendar could not be connected.")
-		return
+		return httpx.Fail(err, "That calendar could not be connected.")
 	}
-	out, err := a.calendar(r.Context(), user.ID)
+	out, err := a.calendar(ctx, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "Your calendar could not be checked.")
-		return
+		return httpx.Fail(err, "Your calendar could not be checked.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) deleteCalendar(w http.ResponseWriter, r *http.Request) {
+func (a *API) deleteCalendar(c *echo.Context) error {
+	ctx := c.Request().Context()
 	if a.h.integrations == nil {
-		httpx.Error(w, apperr.ErrNotFound, "Calendars are not available on this server.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Calendars are not available on this server.")
 	}
-	if err := a.h.integrations.Disconnect(r.Context(), auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "Your calendar could not be disconnected.")
-		return
+	if err := a.h.integrations.Disconnect(ctx, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "Your calendar could not be disconnected.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (a *API) calendar(ctx context.Context, userID uuid.UUID) (CalendarSettings, error) {
@@ -871,27 +860,22 @@ type DeleteAccountRequest struct {
 
 // deleteAccount erases the account. The session goes with it, so the client
 // signs out on a 204.
-func (a *API) deleteAccount(w http.ResponseWriter, r *http.Request) {
+func (a *API) deleteAccount(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req DeleteAccountRequest
-	if !read(w, r, &req) {
-		return
+	if err := read(c, &req); err != nil {
+		return err
 	}
-	if _, err := a.h.account.Delete(r.Context(), auth.MustUser(r.Context()), req.ConfirmEmail); err != nil {
+	if _, err := a.h.account.Delete(ctx, auth.MustUser(ctx), req.ConfirmEmail); err != nil {
 		var fields apperr.FieldErrors
 		if apperr.As(err, &fields) {
-			httpx.Error(w, apperr.FieldErrors{}.Add("confirmEmail", fields.Messages()[account.ConfirmField]), "Type your email address to confirm.")
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("confirmEmail", fields.Messages()[account.ConfirmField]), "Type your email address to confirm.")
 		}
-		httpx.Error(w, err, "Your account could not be deleted.")
-		return
+		return httpx.Fail(err, "Your account could not be deleted.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func read(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
-	}
-	return true
+func read(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 64 << 10}, "The request body could not be read.")
 }

@@ -8,8 +8,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/awards/award"
-	awardsdb "github.com/NorthAIProject/north-client/internal/awards/db"
-	"github.com/NorthAIProject/north-client/internal/hydration/hydration"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/progresschecks/progresscheck"
 )
@@ -74,7 +72,7 @@ var ruleOf = map[string]metric{
 // counter computes metrics for one person, once each per evaluation.
 type counter struct {
 	ctx  context.Context
-	q    *awardsdb.Queries
+	repo Repository
 	user uuid.UUID
 	tz   string
 	tzOK bool
@@ -82,15 +80,15 @@ type counter struct {
 	fail metric // test seam: this metric errors
 }
 
-func newCounter(ctx context.Context, q *awardsdb.Queries, user uuid.UUID) *counter {
-	return &counter{ctx: ctx, q: q, user: user, seen: map[metric]int{}}
+func newCounter(ctx context.Context, repo Repository, user uuid.UUID) *counter {
+	return &counter{ctx: ctx, repo: repo, user: user, seen: map[metric]int{}}
 }
 
 func (c *counter) zone() (string, error) {
 	if c.tzOK {
 		return c.tz, nil
 	}
-	tz, err := c.q.Timezone(c.ctx, c.user)
+	tz, err := c.repo.Timezone(c.ctx, c.user)
 	if err != nil {
 		return "", fmt.Errorf("awards: timezone: %w", err)
 	}
@@ -117,82 +115,32 @@ func (c *counter) count(m metric) (int, error) {
 	return n, nil
 }
 
+// compute reads a metric's figure. The zone and the progress-check gap are
+// looked up only for the metrics that use them.
 func (c *counter) compute(m metric) (int, error) {
-	ctx, q, u := c.ctx, c.q, c.user
-	var n int32
+	var tz string
+	var gap int
 	var err error
 	switch m {
-	case mWorkouts:
-		n, err = q.CountWorkouts(ctx, u)
-	case mEarlyBird:
-		var tz string
-		if tz, err = c.zone(); err == nil {
-			n, err = q.CountEarlyBird(ctx, awardsdb.CountEarlyBirdParams{UserID: u, Tz: tz})
-		}
 	case mPRs:
 		return c.personalRecords()
-	case mCentury:
-		n, err = q.CountCentury(ctx, u)
-	case mCheckInRun:
-		n, err = q.LongestCheckInRun(ctx, u)
-	case mHabitWeekRun:
-		n, err = q.LongestHabitWeekRun(ctx, u)
-	case mHabitCompletions:
-		n, err = q.CountHabitCompletions(ctx, u)
-	case mFoodRun:
-		n, err = q.LongestFoodLogRun(ctx, u)
-	case mProteinDays:
-		n, err = q.CountProteinDays(ctx, u)
-	case mWaterRun:
-		n, err = q.LongestWaterRun(ctx, awardsdb.LongestWaterRunParams{UserID: u, TargetMl: hydration.DefaultDailyTargetML})
-	case mWaterDays:
-		n, err = q.CountWaterDays(ctx, awardsdb.CountWaterDaysParams{UserID: u, TargetMl: hydration.DefaultDailyTargetML})
-	case mRestedWeeks:
-		n, err = q.CountRestedWeeks(ctx, u)
-	case mSleepNights:
-		n, err = q.CountSleepNights(ctx, u)
-	case mJournal:
-		n, err = q.CountJournalEntries(ctx, u)
-	case mMilestones:
-		n, err = q.CountMilestones(ctx, u)
-	case mGoalsOnTime:
-		var tz string
-		if tz, err = c.zone(); err == nil {
-			n, err = q.CountGoalsOnTime(ctx, awardsdb.CountGoalsOnTimeParams{UserID: u, Tz: tz})
-		}
-	case mReviews:
-		n, err = q.CountWeeklyReviews(ctx, u)
+	case mEarlyBird, mGoalsOnTime, mConnectedDays:
+		tz, err = c.zone()
 	case mCheckRun:
-		var gap int
-		if gap, err = c.checkGap(); err == nil {
-			n, err = q.LongestProgressCheckRun(ctx, awardsdb.LongestProgressCheckRunParams{UserID: u, MaxGap: int32(gap)})
-		}
-	case mConnectedDays:
-		var tz string
-		if tz, err = c.zone(); err == nil {
-			n, err = q.CountConnectedDays(ctx, awardsdb.CountConnectedDaysParams{UserID: u, Tz: tz})
-		}
-	case mFasts:
-		n, err = q.CountFasts(ctx, u)
-	case mFollowers:
-		n, err = q.CountFollowers(ctx, u)
-	case mCrew:
-		n, err = q.CountCrewChallenges(ctx, u)
-	default:
-		return 0, fmt.Errorf("no rule for metric %q", m)
+		gap, err = c.checkGap()
 	}
-	return int(n), err
+	if err != nil {
+		return 0, err
+	}
+	return c.repo.Count(c.ctx, c.user, m, tz, gap)
 }
 
 // checkGap is the most days allowed between two progress checks for them to
 // count as kept up: the current cadence plus three days of slack. With no
 // schedule it is 31.
 func (c *counter) checkGap() (int, error) {
-	cad, err := c.q.ProgressCadence(c.ctx, c.user)
+	cad, err := c.repo.ProgressCadence(c.ctx, c.user)
 	if err != nil {
-		if isNoRows(err) {
-			return 31, nil
-		}
 		return 0, err
 	}
 	switch progresscheck.Cadence(cad) {
@@ -211,19 +159,12 @@ func (c *counter) checkGap() (int, error) {
 // session, so records set in an exercise's first session do not count (the
 // same rule lift.Card applies to a workout's PR badge).
 func (c *counter) personalRecords() (int, error) {
-	rows, err := c.q.ListWorkSets(c.ctx, c.user)
+	sets, err := c.repo.WorkSets(c.ctx, c.user)
 	if err != nil {
 		return 0, err
 	}
-	sets := make([]lift.Set, 0, len(rows))
 	firstSession := map[string]string{}
-	for _, r := range rows {
-		s := lift.Set{
-			ID: r.ID, ActivitySessionID: r.ActivitySessionID, LogDate: r.LogDate.Time,
-			ExerciseSlug: r.ExerciseSlug, ExerciseName: r.ExerciseName, SetNumber: int(r.SetNumber),
-			WeightKg: r.WeightKg, Reps: int(r.Reps), PerformedAt: r.PerformedAt, Kind: r.Kind,
-		}
-		sets = append(sets, s)
+	for _, s := range sets {
 		if _, ok := firstSession[s.Key()]; !ok {
 			firstSession[s.Key()] = sessionKey(s)
 		}

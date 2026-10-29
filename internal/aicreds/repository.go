@@ -19,18 +19,20 @@ import (
 // only asks for.
 type Sealed []byte
 
-type Repository struct {
+type PostgresRepository struct {
 	q *aicredsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: aicredsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: aicredsdb.New(pool)}
 }
 
 // Get returns the credential without its key. Use Key for the sealed bytes;
 // the split means a caller that only renders the settings page never holds
 // the ciphertext at all.
-func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Credential, error) {
+func (r *PostgresRepository) Get(ctx context.Context, userID uuid.UUID) (Credential, error) {
 	row, err := r.q.GetUserAICredential(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -42,7 +44,7 @@ func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Credential, err
 }
 
 // Key returns the sealed key alongside the credential.
-func (r *Repository) Key(ctx context.Context, userID uuid.UUID) (Credential, Sealed, error) {
+func (r *PostgresRepository) Key(ctx context.Context, userID uuid.UUID) (Credential, Sealed, error) {
 	row, err := r.q.GetUserAICredential(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -58,7 +60,7 @@ func (r *Repository) Key(ctx context.Context, userID uuid.UUID) (Credential, Sea
 // The error is not wrapped with the parameters, following
 // strava/repository.go: one of them is a credential, and an error string is
 // where a credential-shaped value most easily ends up in a log.
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, provider string, key Sealed, hint, model, baseURL string) (Credential, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, provider string, key Sealed, hint, model, baseURL string) (Credential, error) {
 	row, err := r.q.UpsertUserAICredential(ctx, aicredsdb.UpsertUserAICredentialParams{
 		UserID: userID, Provider: provider, ApiKey: key, KeyHint: hint, Model: model, BaseUrl: baseURL,
 	})
@@ -69,7 +71,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, provider stri
 }
 
 // UpdateSettings changes the model and gateway URL without touching the stored key.
-func (r *Repository) UpdateSettings(ctx context.Context, userID uuid.UUID, model, baseURL string) (Credential, error) {
+func (r *PostgresRepository) UpdateSettings(ctx context.Context, userID uuid.UUID, model, baseURL string) (Credential, error) {
 	row, err := r.q.UpdateUserAICredentialSettings(ctx, aicredsdb.UpdateUserAICredentialSettingsParams{
 		UserID: userID, Model: model, BaseUrl: baseURL,
 	})
@@ -82,7 +84,7 @@ func (r *Repository) UpdateSettings(ctx context.Context, userID uuid.UUID, model
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, userID uuid.UUID) error {
 	rows, err := r.q.DeleteUserAICredential(ctx, userID)
 	if err != nil {
 		return apperr.Wrap(err, "delete user ai credential")
@@ -95,7 +97,7 @@ func (r *Repository) Delete(ctx context.Context, userID uuid.UUID) error {
 
 // RecordError stores why the last attempt failed. Best-effort by design: the
 // caller is already handling a failure and must not acquire a second one.
-func (r *Repository) RecordError(ctx context.Context, userID uuid.UUID, reason string) error {
+func (r *PostgresRepository) RecordError(ctx context.Context, userID uuid.UUID, reason string) error {
 	err := r.q.RecordUserAICredentialError(ctx, aicredsdb.RecordUserAICredentialErrorParams{
 		UserID: userID, LastError: reason,
 	})
@@ -117,7 +119,7 @@ func fromDB(row aicredsdb.UserAiCredential) Credential {
 }
 
 // RecordToolSupport stores what the tools probe found.
-func (r *Repository) RecordToolSupport(ctx context.Context, userID uuid.UUID, supported bool) error {
+func (r *PostgresRepository) RecordToolSupport(ctx context.Context, userID uuid.UUID, supported bool) error {
 	return r.q.RecordUserAICredentialToolSupport(ctx, aicredsdb.RecordUserAICredentialToolSupportParams{
 		UserID:        userID,
 		SupportsTools: &supported,

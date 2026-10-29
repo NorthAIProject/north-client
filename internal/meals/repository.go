@@ -10,17 +10,19 @@ import (
 	mealsdb "github.com/NorthAIProject/north-client/internal/meals/db"
 )
 
-// Repository is shared by all seven meal services. One struct rather than
-// one per service: they all read and write the same eight tables, and
+// PostgresRepository is shared by all seven meal services. One struct rather
+// than one per service: they all read and write the same eight tables, and
 // splitting the struct would just mean passing the same *pgxpool.Pool-backed
 // queries object under seven different names.
-type Repository struct {
+type PostgresRepository struct {
 	q    *mealsdb.Queries
 	pool *pgxpool.Pool
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: mealsdb.New(pool), pool: pool}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: mealsdb.New(pool), pool: pool}
 }
 
 // macrosToJSON/macrosFromJSON convert between Macros and the jsonb columns

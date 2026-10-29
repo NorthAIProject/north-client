@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/labstack/echo/v5"
+
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/lifts"
@@ -48,8 +50,8 @@ type StaleMuscle struct {
 	Days int    `json:"days"`
 }
 
-func (a *API) overview(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+func (a *API) overview(c *echo.Context) error {
+	ctx := c.Request().Context()
 	user := auth.MustUser(ctx)
 	now := time.Now().In(user.Location())
 	out := TrainingOverview{}
@@ -57,15 +59,13 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 	if a.recaps != nil {
 		progress, err := a.svc.WeekProgress(ctx, user, now)
 		if err != nil {
-			httpx.Error(w, err, "Training could not be loaded.")
-			return
+			return httpx.Fail(err, "Training could not be loaded.")
 		}
 		if len(progress.Completed) > 0 {
 			week := activity.WeekStart(now, user.Location())
 			recap, ok, err := a.recaps.LatestRecap(ctx, user, timerange.Between(week, week.AddDate(0, 0, 7)))
 			if err != nil {
-				httpx.Error(w, err, "Training could not be loaded.")
-				return
+				return httpx.Fail(err, "Training could not be loaded.")
 			}
 			if ok {
 				view := lifts.ProjectRecap(recap)
@@ -78,8 +78,7 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 	if a.loads != nil {
 		load, err := a.loads.Readiness(ctx, user)
 		if err != nil {
-			httpx.Error(w, err, "Training could not be loaded.")
-			return
+			return httpx.Fail(err, "Training could not be loaded.")
 		}
 		if !load.LastSession.IsZero() {
 			rd := workoutsummary.NewReadiness(load)
@@ -94,5 +93,5 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }

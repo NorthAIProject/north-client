@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
@@ -26,35 +26,35 @@ func NewAPI(svc *Service, siteURL string) *API {
 	return &API{svc: svc, siteURL: strings.TrimRight(siteURL, "/")}
 }
 
-// PublicRoutes are what needs no bearer token: who sent this link, and
-// Facebook's return from a connection begun in the app.
-func (a *API) PublicRoutes(r chi.Router) {
-	r.Get("/invites/{code}", a.preview)
-	r.Get("/social/facebook/callback", a.facebookCallback)
+// RegisterPublic registers what needs no bearer token: who sent this link,
+// and Facebook's return from a connection begun in the app.
+func (a *API) RegisterPublic(g *echo.Group) {
+	g.GET("/invites/:code", a.preview)
+	g.GET("/social/facebook/callback", a.facebookCallback)
 }
 
-// Routes go behind auth.RequireBearer.
-func (a *API) Routes(r chi.Router) {
-	r.Get("/social", a.overview)
-	r.Put("/social/handle", a.setHandle)
-	r.Get("/invites", a.invite)
-	r.Post("/invites/{code}/redeem", a.redeem)
-	r.Post("/follows", a.follow)
-	r.Delete("/follows/{userID}", a.unfollow)
-	r.Post("/followers/{userID}/accept", a.accept)
-	r.Delete("/followers/{userID}", a.removeFollower)
-	r.Post("/friends/match", a.matchContacts)
-	r.Post("/blocks/{userID}", a.block)
-	r.Delete("/blocks/{userID}", a.unblock)
-	r.Get("/social/phone", a.phone)
-	r.Delete("/social/phone", a.removePhone)
-	r.Post("/social/phone/verification", a.startPhone)
-	r.Delete("/social/phone/verification", a.cancelPhone)
-	r.Post("/social/phone/verification/check", a.checkPhone)
-	r.Get("/social/facebook", a.facebookFriends)
-	r.Delete("/social/facebook", a.disconnectFacebook)
-	r.Post("/social/facebook/connect", a.connectFacebook)
-	a.webRoutes(r)
+// Register registers the routes that go behind auth.Bearer.
+func (a *API) Register(g *echo.Group) {
+	g.GET("/social", a.overview)
+	g.PUT("/social/handle", a.setHandle)
+	g.GET("/invites", a.invite)
+	g.POST("/invites/:code/redeem", a.redeem)
+	g.POST("/follows", a.follow)
+	g.DELETE("/follows/:userID", a.unfollow)
+	g.POST("/followers/:userID/accept", a.accept)
+	g.DELETE("/followers/:userID", a.removeFollower)
+	g.POST("/friends/match", a.matchContacts)
+	g.POST("/blocks/:userID", a.block)
+	g.DELETE("/blocks/:userID", a.unblock)
+	g.GET("/social/phone", a.phone)
+	g.DELETE("/social/phone", a.removePhone)
+	g.POST("/social/phone/verification", a.startPhone)
+	g.DELETE("/social/phone/verification", a.cancelPhone)
+	g.POST("/social/phone/verification/check", a.checkPhone)
+	g.GET("/social/facebook", a.facebookFriends)
+	g.DELETE("/social/facebook", a.disconnectFacebook)
+	g.POST("/social/facebook/connect", a.connectFacebook)
+	a.registerWeb(g)
 }
 
 type PersonView struct {
@@ -125,53 +125,52 @@ type RedeemView struct {
 	Redeemed bool `json:"redeemed"`
 }
 
-func (a *API) overview(w http.ResponseWriter, r *http.Request) {
-	o, err := a.svc.Overview(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) overview(c *echo.Context) error {
+	ctx := c.Request().Context()
+	o, err := a.svc.Overview(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Friends could not be loaded.")
-		return
+		return httpx.Fail(err, "Friends could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, a.projectOverview(o))
+	return c.JSON(http.StatusOK, a.projectOverview(o))
 }
 
-func (a *API) setHandle(w http.ResponseWriter, r *http.Request) {
+func (a *API) setHandle(c *echo.Context) error {
 	var req HandleRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	handle, err := a.svc.SetHandle(r.Context(), auth.MustUser(r.Context()).ID, req.Handle)
+	ctx := c.Request().Context()
+	handle, err := a.svc.SetHandle(ctx, auth.MustUser(ctx).ID, req.Handle)
 	if err != nil {
-		httpx.Error(w, err, "That handle could not be saved.")
-		return
+		return httpx.Fail(err, "That handle could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, HandleView{Handle: handle})
+	return c.JSON(http.StatusOK, HandleView{Handle: handle})
 }
 
-func (a *API) invite(w http.ResponseWriter, r *http.Request) {
-	inv, err := a.svc.InviteFor(r.Context(), auth.MustUser(r.Context()).ID, r.URL.Query().Get("channel"))
+func (a *API) invite(c *echo.Context) error {
+	ctx := c.Request().Context()
+	inv, err := a.svc.InviteFor(ctx, auth.MustUser(ctx).ID, c.QueryParam("channel"))
 	if err != nil {
-		httpx.Error(w, err, "Your invite link could not be made.")
-		return
+		return httpx.Fail(err, "Your invite link could not be made.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, a.projectInvite(inv))
+	return c.JSON(http.StatusOK, a.projectInvite(inv))
 }
 
-func (a *API) preview(w http.ResponseWriter, r *http.Request) {
-	p, err := a.svc.PreviewInvite(r.Context(), chi.URLParam(r, "code"))
+func (a *API) preview(c *echo.Context) error {
+	p, err := a.svc.PreviewInvite(c.Request().Context(), c.Param("code"))
 	if err != nil {
-		httpx.Error(w, err, "That invite link does not work.")
-		return
+		return httpx.Fail(err, "That invite link does not work.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, InvitePreviewView{Code: p.Code, Inviter: projectPerson(p.Inviter)})
+	return c.JSON(http.StatusOK, InvitePreviewView{Code: p.Code, Inviter: projectPerson(p.Inviter)})
 }
 
-func (a *API) redeem(w http.ResponseWriter, r *http.Request) {
-	ok, err := a.svc.Redeem(r.Context(), auth.MustUser(r.Context()).ID, chi.URLParam(r, "code"))
+func (a *API) redeem(c *echo.Context) error {
+	ctx := c.Request().Context()
+	ok, err := a.svc.Redeem(ctx, auth.MustUser(ctx).ID, c.Param("code"))
 	if err != nil {
-		httpx.Error(w, err, "That invite could not be used.")
-		return
+		return httpx.Fail(err, "That invite could not be used.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, RedeemView{Redeemed: ok})
+	return c.JSON(http.StatusOK, RedeemView{Redeemed: ok})
 }
 
 // ProjectProfile is the profile as the API sends it. The route lives in
@@ -183,54 +182,53 @@ func ProjectProfile(p Profile) ProfileView {
 	}
 }
 
-func (a *API) follow(w http.ResponseWriter, r *http.Request) {
+func (a *API) follow(c *echo.Context) error {
 	var req FollowRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	c, err := a.svc.Follow(r.Context(), auth.MustUser(r.Context()).ID, req.Handle)
+	ctx := c.Request().Context()
+	conn, err := a.svc.Follow(ctx, auth.MustUser(ctx).ID, req.Handle)
 	if err != nil {
-		httpx.Error(w, err, "Nobody has that handle.")
-		return
+		return httpx.Fail(err, "Nobody has that handle.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectConnection(c))
+	return c.JSON(http.StatusOK, projectConnection(conn))
 }
 
-func (a *API) unfollow(w http.ResponseWriter, r *http.Request) {
-	a.onPerson(w, r, "You could not unfollow them.", a.svc.Unfollow)
+func (a *API) unfollow(c *echo.Context) error {
+	return a.onPerson(c, "You could not unfollow them.", a.svc.Unfollow)
 }
 
-func (a *API) accept(w http.ResponseWriter, r *http.Request) {
-	a.onPerson(w, r, "That request could not be accepted.", a.svc.Accept)
+func (a *API) accept(c *echo.Context) error {
+	return a.onPerson(c, "That request could not be accepted.", a.svc.Accept)
 }
 
-func (a *API) removeFollower(w http.ResponseWriter, r *http.Request) {
-	a.onPerson(w, r, "They could not be removed.", a.svc.RemoveFollower)
+func (a *API) removeFollower(c *echo.Context) error {
+	return a.onPerson(c, "They could not be removed.", a.svc.RemoveFollower)
 }
 
-func (a *API) block(w http.ResponseWriter, r *http.Request) {
-	a.onPerson(w, r, "They could not be blocked.", a.svc.Block)
+func (a *API) block(c *echo.Context) error {
+	return a.onPerson(c, "They could not be blocked.", a.svc.Block)
 }
 
-func (a *API) unblock(w http.ResponseWriter, r *http.Request) {
-	a.onPerson(w, r, "They could not be unblocked.", a.svc.Unblock)
+func (a *API) unblock(c *echo.Context) error {
+	return a.onPerson(c, "They could not be unblocked.", a.svc.Unblock)
 }
 
-// onPerson runs an action between the signed-in account and {userID}, and
+// onPerson runs an action between the signed-in account and :userID, and
 // answers 204.
-func (a *API) onPerson(w http.ResponseWriter, r *http.Request, failure string,
+func (a *API) onPerson(c *echo.Context, failure string,
 	act func(ctx context.Context, me, them uuid.UUID) error,
-) {
-	them, err := uuid.Parse(chi.URLParam(r, "userID"))
+) error {
+	them, err := echox.UUIDParam(c, "userID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	if err := act(r.Context(), auth.MustUser(r.Context()).ID, them); err != nil {
-		httpx.Error(w, err, failure)
-		return
+	ctx := c.Request().Context()
+	if err := act(ctx, auth.MustUser(ctx).ID, them); err != nil {
+		return httpx.Fail(err, failure)
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (a *API) projectOverview(o Overview) SocialOverview {
@@ -270,12 +268,8 @@ func projectConnections(cs []Connection) []ConnectionView {
 	return out
 }
 
-func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
-	}
-	return true
+func readJSON(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 16 << 10}, "The request body could not be read.")
 }
 
 type MatchRequest struct {
@@ -297,18 +291,17 @@ type MatchView struct {
 	People []MatchedPerson `json:"people"`
 }
 
-func (a *API) matchContacts(w http.ResponseWriter, r *http.Request) {
+func (a *API) matchContacts(c *echo.Context) error {
 	var req MatchRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 256 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 256 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	found, err := a.svc.MatchContacts(r.Context(), auth.MustUser(r.Context()).ID, req.Hashes, req.PhoneHashes)
+	ctx := c.Request().Context()
+	found, err := a.svc.MatchContacts(ctx, auth.MustUser(ctx).ID, req.Hashes, req.PhoneHashes)
 	if err != nil {
-		httpx.Error(w, err, "Your contacts could not be checked.")
-		return
+		return httpx.Fail(err, "Your contacts could not be checked.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectMatches(found))
+	return c.JSON(http.StatusOK, projectMatches(found))
 }
 
 func projectMatches(found []Connection) MatchView {

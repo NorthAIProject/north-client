@@ -4,26 +4,28 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
-// APIRoutes mounts the vault for a web front end, behind auth.RequireBearer.
+// RegisterAPI registers the vault for a web front end, on a group behind
+// auth.Bearer.
 //
 // The same switch as Routes: a hosted deployment cannot read a folder on the
 // person's own machine, so the routes do not exist there. A nil handler (a
-// test's apiSet) mounts nothing.
-func (h *Handler) APIRoutes(r chi.Router) {
+// test's apiSet) registers nothing.
+func (h *Handler) RegisterAPI(g *echo.Group) {
 	if h == nil || !h.enabled {
 		return
 	}
-	r.Get("/settings/vault", h.apiShow)
-	r.Put("/settings/vault", h.apiConnect)
-	r.Delete("/settings/vault", h.apiDisconnect)
-	r.Post("/settings/vault/sync", h.apiSync)
+	g.GET("/settings/vault", h.apiShow)
+	g.PUT("/settings/vault", h.apiConnect)
+	g.DELETE("/settings/vault", h.apiDisconnect)
+	g.POST("/settings/vault/sync", h.apiSync)
 }
 
 // Status is the linked vault folder. RootPath is empty when none is linked.
@@ -42,41 +44,40 @@ func projectStatus(conn Connection) Status {
 	return Status{RootPath: conn.RootPath, LastSyncAt: conn.LastSyncAt, LastError: conn.LastError}
 }
 
-func (h *Handler) apiShow(w http.ResponseWriter, r *http.Request) {
-	conn, err := h.svc.Get(r.Context(), auth.MustUser(r.Context()).ID)
+func (h *Handler) apiShow(c *echo.Context) error {
+	ctx := c.Request().Context()
+	conn, err := h.svc.Get(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Your vault could not be loaded.")
-		return
+		return httpx.Fail(err, "Your vault could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectStatus(conn))
+	return c.JSON(http.StatusOK, projectStatus(conn))
 }
 
-func (h *Handler) apiConnect(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) apiConnect(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req ConnectRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 16 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	conn, err := h.svc.Connect(r.Context(), auth.MustUser(r.Context()).ID, req.RootPath)
+	conn, err := h.svc.Connect(ctx, auth.MustUser(ctx).ID, req.RootPath)
 	if err != nil {
-		httpx.Error(w, err, "That vault could not be connected.")
-		return
+		return httpx.Fail(err, "That vault could not be connected.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectStatus(conn))
+	return c.JSON(http.StatusOK, projectStatus(conn))
 }
 
-func (h *Handler) apiDisconnect(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Disconnect(r.Context(), auth.MustUser(r.Context()).ID); err != nil && !apperr.Is(err, apperr.ErrNotFound) {
-		httpx.Error(w, err, "Your vault could not be disconnected.")
-		return
+func (h *Handler) apiDisconnect(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := h.svc.Disconnect(ctx, auth.MustUser(ctx).ID); err != nil && !apperr.Is(err, apperr.ErrNotFound) {
+		return httpx.Fail(err, "Your vault could not be disconnected.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (h *Handler) apiSync(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.SyncNow(r.Context(), auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "Your vault could not be synced.")
-		return
+func (h *Handler) apiSync(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := h.svc.SyncNow(ctx, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "Your vault could not be synced.")
 	}
-	w.WriteHeader(http.StatusAccepted)
+	return c.NoContent(http.StatusAccepted)
 }

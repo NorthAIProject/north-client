@@ -13,15 +13,17 @@ import (
 	toolauditdb "github.com/NorthAIProject/north-client/internal/toolaudit/db"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *toolauditdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: toolauditdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: toolauditdb.New(pool)}
 }
 
-func (r *Repository) Insert(ctx context.Context, e Execution) error {
+func (r *PostgresRepository) Insert(ctx context.Context, e Execution) error {
 	_, err := r.q.RecordToolExecution(ctx, toolauditdb.RecordToolExecutionParams{
 		UserID: e.UserID,
 		Tool:   e.Tool,
@@ -35,7 +37,7 @@ func (r *Repository) Insert(ctx context.Context, e Execution) error {
 	return apperr.Wrap(err, "record tool execution %q", e.Tool)
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Execution, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Execution, error) {
 	rows, err := r.q.ListToolExecutions(ctx, toolauditdb.ListToolExecutionsParams{
 		UserID:   userID,
 		RowLimit: int32(limit),
@@ -61,7 +63,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]E
 	return out, nil
 }
 
-func (r *Repository) ArgumentsSince(ctx context.Context, userID uuid.UUID, tool string, surface Surface, since time.Time) ([]json.RawMessage, error) {
+func (r *PostgresRepository) ArgumentsSince(ctx context.Context, userID uuid.UUID, tool string, surface Surface, since time.Time) ([]json.RawMessage, error) {
 	rows, err := r.q.ToolArgumentsSince(ctx, toolauditdb.ToolArgumentsSinceParams{
 		UserID:  userID,
 		Tool:    tool,

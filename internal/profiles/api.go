@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/social"
@@ -27,11 +27,11 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc, now: time.Now} }
 
-// Routes go behind auth.RequireBearer.
-func (a *API) Routes(r chi.Router) {
-	r.Get("/profiles/{handle}", a.profile)
-	r.Get("/profiles/{handle}/workouts", a.workouts)
-	r.Get("/profiles/{handle}/workouts/{sessionID}", a.workout)
+// Register goes behind auth.Bearer.
+func (a *API) Register(g *echo.Group) {
+	g.GET("/profiles/:handle", a.profile)
+	g.GET("/profiles/:handle/workouts", a.workouts)
+	g.GET("/profiles/:handle/workouts/:sessionID", a.workout)
 }
 
 // SharesView is which sections of the profile this viewer can see.
@@ -111,43 +111,41 @@ func projectPage(p Page) WorkoutsView {
 	return WorkoutsView{Items: projectCards(p.Items, 2), Before: p.Before, Shared: p.Shared}
 }
 
-func (a *API) profile(w http.ResponseWriter, r *http.Request) {
-	v, err := a.svc.View(r.Context(), auth.MustUser(r.Context()), chi.URLParam(r, "handle"), a.now())
+func (a *API) profile(c *echo.Context) error {
+	ctx := c.Request().Context()
+	v, err := a.svc.View(ctx, auth.MustUser(ctx), c.Param("handle"), a.now())
 	if err != nil {
-		httpx.Error(w, err, "Nobody has that handle.")
-		return
+		return httpx.Fail(err, "Nobody has that handle.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectView(r.Context(), v))
+	return c.JSON(http.StatusOK, projectView(ctx, v))
 }
 
-func (a *API) workouts(w http.ResponseWriter, r *http.Request) {
+func (a *API) workouts(c *echo.Context) error {
 	var before time.Time
-	if raw := r.URL.Query().Get("before"); raw != "" {
+	if raw := c.QueryParam("before"); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
-			httpx.Error(w, apperr.FieldErrors{}.Add("before", "Use a time like 2026-10-22T09:00:00Z."), "Check the time.")
-			return
+			return httpx.Fail(apperr.FieldErrors{}.Add("before", "Use a time like 2026-10-22T09:00:00Z."), "Check the time.")
 		}
 		before = t
 	}
-	p, err := a.svc.Workouts(r.Context(), auth.MustUser(r.Context()), chi.URLParam(r, "handle"), before)
+	ctx := c.Request().Context()
+	p, err := a.svc.Workouts(ctx, auth.MustUser(ctx), c.Param("handle"), before)
 	if err != nil {
-		httpx.Error(w, err, "Nobody has that handle.")
-		return
+		return httpx.Fail(err, "Nobody has that handle.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectPage(p))
+	return c.JSON(http.StatusOK, projectPage(p))
 }
 
-func (a *API) workout(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "sessionID"))
+func (a *API) workout(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "sessionID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	c, err := a.svc.Workout(r.Context(), auth.MustUser(r.Context()), chi.URLParam(r, "handle"), id)
+	ctx := c.Request().Context()
+	card, err := a.svc.Workout(ctx, auth.MustUser(ctx), c.Param("handle"), id)
 	if err != nil {
-		httpx.Error(w, err, "Not found.")
-		return
+		return httpx.Fail(err, "Not found.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, lifts.ProjectCard(c, 0))
+	return c.JSON(http.StatusOK, lifts.ProjectCard(card, 0))
 }

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -16,12 +16,12 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/news", a.ticker)
-	a.settingsRoutes(r)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/news", a.ticker)
+	a.registerSettings(g)
 }
 
 type NewsItemView struct {
@@ -37,20 +37,19 @@ type NewsTicker struct {
 	Items   []NewsItemView `json:"items"`
 }
 
-func (a *API) ticker(w http.ResponseWriter, r *http.Request) {
+func (a *API) ticker(c *echo.Context) error {
 	// A deployment without feeds configured has no news service.
 	if a.svc == nil {
-		httpx.WriteJSON(w, http.StatusOK, NewsTicker{Items: []NewsItemView{}})
-		return
+		return c.JSON(http.StatusOK, NewsTicker{Items: []NewsItemView{}})
 	}
-	t, err := a.svc.Ticker(r.Context(), auth.MustUser(r.Context()), 20)
+	ctx := c.Request().Context()
+	t, err := a.svc.Ticker(ctx, auth.MustUser(ctx), 20)
 	if err != nil {
-		httpx.Error(w, err, "The news could not be loaded.")
-		return
+		return httpx.Fail(err, "The news could not be loaded.")
 	}
 	out := NewsTicker{Enabled: t.Enabled, Items: make([]NewsItemView, 0, len(t.Items))}
 	for _, it := range t.Items {
 		out.Items = append(out.Items, NewsItemView{Title: it.Title, URL: it.URL, Source: it.Source, PublishedAt: it.PublishedAt})
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }

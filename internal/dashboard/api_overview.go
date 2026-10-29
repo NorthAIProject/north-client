@@ -1,9 +1,11 @@
 package dashboard
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -73,32 +75,32 @@ type OverviewVersion struct {
 	CheckInVersion string `json:"checkInVersion"`
 }
 
-func (a *API) overview(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) overview(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 
-	rg := timerange.Parse(r.URL.Query().Get("range"), user.Location())
-	snapshot, err := a.svc.Load(r.Context(), user, rg)
+	rg := timerange.Parse(c.QueryParam("range"), user.Location())
+	snapshot, err := a.svc.Load(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, "The overview could not be loaded.")
-		return
+		return httpx.Fail(err, "The overview could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectOverview(r, snapshot))
+	return c.JSON(http.StatusOK, projectOverview(ctx, snapshot))
 }
 
 // version answers whether the check-ins moved, for one small query instead of
 // the dozen a full overview load runs.
-func (a *API) version(w http.ResponseWriter, r *http.Request) {
-	v, err := a.svc.CheckInVersion(r.Context(), auth.MustUser(r.Context()))
+func (a *API) version(c *echo.Context) error {
+	ctx := c.Request().Context()
+	v, err := a.svc.CheckInVersion(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, "The overview could not be loaded.")
-		return
+		return httpx.Fail(err, "The overview could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, OverviewVersion{CheckInVersion: v})
+	return c.JSON(http.StatusOK, OverviewVersion{CheckInVersion: v})
 }
 
-func projectOverview(r *http.Request, snap Snapshot) OverviewResponse {
+func projectOverview(ctx context.Context, snap Snapshot) OverviewResponse {
 	out := OverviewResponse{
-		Snapshot:          projectSnapshot(r.Context(), snap),
+		Snapshot:          projectSnapshot(ctx, snap),
 		NewsTickerEnabled: snap.NewsTickerEnabled,
 		CheckInVersion:    snap.CheckInVersion,
 		NextSession:       projectPlanDay(snap.NextSession),

@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
@@ -17,8 +18,8 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Put("/screen-time", a.set)
+func (a *API) Register(g *echo.Group) {
+	g.PUT("/screen-time", a.set)
 }
 
 type ScreenTimeRequest struct {
@@ -35,26 +36,24 @@ type ScreenTimeView struct {
 	Source  string `json:"source"`
 }
 
-func (a *API) set(w http.ResponseWriter, r *http.Request) {
+func (a *API) set(c *echo.Context) error {
 	var req ScreenTimeRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	user := auth.MustUser(r.Context())
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var date *time.Time
 	if req.Date != "" {
 		d, err := time.ParseInLocation("2006-01-02", req.Date, user.Location())
 		if err != nil {
-			httpx.Error(w, err, "Date must be YYYY-MM-DD.")
-			return
+			return httpx.Fail(err, "Date must be YYYY-MM-DD.")
 		}
 		date = &d
 	}
-	day, err := a.svc.Set(r.Context(), user, date, req.Minutes, req.Source)
+	day, err := a.svc.Set(ctx, user, date, req.Minutes, req.Source)
 	if err != nil {
-		httpx.Error(w, err, "The screen time could not be saved.")
-		return
+		return httpx.Fail(err, "The screen time could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, ScreenTimeView{Date: day.LocalDate.Format("2006-01-02"), Minutes: day.Minutes, Source: day.Source})
+	return c.JSON(http.StatusOK, ScreenTimeView{Date: day.LocalDate.Format("2006-01-02"), Minutes: day.Minutes, Source: day.Source})
 }

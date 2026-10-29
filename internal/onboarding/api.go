@@ -4,11 +4,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/firstweek"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
@@ -17,15 +18,15 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API {
 	return &API{svc: svc}
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/onboarding", a.form)
-	r.Post("/onboarding", a.complete)
-	r.Post("/onboarding/skip", a.skip)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/onboarding", a.form)
+	g.POST("/onboarding", a.complete)
+	g.POST("/onboarding/skip", a.skip)
 }
 
 // FormResponse is what the questionnaire offers, so a client renders the same
@@ -48,8 +49,8 @@ type SkipResponse struct {
 	User auth.APIUser `json:"user"`
 }
 
-func (a *API) form(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) form(c *echo.Context) error {
+	user := auth.MustUser(c.Request().Context())
 	response := FormResponse{
 		NeedsOnboarding:    user.NeedsOnboarding(),
 		FocusAreas:         FocusAreas,
@@ -60,19 +61,18 @@ func (a *API) form(w http.ResponseWriter, r *http.Request) {
 	if response.FirstWeek {
 		response.FirstWeekTemplates = firstweek.Templates
 	}
-	httpx.WriteJSON(w, http.StatusOK, response)
+	return c.JSON(http.StatusOK, response)
 }
 
 // skip finishes onboarding without answers, as the Go form's skip button does.
 // Idempotent: an onboarded account comes back unchanged.
-func (a *API) skip(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	skipped, err := a.svc.Skip(r.Context(), user)
+func (a *API) skip(c *echo.Context) error {
+	ctx := c.Request().Context()
+	skipped, err := a.svc.Skip(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, "Onboarding could not be skipped.")
-		return
+		return httpx.Fail(err, "Onboarding could not be skipped.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, SkipResponse{User: auth.ProjectUser(skipped)})
+	return c.JSON(http.StatusOK, SkipResponse{User: auth.ProjectUser(skipped)})
 }
 
 type Request struct {
@@ -91,13 +91,13 @@ type Response struct {
 	ThreadID string       `json:"threadId,omitempty"`
 }
 
-func (a *API) complete(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) complete(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 
 	var req Request
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must be a valid onboarding request.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 64 << 10}, "The request body must be a valid onboarding request."); err != nil {
+		return err
 	}
 
 	preset := strings.TrimSpace(req.CoachingStyle)
@@ -110,20 +110,18 @@ func (a *API) complete(w http.ResponseWriter, r *http.Request) {
 	}
 	answers, err := ValidateAnswers(req.FocusAreas, preset, custom, req.NearTermGoal)
 	if err != nil {
-		httpx.Error(w, err, "Please complete the required onboarding fields.")
-		return
+		return httpx.Fail(err, "Please complete the required onboarding fields.")
 	}
 	answers.FirstWeekTemplate = req.FirstWeekTemplate
 
-	onboarded, thread, err := a.svc.Complete(r.Context(), user, answers)
+	onboarded, thread, err := a.svc.Complete(ctx, user, answers)
 	if err != nil {
-		httpx.Error(w, err, "Onboarding could not be completed.")
-		return
+		return httpx.Fail(err, "Onboarding could not be completed.")
 	}
 
 	response := Response{User: auth.ProjectUser(onboarded)}
 	if thread != uuid.Nil {
 		response.ThreadID = thread.String()
 	}
-	httpx.WriteJSON(w, http.StatusOK, response)
+	return c.JSON(http.StatusOK, response)
 }

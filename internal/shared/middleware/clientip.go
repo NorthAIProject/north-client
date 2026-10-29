@@ -3,9 +3,10 @@ package middleware
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"net/netip"
 	"strings"
+
+	"github.com/labstack/echo/v5"
 )
 
 // TrustedProxies are the networks whose X-Forwarded-For header may be believed.
@@ -43,19 +44,13 @@ func ParseTrustedProxies(raw string) (TrustedProxies, error) {
 	return out, nil
 }
 
-func (t TrustedProxies) contains(addr netip.Addr) bool {
-	// Unmap first: a proxy that connects over IPv6 to an IPv4 listener arrives
-	// as ::ffff:10.42.0.7, which matches no IPv4 prefix until it is unwrapped.
-	addr = addr.Unmap()
-	for _, prefix := range t {
-		if prefix.Contains(addr) {
-			return true
-		}
-	}
-	return false
-}
-
-// ClientIP returns the address a request should be attributed to.
+// IPExtractor returns the function that attributes a request to an address.
+//
+// It is Echo's X-Forwarded-For extractor with every implicit trust switched
+// off: by default Echo believes any loopback, link-local or private peer, which
+// on a cluster network is every pod, including one an attacker controls. Only
+// the configured prefixes are believed here. Set it once on echo.Config and
+// handlers read c.RealIP(); code still behind chi calls the function directly.
 //
 // # Why this exists
 //
@@ -71,49 +66,22 @@ func (t TrustedProxies) contains(addr netip.Addr) bool {
 // ignoring it: an attacker sets a fresh value per request and gets an unlimited
 // number of buckets, which is a rate limiter that rate-limits nobody.
 //
-// So the header is consulted only when the peer is itself trusted, and the walk
-// runs right to left — the rightmost entries were appended by infrastructure we
-// control, and the first one that is not ours is the earliest hop we can still
-// believe. Anything further left was written by the caller.
-func ClientIP(r *http.Request, trusted TrustedProxies) string {
-	peer := remoteAddr(r)
-	if len(trusted) == 0 {
-		return peer
+// So the walk starts at the peer and runs right to left — the rightmost entries
+// were appended by infrastructure we control, and the first one that is not
+// ours is the earliest hop we can still believe. Anything further left was
+// written by the caller. An unparseable hop stops the walk at the peer.
+func (t TrustedProxies) IPExtractor() echo.IPExtractor {
+	options := []echo.TrustOption{
+		echo.TrustLoopback(false),
+		echo.TrustLinkLocal(false),
+		echo.TrustPrivateNet(false),
 	}
-
-	addr, err := netip.ParseAddr(peer)
-	if err != nil || !trusted.contains(addr) {
-		// The connection did not come from a proxy we know. Whatever it claims
-		// about earlier hops is its own invention.
-		return peer
+	for _, prefix := range t {
+		prefix = prefix.Masked()
+		options = append(options, echo.TrustIPRange(&net.IPNet{
+			IP:   net.IP(prefix.Addr().AsSlice()),
+			Mask: net.CIDRMask(prefix.Bits(), prefix.Addr().BitLen()),
+		}))
 	}
-
-	forwarded := r.Header.Values("X-Forwarded-For")
-	for i := len(forwarded) - 1; i >= 0; i-- {
-		hops := strings.Split(forwarded[i], ",")
-		for j := len(hops) - 1; j >= 0; j-- {
-			hop, hopErr := netip.ParseAddr(strings.TrimSpace(hops[j]))
-			if hopErr != nil {
-				// Unparseable means forged or truncated. Stop rather than skip:
-				// continuing would step past it to a value the same writer
-				// chose.
-				return peer
-			}
-			if !trusted.contains(hop) {
-				return hop.Unmap().String()
-			}
-		}
-	}
-
-	// Every hop was one of ours, which happens for in-cluster traffic. The peer
-	// is then the most specific true thing available.
-	return peer
-}
-
-func remoteAddr(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return echo.ExtractIPFromXFFHeader(options...)
 }

@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/lifedomain"
@@ -25,21 +26,21 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/goals", a.list)
-	r.Post("/goals", a.create)
-	r.Get("/goals/{goalID}", a.show)
-	r.Put("/goals/{goalID}", a.update)
-	r.Put("/goals/{goalID}/status", a.setStatus)
-	r.Delete("/goals/{goalID}", a.destroy)
-	r.Post("/goals/{goalID}/updates", a.addUpdate)
-	r.Post("/goals/{goalID}/milestones", a.addMilestone)
-	r.Put("/goals/{goalID}/milestones/{milestoneID}", a.updateMilestone)
-	r.Put("/goals/{goalID}/milestones/{milestoneID}/status", a.setMilestoneStatus)
-	r.Delete("/goals/{goalID}/milestones/{milestoneID}", a.deleteMilestone)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/goals", a.list)
+	g.POST("/goals", a.create)
+	g.GET("/goals/:goalID", a.show)
+	g.PUT("/goals/:goalID", a.update)
+	g.PUT("/goals/:goalID/status", a.setStatus)
+	g.DELETE("/goals/:goalID", a.destroy)
+	g.POST("/goals/:goalID/updates", a.addUpdate)
+	g.POST("/goals/:goalID/milestones", a.addMilestone)
+	g.PUT("/goals/:goalID/milestones/:milestoneID", a.updateMilestone)
+	g.PUT("/goals/:goalID/milestones/:milestoneID/status", a.setMilestoneStatus)
+	g.DELETE("/goals/:goalID/milestones/:milestoneID", a.deleteMilestone)
 }
 
 type GoalUpdateView struct {
@@ -114,189 +115,185 @@ type MilestoneRequest struct {
 	TargetDate string `json:"targetDate,omitempty"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	userID := auth.MustUser(r.Context()).ID
-	goals, err := a.svc.List(r.Context(), userID)
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
+	userID := auth.MustUser(ctx).ID
+	goals, err := a.svc.List(ctx, userID)
 	if err != nil {
-		httpx.Error(w, err, "Goals could not be loaded.")
-		return
+		return httpx.Fail(err, "Goals could not be loaded.")
 	}
-	overdue, err := a.svc.CountOverdueMilestones(r.Context(), userID)
+	overdue, err := a.svc.CountOverdueMilestones(ctx, userID)
 	if err != nil {
-		httpx.Error(w, err, "Goals could not be loaded.")
-		return
+		return httpx.Fail(err, "Goals could not be loaded.")
 	}
 	out := GoalList{Goals: make([]GoalSummary, 0, len(goals)), Categories: lifedomain.Domains, OverdueMilestones: overdue}
 	for _, g := range goals {
 		out.Goals = append(out.Goals, summarize(g))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) create(w http.ResponseWriter, r *http.Request) {
-	in, ok := readGoal(w, r)
-	if !ok {
-		return
-	}
-	userID := auth.MustUser(r.Context()).ID
-	goal, err := a.svc.Create(r.Context(), userID, in)
+func (a *API) create(c *echo.Context) error {
+	in, err := readGoal(c)
 	if err != nil {
-		httpx.Error(w, err, "The goal could not be saved.")
-		return
+		return err
 	}
-	a.writeDetail(w, r, http.StatusCreated, goal.ID)
+	ctx := c.Request().Context()
+	goal, err := a.svc.Create(ctx, auth.MustUser(ctx).ID, in)
+	if err != nil {
+		return httpx.Fail(err, "The goal could not be saved.")
+	}
+	return a.writeDetail(c, http.StatusCreated, goal.ID)
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "goalID")
-	if !ok {
-		return
+func (a *API) show(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "goalID")
+	if err != nil {
+		return err
 	}
-	a.writeDetail(w, r, http.StatusOK, id)
+	return a.writeDetail(c, http.StatusOK, id)
 }
 
-func (a *API) update(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "goalID")
-	if !ok {
-		return
+func (a *API) update(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "goalID")
+	if err != nil {
+		return err
 	}
-	in, ok := readGoal(w, r)
-	if !ok {
-		return
+	in, err := readGoal(c)
+	if err != nil {
+		return err
 	}
-	if _, err := a.svc.Update(r.Context(), id, auth.MustUser(r.Context()).ID, in); err != nil {
-		httpx.Error(w, err, "The goal could not be saved.")
-		return
+	ctx := c.Request().Context()
+	if _, err = a.svc.Update(ctx, id, auth.MustUser(ctx).ID, in); err != nil {
+		return httpx.Fail(err, "The goal could not be saved.")
 	}
-	a.writeDetail(w, r, http.StatusOK, id)
+	return a.writeDetail(c, http.StatusOK, id)
 }
 
-func (a *API) setStatus(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "goalID")
-	if !ok {
-		return
+func (a *API) setStatus(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "goalID")
+	if err != nil {
+		return err
 	}
 	var req StatusRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err = readJSON(c, &req); err != nil {
+		return err
 	}
-	if _, err := a.svc.SetStatus(r.Context(), id, auth.MustUser(r.Context()).ID, req.Status); err != nil {
-		httpx.Error(w, err, "The goal's status could not be changed.")
-		return
+	ctx := c.Request().Context()
+	if _, err = a.svc.SetStatus(ctx, id, auth.MustUser(ctx).ID, req.Status); err != nil {
+		return httpx.Fail(err, "The goal's status could not be changed.")
 	}
-	a.writeDetail(w, r, http.StatusOK, id)
+	return a.writeDetail(c, http.StatusOK, id)
 }
 
-func (a *API) destroy(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "goalID")
-	if !ok {
-		return
+func (a *API) destroy(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "goalID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.Delete(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The goal could not be deleted.")
-		return
+	ctx := c.Request().Context()
+	if err = a.svc.Delete(ctx, id, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The goal could not be deleted.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) addUpdate(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "goalID")
-	if !ok {
-		return
+func (a *API) addUpdate(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "goalID")
+	if err != nil {
+		return err
 	}
 	var req UpdateRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err = readJSON(c, &req); err != nil {
+		return err
 	}
-	update, err := a.svc.AddUpdate(r.Context(), id, auth.MustUser(r.Context()).ID, req.Note, req.Progress)
+	ctx := c.Request().Context()
+	update, err := a.svc.AddUpdate(ctx, id, auth.MustUser(ctx).ID, req.Note, req.Progress)
 	if err != nil {
-		httpx.Error(w, err, "The note could not be saved.")
-		return
+		return httpx.Fail(err, "The note could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, projectUpdate(update))
+	return c.JSON(http.StatusCreated, projectUpdate(update))
 }
 
-func (a *API) addMilestone(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "goalID")
-	if !ok {
-		return
-	}
-	in, ok := readMilestone(w, r)
-	if !ok {
-		return
-	}
-	m, err := a.svc.AddMilestone(r.Context(), id, auth.MustUser(r.Context()).ID, in)
+func (a *API) addMilestone(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "goalID")
 	if err != nil {
-		httpx.Error(w, err, "The milestone could not be saved.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusCreated, projectMilestone(m))
+	in, err := readMilestone(c)
+	if err != nil {
+		return err
+	}
+	ctx := c.Request().Context()
+	m, err := a.svc.AddMilestone(ctx, id, auth.MustUser(ctx).ID, in)
+	if err != nil {
+		return httpx.Fail(err, "The milestone could not be saved.")
+	}
+	return c.JSON(http.StatusCreated, projectMilestone(m))
 }
 
-func (a *API) updateMilestone(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "milestoneID")
-	if !ok {
-		return
-	}
-	in, ok := readMilestone(w, r)
-	if !ok {
-		return
-	}
-	m, err := a.svc.UpdateMilestone(r.Context(), id, auth.MustUser(r.Context()).ID, in)
+func (a *API) updateMilestone(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "milestoneID")
 	if err != nil {
-		httpx.Error(w, err, "The milestone could not be saved.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectMilestone(m))
+	in, err := readMilestone(c)
+	if err != nil {
+		return err
+	}
+	ctx := c.Request().Context()
+	m, err := a.svc.UpdateMilestone(ctx, id, auth.MustUser(ctx).ID, in)
+	if err != nil {
+		return httpx.Fail(err, "The milestone could not be saved.")
+	}
+	return c.JSON(http.StatusOK, projectMilestone(m))
 }
 
-func (a *API) setMilestoneStatus(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "milestoneID")
-	if !ok {
-		return
+func (a *API) setMilestoneStatus(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "milestoneID")
+	if err != nil {
+		return err
 	}
 	var req StatusRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err = readJSON(c, &req); err != nil {
+		return err
 	}
-	m, err := a.svc.SetMilestoneStatus(r.Context(), id, auth.MustUser(r.Context()).ID, req.Status)
+	ctx := c.Request().Context()
+	m, err := a.svc.SetMilestoneStatus(ctx, id, auth.MustUser(ctx).ID, req.Status)
 	if err != nil {
-		httpx.Error(w, err, "The milestone could not be changed.")
-		return
+		return httpx.Fail(err, "The milestone could not be changed.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectMilestone(m))
+	return c.JSON(http.StatusOK, projectMilestone(m))
 }
 
-func (a *API) deleteMilestone(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "milestoneID")
-	if !ok {
-		return
+func (a *API) deleteMilestone(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "milestoneID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.DeleteMilestone(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The milestone could not be deleted.")
-		return
+	ctx := c.Request().Context()
+	if err = a.svc.DeleteMilestone(ctx, id, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The milestone could not be deleted.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // writeDetail answers with the goal as its detail page shows it: milestones
 // and the recent progress notes, read fresh after whatever changed.
-func (a *API) writeDetail(w http.ResponseWriter, r *http.Request, status int, id uuid.UUID) {
-	userID := auth.MustUser(r.Context()).ID
-	goal, err := a.svc.Get(r.Context(), id, userID)
+func (a *API) writeDetail(c *echo.Context, status int, id uuid.UUID) error {
+	ctx := c.Request().Context()
+	userID := auth.MustUser(ctx).ID
+	goal, err := a.svc.Get(ctx, id, userID)
 	if err != nil {
-		httpx.Error(w, err, "The goal could not be loaded.")
-		return
+		return httpx.Fail(err, "The goal could not be loaded.")
 	}
-	milestones, err := a.svc.Milestones(r.Context(), id, userID)
+	milestones, err := a.svc.Milestones(ctx, id, userID)
 	if err != nil {
-		httpx.Error(w, err, "The goal could not be loaded.")
-		return
+		return httpx.Fail(err, "The goal could not be loaded.")
 	}
-	updates, err := a.svc.Updates(r.Context(), id, userID, 20)
+	updates, err := a.svc.Updates(ctx, id, userID, 20)
 	if err != nil {
-		httpx.Error(w, err, "The goal could not be loaded.")
-		return
+		return httpx.Fail(err, "The goal could not be loaded.")
 	}
 	goal = goal.WithMilestones(milestones)
 
@@ -315,7 +312,7 @@ func (a *API) writeDetail(w http.ResponseWriter, r *http.Request, status int, id
 	if len(updates) > 0 {
 		out.LatestUpdate = util.Ptr(projectUpdate(updates[0]))
 	}
-	httpx.WriteJSON(w, status, out)
+	return c.JSON(status, out)
 }
 
 func summarize(g Goal) GoalSummary {
@@ -345,59 +342,45 @@ func formatDate(t time.Time) string {
 	return t.Format(dateLayout)
 }
 
-func readGoal(w http.ResponseWriter, r *http.Request) (Input, bool) {
+func readGoal(c *echo.Context) (Input, error) {
 	var req GoalRequest
-	if !readJSON(w, r, &req) {
-		return Input{}, false
+	if err := readJSON(c, &req); err != nil {
+		return Input{}, err
 	}
-	target, ok := parseDate(w, req.TargetDate)
-	if !ok {
-		return Input{}, false
+	target, err := parseDate(req.TargetDate)
+	if err != nil {
+		return Input{}, err
 	}
-	return Input{Title: req.Title, Motivation: req.Motivation, Success: req.Success, Category: req.Category, TargetDate: target}, true
+	return Input{Title: req.Title, Motivation: req.Motivation, Success: req.Success, Category: req.Category, TargetDate: target}, nil
 }
 
-func readMilestone(w http.ResponseWriter, r *http.Request) (MilestoneInput, bool) {
+func readMilestone(c *echo.Context) (MilestoneInput, error) {
 	var req MilestoneRequest
-	if !readJSON(w, r, &req) {
-		return MilestoneInput{}, false
+	if err := readJSON(c, &req); err != nil {
+		return MilestoneInput{}, err
 	}
-	target, ok := parseDate(w, req.TargetDate)
-	if !ok {
-		return MilestoneInput{}, false
+	target, err := parseDate(req.TargetDate)
+	if err != nil {
+		return MilestoneInput{}, err
 	}
-	return MilestoneInput{Title: req.Title, TargetDate: target}, true
+	return MilestoneInput{Title: req.Title, TargetDate: target}, nil
 }
 
 // parseDate reads an optional calendar day. Unlike the web form, which drops
 // a date it cannot read, the API says so: a client sending a malformed date
 // has a bug worth hearing about.
-func parseDate(w http.ResponseWriter, raw string) (time.Time, bool) {
+func parseDate(raw string) (time.Time, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return time.Time{}, true
+		return time.Time{}, nil
 	}
 	t, err := time.Parse(dateLayout, raw)
 	if err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("targetDate", "Use a date like 2026-12-31."), "Use a date like 2026-12-31.")
-		return time.Time{}, false
+		return time.Time{}, httpx.Fail(apperr.FieldErrors{}.Add("targetDate", "Use a date like 2026-12-31."), "Use a date like 2026-12-31.")
 	}
-	return t, true
+	return t, nil
 }
 
-func pathID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, name))
-	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
-func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
-	}
-	return true
+func readJSON(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 16 << 10}, "The request body could not be read.")
 }

@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/quota"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -24,7 +25,7 @@ type API struct {
 	quotas *quota.Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
 // WithQuotas guards generate, regenerate and briefing with the report quota.
@@ -33,70 +34,69 @@ func (a *API) WithQuotas(q *quota.Service) *API {
 	return a
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/reports", a.list)
-	r.Get("/reports/{reportID}", a.show)
-	r.Post("/reports/{reportID}/archive", a.archive)
-	r.Put("/reports/{reportID}/helpful", a.rate)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/reports", a.list)
+	g.GET("/reports/:reportID", a.show)
+	g.POST("/reports/:reportID/archive", a.archive)
+	g.PUT("/reports/:reportID/helpful", a.rate)
 
-	generating := r.With()
+	var generating []echo.MiddlewareFunc
 	if a.quotas != nil {
-		generating = r.With(a.quotas.GuardJSON(quota.ReportGenerate))
+		generating = append(generating, a.quotas.GuardAPI(quota.ReportGenerate))
 	}
-	generating.Post("/reports/generate", a.generate)
-	generating.Post("/reports/briefing", a.briefing)
-	generating.Post("/reports/{reportID}/regenerate", a.regenerate)
+	g.POST("/reports/generate", a.generate, generating...)
+	g.POST("/reports/briefing", a.briefing, generating...)
+	g.POST("/reports/:reportID/regenerate", a.regenerate, generating...)
 }
 
 // generate asks for this week's review now. It answers at once with the
 // pending report; the text is written in the background.
-func (a *API) generate(w http.ResponseWriter, r *http.Request) {
-	rep, err := a.svc.RequestGenerate(r.Context(), auth.MustUser(r.Context()).ID, time.Time{})
+func (a *API) generate(c *echo.Context) error {
+	ctx := c.Request().Context()
+	rep, err := a.svc.RequestGenerate(ctx, auth.MustUser(ctx).ID, time.Time{})
 	if err != nil {
-		a.refuse(w, err, "The review could not be requested.")
-		return
+		return refuse(c, err, "The review could not be requested.")
 	}
-	httpx.WriteJSON(w, http.StatusAccepted, detail(rep))
+	return c.JSON(http.StatusAccepted, detail(rep))
 }
 
 // briefing asks for today's briefing now, as the dashboard button does.
-func (a *API) briefing(w http.ResponseWriter, r *http.Request) {
-	rep, err := a.svc.RequestBriefing(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) briefing(c *echo.Context) error {
+	ctx := c.Request().Context()
+	rep, err := a.svc.RequestBriefing(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		a.refuse(w, err, "The briefing could not be requested.")
-		return
+		return refuse(c, err, "The briefing could not be requested.")
 	}
-	httpx.WriteJSON(w, http.StatusAccepted, detail(rep))
+	return c.JSON(http.StatusAccepted, detail(rep))
 }
 
 // regenerate rewrites a report. The answer may be a different report: the
 // one now being written in its place.
-func (a *API) regenerate(w http.ResponseWriter, r *http.Request) {
-	id, ok := reportID(w, r)
-	if !ok {
-		return
-	}
-	rep, err := a.svc.Regenerate(r.Context(), id, auth.MustUser(r.Context()).ID)
+func (a *API) regenerate(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "reportID")
 	if err != nil {
-		a.refuse(w, err, "The review could not be rewritten.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusAccepted, detail(rep))
+	ctx := c.Request().Context()
+	rep, err := a.svc.Regenerate(ctx, id, auth.MustUser(ctx).ID)
+	if err != nil {
+		return refuse(c, err, "The review could not be rewritten.")
+	}
+	return c.JSON(http.StatusAccepted, detail(rep))
 }
 
-// refuse writes a generation failure. A conflict carries a code, since the
+// refuse answers a generation failure. A conflict carries a code, since the
 // web shows a different line for each: archived (the report is archived) or
 // cooldown (one was already generated this hour).
-func (a *API) refuse(w http.ResponseWriter, err error, message string) {
+func refuse(c *echo.Context, err error, message string) error {
 	if !apperr.Is(err, apperr.ErrConflict) {
-		httpx.Error(w, err, message)
-		return
+		return httpx.Fail(err, message)
 	}
 	code := "cooldown"
 	if errors.Is(err, ErrArchived) {
 		code = "archived"
 	}
-	httpx.WriteJSON(w, http.StatusConflict, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: message, Code: code}})
+	return c.JSON(http.StatusConflict, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: message, Code: code}})
 }
 
 type ReportSummary struct {
@@ -131,61 +131,60 @@ type HelpfulRequest struct {
 	Helpful *bool `json:"helpful"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	archived := r.URL.Query().Get("archived") == "true"
-	list, err := a.svc.List(r.Context(), auth.MustUser(r.Context()).ID, archived)
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
+	archived := c.QueryParam("archived") == "true"
+	list, err := a.svc.List(ctx, auth.MustUser(ctx).ID, archived)
 	if err != nil {
-		httpx.Error(w, err, "Reports could not be loaded.")
-		return
+		return httpx.Fail(err, "Reports could not be loaded.")
 	}
 	out := ReportList{Reports: make([]ReportSummary, 0, len(list))}
 	for _, rep := range list {
 		out.Reports = append(out.Reports, summarize(rep))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	id, ok := reportID(w, r)
-	if !ok {
-		return
-	}
-	rep, err := a.svc.Get(r.Context(), id, auth.MustUser(r.Context()).ID)
+func (a *API) show(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "reportID")
 	if err != nil {
-		httpx.Error(w, err, "The report could not be loaded.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, detail(rep))
+	ctx := c.Request().Context()
+	rep, err := a.svc.Get(ctx, id, auth.MustUser(ctx).ID)
+	if err != nil {
+		return httpx.Fail(err, "The report could not be loaded.")
+	}
+	return c.JSON(http.StatusOK, detail(rep))
 }
 
-func (a *API) archive(w http.ResponseWriter, r *http.Request) {
-	id, ok := reportID(w, r)
-	if !ok {
-		return
+func (a *API) archive(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "reportID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.Archive(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The report could not be archived.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.Archive(ctx, id, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The report could not be archived.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) rate(w http.ResponseWriter, r *http.Request) {
-	id, ok := reportID(w, r)
-	if !ok {
-		return
+func (a *API) rate(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "reportID")
+	if err != nil {
+		return err
 	}
 	var req HelpfulRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err = echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 1 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	rep, err := a.svc.SetHelpful(r.Context(), id, auth.MustUser(r.Context()).ID, req.Helpful)
+	ctx := c.Request().Context()
+	rep, err := a.svc.SetHelpful(ctx, id, auth.MustUser(ctx).ID, req.Helpful)
 	if err != nil {
-		httpx.Error(w, err, "The rating could not be saved.")
-		return
+		return httpx.Fail(err, "The rating could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, detail(rep))
+	return c.JSON(http.StatusOK, detail(rep))
 }
 
 func summarize(rep Report) ReportSummary {
@@ -198,13 +197,4 @@ func summarize(rep Report) ReportSummary {
 
 func detail(rep Report) ReportDetail {
 	return ReportDetail{ReportSummary: summarize(rep), Body: rep.Body, LastError: rep.LastError}
-}
-
-func reportID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, "reportID"))
-	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return uuid.Nil, false
-	}
-	return id, true
 }

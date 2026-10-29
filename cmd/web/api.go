@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
+	echomw "github.com/labstack/echo/v5/middleware"
 
 	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/activity"
@@ -52,6 +53,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/social"
 	"github.com/NorthAIProject/north-client/internal/soreness"
@@ -64,9 +66,17 @@ import (
 	"github.com/NorthAIProject/north-client/internal/xp"
 )
 
-// mountAPI owns the public JSON API boundary. Feature APIs register paths
-// relative to /api/v1 so versioning stays centralized when more endpoints are
-// added.
+// apiStreams are the routes that answer with Server-Sent Events, which gzip
+// must leave alone. TestEveryStreamRouteIsRegistered keeps the list honest.
+var apiStreams = []string{
+	"/api/v1/conversations/:id/reply",
+	"/api/v1/conversations/:id/resume",
+	"/api/v1/crews/:crewID/live",
+}
+
+// mountAPI owns the public JSON API boundary, on Echo. Feature APIs register
+// paths relative to /api/v1 so versioning stays centralized when more
+// endpoints are added.
 //
 // Groups, by how a request proves who it is:
 //   - public: no identity yet (sign-in, sign-up, Strava's OAuth return)
@@ -76,30 +86,36 @@ import (
 //
 // The body caps live here rather than around the mount, because one cap does
 // not fit both: JSON is a few kilobytes and a filmed set is up to 90 MB.
-func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
-	r.Route("/api/v1", func(r chi.Router) {
-		// A guess from Accept-Language for the signed-out routes, so an account
-		// created from the app starts in the phone's language. RequireBearer
-		// replaces it with the account's own setting.
-		r.Use(middleware.Locale)
+func mountAPI(e *echo.Echo, sessions auth.SessionResolver, apis apiSet) {
+	// A guess from Accept-Language for the signed-out routes, so an account
+	// created from the app starts in the phone's language. auth.Bearer
+	// replaces it with the account's own setting.
+	api := e.Group("/api/v1", echo.WrapMiddleware(middleware.Locale), echox.Gzip(apiStreams...))
 
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.MaxBody(maxJSONBody))
-			mountJSON(r, sessions, apis)
-		})
+	json := api.Group("", echomw.BodyLimit(maxJSONBody))
+	apis.auth.RegisterPublic(json)
+	// The MCP consent screen's server half, for a web front end that renders
+	// the screen itself. Parking and account creation are public; the
+	// decision, below, needs the bearer.
+	apis.mcpAuth.RegisterPublic(json)
+	apis.social.RegisterPublic(json)
+	apis.crews.RegisterPublic(json)
+	apis.capture.Register(json)
+	apis.fitness.RegisterPublic(json)
+	registerBearer(json.Group("", auth.Bearer(sessions)), apis)
 
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.MaxBody(maxUploadBody))
-			r.Use(auth.RequireBearer(sessions))
-			apis.knowledge.UploadRoutes(r)
-			apis.coach.UploadRoutes(r)
-			apis.voice.UploadRoutes(r)
-			apis.formChecks.UploadRoutes(r)
-			apis.planImport.UploadRoutes(r)
-			apis.lifts.UploadRoutes(r)
-			apis.progress.UploadRoutes(r)
-		})
-	})
+	uploads := api.Group("", echomw.BodyLimit(maxUploadBody), auth.Bearer(sessions))
+	apis.knowledge.RegisterUploads(uploads)
+	apis.coach.RegisterUploads(uploads)
+	apis.voice.RegisterUploads(uploads)
+	apis.formChecks.RegisterUploads(uploads)
+	apis.planImport.RegisterUploads(uploads)
+	apis.lifts.RegisterUploads(uploads)
+	apis.progress.RegisterUploads(uploads)
+
+	// /api/v1 belongs to the API. A path nothing here routes is a JSON 404,
+	// never a fall through to the browser app and its HTML.
+	api.RouteNotFound("/*", func(*echo.Context) error { return echo.ErrNotFound })
 }
 
 const (
@@ -111,77 +127,64 @@ const (
 	maxUploadBody = media.MaxVideoBytes + 1<<20
 )
 
-func mountJSON(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
-	apis.auth.PublicRoutes(r)
-	// The MCP consent screen's server half, for a web front end that renders
-	// the screen itself. Parking and account creation are public; the
-	// decision, below, needs the bearer.
-	apis.mcpAuth.PublicRoutes(r)
-	apis.social.PublicRoutes(r)
-	apis.crews.PublicRoutes(r)
-	apis.capture.Routes(r)
-	apis.fitness.PublicRoutes(r)
-
-	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireBearer(sessions))
-		apis.auth.Routes(r)
-		apis.mcpAuth.Routes(r)
-		apis.onboarding.Routes(r)
-		apis.dashboard.Routes(r)
-		apis.day.Routes(r)
-		apis.caffeine.Routes(r)
-		apis.lifts.Routes(r)
-		apis.stats.Routes(r)
-		apis.fasting.Routes(r)
-		apis.supplements.Routes(r)
-		apis.medications.Routes(r)
-		apis.progress.Routes(r)
-		apis.screenTime.Routes(r)
-		apis.soreness.Routes(r)
-		apis.milestones.Routes(r)
-		apis.coach.Routes(r)
-		apis.voice.Routes(r)
-		apis.exercises.Routes(r)
-		apis.settings.Routes(r)
-		apis.training.Routes(r)
-		apis.activity.Routes(r)
-		apis.health.Routes(r)
-		apis.fitness.Routes(r)
-		apis.insights.Routes(r)
-		apis.goals.Routes(r)
-		apis.checkins.Routes(r)
-		apis.checkinReply.Routes(r)
-		apis.reports.Routes(r)
-		apis.memories.Routes(r)
-		apis.knowledge.Routes(r)
-		apis.formChecks.Routes(r)
-		apis.care.Routes(r)
-		apis.mind.Routes(r)
-		apis.nutrition.Routes(r)
-		apis.planImport.Routes(r)
-		apis.decisions.Routes(r)
-		apis.nudges.Routes(r)
-		apis.devices.Routes(r)
-		apis.export.APIRoutes(r)
-		apis.vault.APIRoutes(r)
-		apis.calculator.Routes(r)
-		apis.news.Routes(r)
-		apis.social.Routes(r)
-		apis.profiles.Routes(r)
-		apis.achievements.Routes(r)
-		apis.awards.Routes(r)
-		apis.crews.Routes(r)
-		apis.moderation.Routes(r)
-		apis.xp.Routes(r)
-		apis.weekly.Routes(r)
-		apis.recaps.Routes(r)
-		apis.dailyPosts.Routes(r)
-		apis.inbox.Routes(r)
-		apis.lighter.Routes(r)
-		apis.outreach.Routes(r)
-		apis.firstWeek.Routes(r)
-		apis.push.Routes(r)
-	})
+func registerBearer(g *echo.Group, apis apiSet) {
+	apis.auth.Register(g)
+	apis.mcpAuth.Register(g)
+	apis.onboarding.Register(g)
+	apis.dashboard.Register(g)
+	apis.day.Register(g)
+	apis.caffeine.Register(g)
+	apis.lifts.Register(g)
+	apis.stats.Register(g)
+	apis.fasting.Register(g)
+	apis.supplements.Register(g)
+	apis.medications.Register(g)
+	apis.progress.Register(g)
+	apis.screenTime.Register(g)
+	apis.soreness.Register(g)
+	apis.milestones.Register(g)
+	apis.coach.Register(g)
+	apis.voice.Register(g)
+	apis.exercises.Register(g)
+	apis.settings.Register(g)
+	apis.training.Register(g)
+	apis.activity.Register(g)
+	apis.health.Register(g)
+	apis.fitness.Register(g)
+	apis.insights.Register(g)
+	apis.goals.Register(g)
+	apis.checkins.Register(g)
+	apis.checkinReply.Register(g)
+	apis.reports.Register(g)
+	apis.memories.Register(g)
+	apis.knowledge.Register(g)
+	apis.formChecks.Register(g)
+	apis.care.Register(g)
+	apis.mind.Register(g)
+	apis.nutrition.Register(g)
+	apis.planImport.Register(g)
+	apis.decisions.Register(g)
+	apis.nudges.Register(g)
+	apis.devices.Register(g)
+	apis.export.RegisterAPI(g)
+	apis.vault.RegisterAPI(g)
+	apis.calculator.Register(g)
+	apis.news.Register(g)
+	apis.social.Register(g)
+	apis.profiles.Register(g)
+	apis.achievements.Register(g)
+	apis.awards.Register(g)
+	apis.crews.Register(g)
+	apis.moderation.Register(g)
+	apis.xp.Register(g)
+	apis.weekly.Register(g)
+	apis.recaps.Register(g)
+	apis.dailyPosts.Register(g)
+	apis.inbox.Register(g)
+	apis.lighter.Register(g)
+	apis.outreach.Register(g)
+	apis.firstWeek.Register(g)
+	apis.push.Register(g)
 }
 
 // apiSet is every feature API mounted under /api/v1. A struct rather than a

@@ -13,11 +13,22 @@ import (
 )
 
 type Service struct {
-	repo *Repository
+	repo Repository
 	now  func() time.Time
 }
 
-func NewService(repo *Repository) *Service { return &Service{repo: repo, now: time.Now} }
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps milestone trackers.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, name string, last time.Time, interval *int) (Tracker, error)
+	MarkDone(ctx context.Context, id, userID uuid.UUID, on time.Time) (Tracker, error)
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	List(ctx context.Context, userID uuid.UUID) ([]Tracker, error)
+}
+
+func NewService(repo Repository) *Service { return &Service{repo: repo, now: time.Now} }
 
 // Create starts tracking something. LastDone nil means today.
 func (s *Service) Create(ctx context.Context, user users.User, name string, lastDone *time.Time, intervalMonths *int) (Tracker, error) {

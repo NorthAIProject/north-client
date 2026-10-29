@@ -6,7 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
+	echomw "github.com/labstack/echo/v5/middleware"
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -37,9 +38,9 @@ const maxRegistrationBody = 16 << 10
 type MachineHandler struct {
 	svc   *Service
 	log   *slog.Logger
-	limit *ratelimit.Limiters
+	limit *ratelimit.Store
 
-	trustedProxies middleware.TrustedProxies
+	clientIP echo.IPExtractor
 }
 
 func NewMachineHandler(svc *Service, log *slog.Logger, proxies middleware.TrustedProxies) *MachineHandler {
@@ -47,31 +48,38 @@ func NewMachineHandler(svc *Service, log *slog.Logger, proxies middleware.Truste
 		log = slog.Default()
 	}
 	return &MachineHandler{
-		svc:            svc,
-		log:            log,
-		limit:          ratelimit.New(registrationsPerMinute),
-		trustedProxies: proxies,
+		svc:      svc,
+		log:      log,
+		limit:    ratelimit.New(registrationsPerMinute),
+		clientIP: proxies.IPExtractor(),
 	}
 }
 
-// Routes mounts the machine-facing endpoints.
+// Register mounts the machine-facing endpoints.
 //
 // All of them are public, outside the session and CSRF group: a client
 // fetching discovery has no session, and a token request authenticates with a
 // code rather than a cookie.
-func (h *MachineHandler) Routes(r chi.Router) {
+func (h *MachineHandler) Register(g *echo.Group) {
+	g = g.Group("", machineCORS)
+
 	// RFC 9728 puts the resource's path component into the well-known path, so
 	// a client resolving /mcp asks for the /mcp-suffixed one. The bare path is
 	// served too, because several clients still ask for that.
-	r.Get("/.well-known/oauth-protected-resource", h.cors(h.protectedResource))
-	r.Get("/.well-known/oauth-protected-resource/mcp", h.cors(h.protectedResource))
-	r.Get("/.well-known/oauth-authorization-server", h.cors(h.authorizationServer))
+	g.GET("/.well-known/oauth-protected-resource", echo.WrapHandler(http.HandlerFunc(h.protectedResource)))
+	g.GET("/.well-known/oauth-protected-resource/mcp", echo.WrapHandler(http.HandlerFunc(h.protectedResource)))
+	g.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(http.HandlerFunc(h.authorizationServer)))
 
-	r.Post("/oauth/register", h.cors(h.register))
-	r.Post("/oauth/token", h.cors(h.token))
-	r.Post("/oauth/revoke", h.cors(h.revoke))
+	// The handlers stay net/http on purpose: each answers in the exact shape
+	// its RFC prescribes (OAuth's own error object, not North's), so none of
+	// them goes through Echo's error handler.
+	g.POST("/oauth/register", echo.WrapHandler(http.HandlerFunc(h.register)))
+	g.POST("/oauth/token", echo.WrapHandler(http.HandlerFunc(h.token)))
+	g.POST("/oauth/revoke", echo.WrapHandler(http.HandlerFunc(h.revoke)))
 
 	// A browser-based client preflights each of the above before calling it.
+	// machineCORS answers a real preflight itself; the route has to exist for
+	// the group's middleware to run at all.
 	for _, path := range []string{
 		"/.well-known/oauth-protected-resource",
 		"/.well-known/oauth-protected-resource/mcp",
@@ -80,36 +88,25 @@ func (h *MachineHandler) Routes(r chi.Router) {
 		"/oauth/token",
 		"/oauth/revoke",
 	} {
-		r.Options(path, h.preflight)
+		g.OPTIONS(path, func(c *echo.Context) error { return c.NoContent(http.StatusNoContent) })
 	}
 }
 
-// cors makes an endpoint callable from a browser-based client's own page.
+// machineCORS makes the endpoints callable from a browser-based client's own
+// page.
 //
 // Claude's web client performs discovery and the token exchange from the page
 // rather than from a server, so without these headers it fails with nothing
 // visible in the response. None of these endpoints reads a cookie, which is
-// what makes a wildcard origin safe here — and why
-// Access-Control-Allow-Credentials must never be set: it is illegal with "*"
-// and would turn a public endpoint into one that acts as the visitor.
-func (h *MachineHandler) cors(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		setCORS(w)
-		next(w, r)
-	}
-}
-
-func (h *MachineHandler) preflight(w http.ResponseWriter, _ *http.Request) {
-	setCORS(w)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func setCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, MCP-Protocol-Version")
-	w.Header().Set("Access-Control-Max-Age", "3600")
-}
+// what makes a wildcard origin safe here — and why AllowCredentials must never
+// be set: Echo refuses it with "*", and it would turn a public endpoint into
+// one that acts as the visitor.
+var machineCORS = echomw.CORSWithConfig(echomw.CORSConfig{
+	AllowOrigins: []string{"*"},
+	AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodOptions},
+	AllowHeaders: []string{"Content-Type", "Authorization", "MCP-Protocol-Version"},
+	MaxAge:       3600,
+})
 
 func (h *MachineHandler) protectedResource(w http.ResponseWriter, _ *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, h.svc.ProtectedResource())
@@ -146,7 +143,7 @@ type registrationResponse struct {
 }
 
 func (h *MachineHandler) register(w http.ResponseWriter, r *http.Request) {
-	if !h.limit.Allow(middleware.ClientIP(r, h.trustedProxies)) {
+	if ok, _ := h.limit.Allow(h.clientIP(r)); !ok {
 		w.Header().Set("Retry-After", "60")
 		h.writeOAuthError(w, http.StatusTooManyRequests,
 			"temporarily_unavailable", "too many registrations from this address")

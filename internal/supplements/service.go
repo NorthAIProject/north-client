@@ -14,11 +14,21 @@ import (
 )
 
 type Service struct {
-	repo *Repository
+	repo Repository
 	now  func() time.Time
 }
 
-func NewService(repo *Repository) *Service { return &Service{repo: repo, now: time.Now} }
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps supplement entries.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, date time.Time, e Entry) (Entry, error)
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error)
+}
+
+func NewService(repo Repository) *Service { return &Service{repo: repo, now: time.Now} }
 
 // LogInput is one supplement taken. A Preset fills the name and nutrients;
 // otherwise Name is required and Nutrients are whatever the person says.

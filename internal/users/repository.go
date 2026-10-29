@@ -19,15 +19,17 @@ import (
 // uniqueViolation is Postgres' SQLSTATE for a unique constraint breach.
 const uniqueViolation = "23505"
 
-// Repository owns persistence for accounts. It translates database errors into
-// the shared sentinels and generated rows into domain types, so that no pgx or
-// sqlc type ever reaches a service.
-type Repository struct {
+// PostgresRepository owns persistence for accounts. It translates database
+// errors into the shared sentinels and generated rows into domain types, so
+// that no pgx or sqlc type ever reaches a service.
+type PostgresRepository struct {
 	q *usersdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: usersdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: usersdb.New(pool)}
 }
 
 // NewRecord is everything needed to create an account. PasswordHash is already
@@ -48,7 +50,7 @@ type NewRecord struct {
 	Locale Locale
 }
 
-func (r *Repository) Create(ctx context.Context, rec NewRecord) (User, error) {
+func (r *PostgresRepository) Create(ctx context.Context, rec NewRecord) (User, error) {
 	email := normalizeEmail(rec.Email)
 	name := strings.TrimSpace(rec.DisplayName)
 	passwordHash := util.StrZeroPtr(rec.PasswordHash)
@@ -93,7 +95,7 @@ func (r *Repository) Create(ctx context.Context, rec NewRecord) (User, error) {
 	return fromDB(row), nil
 }
 
-func (r *Repository) ByID(ctx context.Context, id uuid.UUID) (User, error) {
+func (r *PostgresRepository) ByID(ctx context.Context, id uuid.UUID) (User, error) {
 	row, err := r.q.GetUserByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -104,7 +106,7 @@ func (r *Repository) ByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return fromDB(row), nil
 }
 
-func (r *Repository) ByEmail(ctx context.Context, email string) (User, error) {
+func (r *PostgresRepository) ByEmail(ctx context.Context, email string) (User, error) {
 	row, err := r.q.GetUserByEmail(ctx, normalizeEmail(email))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -119,7 +121,7 @@ func (r *Repository) ByEmail(ctx context.Context, email string) (User, error) {
 // It is separate from ByEmail so the hash is only loaded on the one code path
 // that needs it: verifying a login. A null column becomes "" so password login
 // for OAuth/passkey-only accounts fails the same way as a wrong password.
-func (r *Repository) CredentialsByEmail(ctx context.Context, email string) (User, string, error) {
+func (r *PostgresRepository) CredentialsByEmail(ctx context.Context, email string) (User, string, error) {
 	row, err := r.q.GetUserByEmail(ctx, normalizeEmail(email))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -148,7 +150,7 @@ type Profile struct {
 	Surface string
 }
 
-func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (User, error) {
+func (r *PostgresRepository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (User, error) {
 	style := util.StrZeroPtr(strings.TrimSpace(p.CoachingStyle))
 
 	tone := p.CoachingTone
@@ -181,7 +183,7 @@ func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p Profile)
 
 // SetAppearance stores a validated appearance and reports whether it differed
 // from what was stored. The service decides what is valid; this only writes.
-func (r *Repository) SetAppearance(ctx context.Context, id uuid.UUID, a theme.Appearance) (bool, error) {
+func (r *PostgresRepository) SetAppearance(ctx context.Context, id uuid.UUID, a theme.Appearance) (bool, error) {
 	n, err := r.q.SetUserAppearance(ctx, usersdb.SetUserAppearanceParams{ID: id, Appearance: string(a)})
 	if err != nil {
 		return false, apperr.Wrap(err, "set appearance")
@@ -198,7 +200,7 @@ func appearanceColumn(a *theme.Appearance) *string {
 	return &s
 }
 
-func (r *Repository) ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]User, error) {
+func (r *PostgresRepository) ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]User, error) {
 	rows, err := r.q.ListOnboardedUsers(ctx, usersdb.ListOnboardedUsersParams{
 		After:       after,
 		ResultLimit: int32(limit),
@@ -215,7 +217,7 @@ func (r *Repository) ListOnboarded(ctx context.Context, after uuid.UUID, limit i
 
 // UpdateTier moves an account to a plan. The service validates the tier; this
 // only writes it.
-func (r *Repository) UpdateTier(ctx context.Context, id uuid.UUID, tier Tier) (User, error) {
+func (r *PostgresRepository) UpdateTier(ctx context.Context, id uuid.UUID, tier Tier) (User, error) {
 	row, err := r.q.UpdateUserTier(ctx, usersdb.UpdateUserTierParams{
 		ID:   id,
 		Tier: string(tier),
@@ -229,7 +231,7 @@ func (r *Repository) UpdateTier(ctx context.Context, id uuid.UUID, tier Tier) (U
 	return fromDB(row), nil
 }
 
-func (r *Repository) MarkOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
+func (r *PostgresRepository) MarkOnboarded(ctx context.Context, id uuid.UUID) (User, error) {
 	row, err := r.q.MarkUserOnboarded(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -241,7 +243,7 @@ func (r *Repository) MarkOnboarded(ctx context.Context, id uuid.UUID) (User, err
 	return fromDB(row), nil
 }
 
-func (r *Repository) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
+func (r *PostgresRepository) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
 	err := r.q.UpdateUserPassword(ctx, usersdb.UpdateUserPasswordParams{
 		ID:           id,
 		PasswordHash: util.StrZeroPtr(hash),

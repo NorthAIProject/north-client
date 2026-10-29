@@ -7,25 +7,25 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
-// API is XP, levels and the friends leaderboard for native clients. Mount
-// behind auth.RequireBearer.
+// API is XP, levels and the friends leaderboard for native clients. Register
+// behind auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/xp", a.summary)
-	r.Get("/leaderboard", a.board)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/xp", a.summary)
+	g.GET("/leaderboard", a.board)
 }
 
 type LevelView struct {
@@ -79,27 +79,26 @@ type BoardView struct {
 	Sharing bool        `json:"sharing"`
 }
 
-func (a *API) summary(w http.ResponseWriter, r *http.Request) {
-	s, err := a.svc.Summary(r.Context(), auth.MustUser(r.Context()), time.Now())
+func (a *API) summary(c *echo.Context) error {
+	ctx := c.Request().Context()
+	s, err := a.svc.Summary(ctx, auth.MustUser(ctx), time.Now())
 	if err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "xp.err.summary"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "xp.err.summary"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectSummary(r.Context(), s))
+	return c.JSON(http.StatusOK, projectSummary(ctx, s))
 }
 
-func (a *API) board(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	metric := q.Get("metric")
+func (a *API) board(c *echo.Context) error {
+	ctx := c.Request().Context()
+	metric := c.QueryParam("metric")
 	if metric == "" {
 		metric = MetricXP
 	}
-	b, err := a.svc.Board(r.Context(), auth.MustUser(r.Context()), metric, q.Get("period"), time.Now())
+	b, err := a.svc.Board(ctx, auth.MustUser(ctx), metric, c.QueryParam("period"), time.Now())
 	if err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "xp.err.board"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "xp.err.board"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectBoard(r.Context(), b))
+	return c.JSON(http.StatusOK, projectBoard(ctx, b))
 }
 
 // ProjectLevel carries the level's title in the caller's language. The app

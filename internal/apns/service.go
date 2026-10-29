@@ -21,13 +21,26 @@ const maxBodyRunes = 500
 // and Send reaches nobody, so a deployment without a key never stores tokens
 // it cannot use.
 type Service struct {
-	repo   *Repository
+	repo   Repository
 	sender Sender
 	topics []string
 	log    *slog.Logger
 }
 
-func NewService(repo *Repository, sender Sender, topics []string, log *slog.Logger) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps device tokens.
+type Repository interface {
+	Upsert(ctx context.Context, userID uuid.UUID, in Input) (Device, error)
+	ListByUser(ctx context.Context, userID uuid.UUID) ([]Device, error)
+	DeleteByToken(ctx context.Context, userID uuid.UUID, token string) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	MarkUsed(ctx context.Context, id uuid.UUID) error
+	MarkFailed(ctx context.Context, id uuid.UUID) error
+}
+
+func NewService(repo Repository, sender Sender, topics []string, log *slog.Logger) *Service {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -161,7 +174,7 @@ func clip(s string, runes int) string {
 
 // FromConfig builds the service a deployment asked for. Without a key it is
 // switched off rather than failing the boot, like Web Push without VAPID.
-func FromConfig(repo *Repository, cfg config.APNsConfig, log *slog.Logger) (*Service, error) {
+func FromConfig(repo Repository, cfg config.APNsConfig, log *slog.Logger) (*Service, error) {
 	if !cfg.Enabled() {
 		return NewService(repo, nil, nil, log), nil
 	}

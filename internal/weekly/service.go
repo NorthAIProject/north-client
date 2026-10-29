@@ -6,15 +6,10 @@ package weekly
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
-	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/goals"
@@ -22,7 +17,6 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
-	weeklydb "github.com/NorthAIProject/north-client/internal/weekly/db"
 	"github.com/NorthAIProject/north-client/internal/weekly/week"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 )
@@ -51,7 +45,7 @@ type Achievements interface {
 }
 
 type Service struct {
-	q            *weeklydb.Queries
+	repo         Repository
 	goals        Goals
 	reports      Reports
 	achievements Achievements
@@ -59,8 +53,16 @@ type Service struct {
 	now          func() time.Time
 }
 
-func NewService(pool *pgxpool.Pool, g Goals, r Reports) *Service {
-	return &Service{q: weeklydb.New(pool), goals: g, reports: r, now: time.Now}
+// Repository is the persistence Service depends on: one focus per person per
+// week. NewRepository is what the process wires, and a test can hand Service
+// anything that keeps focuses.
+type Repository interface {
+	UpsertFocus(ctx context.Context, userID uuid.UUID, weekStart time.Time, in Input, loc *time.Location) (Focus, error)
+	Focus(ctx context.Context, userID uuid.UUID, monday time.Time) (*Focus, error)
+}
+
+func NewService(repo Repository, g Goals, r Reports) *Service {
+	return &Service{repo: repo, goals: g, reports: r, now: time.Now}
 }
 
 // Awards checks a person's badges after a write. awards.Service satisfies it.
@@ -151,11 +153,9 @@ func (s *Service) SetFocus(ctx context.Context, user users.User, in Input) (Focu
 		return Focus{}, err
 	}
 	planning := PlanningWeek(s.now(), user.Location())
-	row, err := s.q.UpsertFocus(ctx, weeklydb.UpsertFocusParams{
-		UserID: user.ID, WeekStart: date(planning), Priorities: in.Priorities, Volume: string(in.Volume),
-	})
+	focus, err := s.repo.UpsertFocus(ctx, user.ID, planning, in, user.Location())
 	if err != nil {
-		return Focus{}, apperr.Wrap(err, "save weekly focus")
+		return Focus{}, err
 	}
 	if s.achievements != nil {
 		s.achievements.WeekReviewed(ctx, user.ID, planning, s.now())
@@ -163,7 +163,7 @@ func (s *Service) SetFocus(ctx context.Context, user users.User, in Input) (Focu
 	if s.awards != nil {
 		s.awards.Check(ctx, user.ID, s.now(), award.Goals)
 	}
-	return fromDB(row, user.Location()), nil
+	return focus, nil
 }
 
 func validate(in Input) (Input, error) {
@@ -219,28 +219,7 @@ func (s *Service) VolumeFor(ctx context.Context, user users.User, at time.Time) 
 }
 
 func (s *Service) focus(ctx context.Context, userID uuid.UUID, monday time.Time) (*Focus, error) {
-	row, err := s.q.GetFocus(ctx, weeklydb.GetFocusParams{UserID: userID, WeekStart: date(monday)})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, apperr.Wrap(err, "load weekly focus")
-	}
-	return util.Ptr(fromDB(row, monday.Location())), nil
-}
-
-func fromDB(row weeklydb.WeeklyFocus, loc *time.Location) Focus {
-	d := row.WeekStart.Time
-	return Focus{
-		WeekStart:  time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, loc),
-		Priorities: row.Priorities,
-		Volume:     plan.Volume(row.Volume),
-		ReviewedAt: row.ReviewedAt,
-	}
-}
-
-func date(t time.Time) pgtype.Date {
-	return pgtype.Date{Time: time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), Valid: true}
+	return s.repo.Focus(ctx, userID, monday)
 }
 
 func sameDay(a, b time.Time) bool {

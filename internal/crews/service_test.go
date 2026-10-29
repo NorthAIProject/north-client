@@ -41,7 +41,7 @@ var wednesday = time.Date(2026, 9, 30, 19, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
 
 func service(pool *pgxpool.Pool) *crews.Service {
 	cs := checkins.NewService(checkins.NewRepository(pool), nil)
-	return crews.NewService(pool, crews.CheckInsFrom(cs), nil).WithClock(func() time.Time { return wednesday })
+	return crews.NewService(crews.NewRepository(pool), crews.CheckInsFrom(cs), nil).WithClock(func() time.Time { return wednesday })
 }
 
 // The board: who checked in today, streaks, and the week's challenge, for

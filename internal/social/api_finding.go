@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -67,64 +68,63 @@ type FacebookConnect struct {
 	AuthorizeURL string `json:"authorizeUrl"`
 }
 
-func (a *API) phone(w http.ResponseWriter, r *http.Request) {
-	p, err := a.svc.Phone(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) phone(c *echo.Context) error {
+	ctx := c.Request().Context()
+	p, err := a.svc.Phone(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Your phone number could not be loaded.")
-		return
+		return httpx.Fail(err, "Your phone number could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectPhone(p, a.svc.PhoneEnabled()))
+	return c.JSON(http.StatusOK, projectPhone(p, a.svc.PhoneEnabled()))
 }
 
-func (a *API) startPhone(w http.ResponseWriter, r *http.Request) {
+func (a *API) startPhone(c *echo.Context) error {
 	var req PhoneStartRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	p, err := a.svc.StartPhoneVerification(r.Context(), auth.MustUser(r.Context()).ID, req.Phone, req.CountryCode)
+	ctx := c.Request().Context()
+	p, err := a.svc.StartPhoneVerification(ctx, auth.MustUser(ctx).ID, req.Phone, req.CountryCode)
 	if err != nil {
-		phoneError(w, err, "A code could not be sent.")
-		return
+		return phoneError(err, "A code could not be sent.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectPhone(p, a.svc.PhoneEnabled()))
+	return c.JSON(http.StatusOK, projectPhone(p, a.svc.PhoneEnabled()))
 }
 
-func (a *API) checkPhone(w http.ResponseWriter, r *http.Request) {
+func (a *API) checkPhone(c *echo.Context) error {
 	var req PhoneCheckRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	p, err := a.svc.CheckPhoneCode(r.Context(), auth.MustUser(r.Context()).ID, req.Code)
+	ctx := c.Request().Context()
+	p, err := a.svc.CheckPhoneCode(ctx, auth.MustUser(ctx).ID, req.Code)
 	if err != nil {
-		phoneError(w, err, "That code could not be checked.")
-		return
+		return phoneError(err, "That code could not be checked.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectPhone(p, a.svc.PhoneEnabled()))
+	return c.JSON(http.StatusOK, projectPhone(p, a.svc.PhoneEnabled()))
 }
 
-func (a *API) cancelPhone(w http.ResponseWriter, r *http.Request) {
-	if err := a.svc.CancelPhoneVerification(r.Context(), auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "That code could not be cancelled.")
-		return
+func (a *API) cancelPhone(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := a.svc.CancelPhoneVerification(ctx, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "That code could not be cancelled.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-func (a *API) removePhone(w http.ResponseWriter, r *http.Request) {
-	if err := a.svc.RemovePhone(r.Context(), auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "Your phone number could not be removed.")
-		return
+func (a *API) removePhone(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := a.svc.RemovePhone(ctx, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "Your phone number could not be removed.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
-// phoneError answers 429 for a rate limit and otherwise as httpx.Error does.
-func phoneError(w http.ResponseWriter, err error, message string) {
+// phoneError fails with 429 for a rate limit and otherwise with message.
+func phoneError(err error, message string) error {
 	if errors.Is(err, ErrPhoneRateLimited) {
-		httpx.Error(w, httpx.ErrRateLimited, "Too many codes for now. Try again later.")
-		return
+		return httpx.Fail(httpx.ErrRateLimited, "Too many codes for now. Try again later.")
 	}
-	httpx.Error(w, err, message)
+	return httpx.Fail(err, message)
 }
 
 func projectPhone(p Phone, configured bool) PhoneView {
@@ -135,42 +135,42 @@ func projectPhone(p Phone, configured bool) PhoneView {
 	return out
 }
 
-func (a *API) facebookFriends(w http.ResponseWriter, r *http.Request) {
-	f, err := a.svc.FacebookFriends(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) facebookFriends(c *echo.Context) error {
+	ctx := c.Request().Context()
+	f, err := a.svc.FacebookFriends(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Facebook friends could not be loaded.")
-		return
+		return httpx.Fail(err, "Facebook friends could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectFacebook(f, a.svc.FacebookEnabled()))
+	return c.JSON(http.StatusOK, projectFacebook(f, a.svc.FacebookEnabled()))
 }
 
-func (a *API) connectFacebook(w http.ResponseWriter, r *http.Request) {
-	consent, err := a.svc.BeginNativeFacebook(r.Context(), auth.MustUser(r.Context()).ID, a.siteURL+FacebookNativeCallbackPath)
+func (a *API) connectFacebook(c *echo.Context) error {
+	ctx := c.Request().Context()
+	consent, err := a.svc.BeginNativeFacebook(ctx, auth.MustUser(ctx).ID, a.siteURL+FacebookNativeCallbackPath)
 	if err != nil {
-		httpx.Error(w, err, "Facebook is not available right now.")
-		return
+		return httpx.Fail(err, "Facebook is not available right now.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, FacebookConnect{AuthorizeURL: consent})
+	return c.JSON(http.StatusOK, FacebookConnect{AuthorizeURL: consent})
 }
 
-func (a *API) disconnectFacebook(w http.ResponseWriter, r *http.Request) {
-	if err := a.svc.DisconnectFacebook(r.Context(), auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "Facebook could not be disconnected.")
-		return
+func (a *API) disconnectFacebook(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := a.svc.DisconnectFacebook(ctx, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "Facebook could not be disconnected.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // facebookCallback finishes a connection begun by connectFacebook and hands
 // the result back to the app. It always redirects to the app, never renders:
 // the sign-in sheet shows nothing of its own.
-func (a *API) facebookCallback(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+func (a *API) facebookCallback(c *echo.Context) error {
+	ctx := c.Request().Context()
 	result := "connected"
-	if q.Get("error") != "" {
+	if c.QueryParam("error") != "" {
 		result = "cancelled"
 	} else {
-		_, err := a.svc.FinishNativeFacebook(r.Context(), q.Get("state"), q.Get("code"), a.siteURL+FacebookNativeCallbackPath)
+		_, err := a.svc.FinishNativeFacebook(ctx, c.QueryParam("state"), c.QueryParam("code"), a.siteURL+FacebookNativeCallbackPath)
 		switch {
 		case err == nil:
 		case errors.Is(err, ErrFacebookTaken):
@@ -178,11 +178,11 @@ func (a *API) facebookCallback(w http.ResponseWriter, r *http.Request) {
 		case apperr.Is(err, apperr.ErrNotFound):
 			result = "expired"
 		default:
-			middleware.FromContext(r.Context()).Error("native facebook connect failed", slog.Any("error", err))
+			middleware.FromContext(ctx).Error("native facebook connect failed", slog.Any("error", err))
 			result = "failed"
 		}
 	}
-	http.Redirect(w, r, FacebookReturnURL+"?"+url.Values{"result": {result}}.Encode(), http.StatusFound)
+	return c.Redirect(http.StatusFound, FacebookReturnURL+"?"+url.Values{"result": {result}}.Encode())
 }
 
 func projectFacebook(f FacebookFriends, configured bool) FacebookView {

@@ -42,7 +42,7 @@ type cached struct {
 }
 
 type Service struct {
-	repo *Repository
+	repo Repository
 	log  *slog.Logger
 
 	// sealer is nil when the deployment has no ENCRYPTION_KEY. That is not an
@@ -71,7 +71,21 @@ type Service struct {
 	probe ToolProbe
 }
 
-func NewService(repo *Repository, sealer *secret.Sealer, log *slog.Logger) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps sealed provider keys.
+type Repository interface {
+	Get(ctx context.Context, userID uuid.UUID) (Credential, error)
+	Key(ctx context.Context, userID uuid.UUID) (Credential, Sealed, error)
+	Upsert(ctx context.Context, userID uuid.UUID, provider string, key Sealed, hint, model, baseURL string) (Credential, error)
+	UpdateSettings(ctx context.Context, userID uuid.UUID, model, baseURL string) (Credential, error)
+	Delete(ctx context.Context, userID uuid.UUID) error
+	RecordError(ctx context.Context, userID uuid.UUID, reason string) error
+	RecordToolSupport(ctx context.Context, userID uuid.UUID, supported bool) error
+}
+
+func NewService(repo Repository, sealer *secret.Sealer, log *slog.Logger) *Service {
 	if log == nil {
 		log = slog.Default()
 	}

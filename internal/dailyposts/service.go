@@ -16,11 +16,25 @@ import (
 const archiveDays = 14
 
 type Service struct {
-	repo *Repository
+	repo Repository
 	now  func() time.Time
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service and Writer need. They name it rather
+// than the Postgres type so the database stays a detail of the composition
+// root: NewRepository is what the process wires, and a test can hand them
+// anything that keeps daily posts and their kudos.
+type Repository interface {
+	Insert(ctx context.Context, d Draft) (bool, error)
+	Exists(ctx context.Context, day time.Time) (bool, error)
+	Recent(ctx context.Context, viewer uuid.UUID, day time.Time, limit int32) ([]post.Post, error)
+	EarlierThemes(ctx context.Context, day time.Time, limit int32) ([]Earlier, error)
+	GiveKudos(ctx context.Context, postID, userID uuid.UUID) error
+	TakeKudos(ctx context.Context, postID, userID uuid.UUID) error
+	Week(ctx context.Context, since, until time.Time) (Aggregate, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo, now: time.Now}
 }
 

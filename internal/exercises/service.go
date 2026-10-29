@@ -39,10 +39,25 @@ const maxLimit = 200
 const candidateLimit = 80
 
 type Service struct {
-	repo *Repository
+	repo Repository
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps the exercise catalog.
+type Repository interface {
+	Get(ctx context.Context, id uuid.UUID) (Exercise, error)
+	GetBySlug(ctx context.Context, slug string) (Exercise, error)
+	BySlugs(ctx context.Context, slugs []string) (map[string]Exercise, error)
+	Search(ctx context.Context, f Filter) ([]Exercise, error)
+	Count(ctx context.Context, f Filter) (int, error)
+	ForEquipment(ctx context.Context, equipment []string, limit int) ([]Exercise, error)
+	SlugForIllustration(ctx context.Context, illustration string) (string, error)
+	SlugForVideo(ctx context.Context, videoURL string) (string, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

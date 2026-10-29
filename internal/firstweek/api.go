@@ -5,27 +5,28 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
-// API is the first week for native clients. Mount behind auth.RequireBearer.
+// API is the first week for native clients. Register behind auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/first-week", a.get)
-	r.Post("/first-week/start", a.start)
-	r.Post("/first-week/done", a.done)
-	r.Post("/first-week/skip", a.skip)
-	r.Post("/first-week/finish", a.finish)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/first-week", a.get)
+	g.POST("/first-week/start", a.start)
+	g.POST("/first-week/done", a.done)
+	g.POST("/first-week/skip", a.skip)
+	g.POST("/first-week/finish", a.finish)
 }
 
 // View is the person's first week. Status, Template and Via are open
@@ -83,58 +84,58 @@ type StartRequest struct {
 	GoalID   *uuid.UUID `json:"goalId,omitempty"`
 }
 
-func (a *API) get(w http.ResponseWriter, r *http.Request) {
-	t, ok, err := a.svc.Today(r.Context(), auth.MustUser(r.Context()))
+func (a *API) get(c *echo.Context) error {
+	ctx := c.Request().Context()
+	t, ok, err := a.svc.Today(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, "Your first week could not be loaded.")
-		return
+		return httpx.Fail(err, "Your first week could not be loaded.")
 	}
 	if !ok {
-		httpx.WriteJSON(w, http.StatusOK, None())
-		return
+		return c.JSON(http.StatusOK, None())
 	}
-	httpx.WriteJSON(w, http.StatusOK, Project(r.Context(), t))
+	return c.JSON(http.StatusOK, Project(ctx, t))
 }
 
-func (a *API) start(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) start(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var req StartRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 1 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 1 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
 	goal := uuid.Nil
 	if req.GoalID != nil {
 		goal = *req.GoalID
 	}
-	if _, err := a.svc.Start(r.Context(), user, req.Template, goal); err != nil {
-		httpx.Error(w, err, "Your first week could not be started.")
-		return
+	if _, err := a.svc.Start(ctx, user, req.Template, goal); err != nil {
+		return httpx.Fail(err, "Your first week could not be started.")
 	}
-	a.get(w, r)
+	return a.get(c)
 }
 
-func (a *API) done(w http.ResponseWriter, r *http.Request) {
-	t, err := a.svc.TapDone(r.Context(), auth.MustUser(r.Context()))
-	a.write(w, r, t, err, "Today could not be marked done.")
+func (a *API) done(c *echo.Context) error {
+	ctx := c.Request().Context()
+	t, err := a.svc.TapDone(ctx, auth.MustUser(ctx))
+	return a.write(c, t, err, "Today could not be marked done.")
 }
 
-func (a *API) skip(w http.ResponseWriter, r *http.Request) {
-	t, err := a.svc.Skip(r.Context(), auth.MustUser(r.Context()))
-	a.write(w, r, t, err, "Your first week could not be skipped.")
+func (a *API) skip(c *echo.Context) error {
+	ctx := c.Request().Context()
+	t, err := a.svc.Skip(ctx, auth.MustUser(ctx))
+	return a.write(c, t, err, "Your first week could not be skipped.")
 }
 
-func (a *API) finish(w http.ResponseWriter, r *http.Request) {
-	t, err := a.svc.Finish(r.Context(), auth.MustUser(r.Context()))
-	a.write(w, r, t, err, "Your first week could not be finished.")
+func (a *API) finish(c *echo.Context) error {
+	ctx := c.Request().Context()
+	t, err := a.svc.Finish(ctx, auth.MustUser(ctx))
+	return a.write(c, t, err, "Your first week could not be finished.")
 }
 
-func (a *API) write(w http.ResponseWriter, r *http.Request, t Today, err error, msg string) {
+func (a *API) write(c *echo.Context, t Today, err error, msg string) error {
 	if err != nil {
-		httpx.Error(w, err, msg)
-		return
+		return httpx.Fail(err, msg)
 	}
-	httpx.WriteJSON(w, http.StatusOK, Project(r.Context(), t))
+	return c.JSON(http.StatusOK, Project(c.Request().Context(), t))
 }
 
 // None is the view for a person with no first week.

@@ -12,12 +12,9 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
-	crewsdb "github.com/NorthAIProject/north-client/internal/crews/db"
 	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -37,8 +34,7 @@ type (
 )
 
 type Service struct {
-	pool     *pgxpool.Pool
-	q        *crewsdb.Queries
+	repo     Repository
 	checkIns CheckInReader
 	workouts WorkoutReader
 	blocks   BlockChecker
@@ -59,14 +55,51 @@ type WorkoutReader interface {
 }
 
 // BlockChecker says whether either of two people has blocked the other.
-// *social.Repository is one; it is narrowed here so crews does not depend on
-// the social slice.
+// *social.PostgresRepository is one; it is narrowed here so crews does not
+// depend on the social slice.
 type BlockChecker interface {
 	Blocked(ctx context.Context, a, b uuid.UUID) (bool, error)
 }
 
-func NewService(pool *pgxpool.Pool, checkIns CheckInReader, workouts WorkoutReader) *Service {
-	return &Service{pool: pool, q: crewsdb.New(pool), checkIns: checkIns, workouts: workouts, now: time.Now}
+// Repository is the persistence Service depends on: crews, their members,
+// channels and challenges, and the live notice that someone left.
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps crews.
+type Repository interface {
+	Notify(ctx context.Context, ev live.Event) error
+	CreateCrew(ctx context.Context, ownerID uuid.UUID, name, code string) (Crew, error)
+	CrewByCode(ctx context.Context, code string) (Crew, error)
+	GetCrew(ctx context.Context, crewID uuid.UUID) (Crew, error)
+	CountMembers(ctx context.Context, crewID uuid.UUID) (int, error)
+	IsMember(ctx context.Context, crewID, userID uuid.UUID) (bool, error)
+	AddMember(ctx context.Context, crewID, userID uuid.UUID) error
+	Members(ctx context.Context, crewID uuid.UUID) ([]memberRecord, error)
+	OldestOtherMember(ctx context.Context, crewID, userID uuid.UUID) (uuid.UUID, error)
+	DeleteCrew(ctx context.Context, crewID uuid.UUID) error
+	SetOwner(ctx context.Context, crewID, ownerID uuid.UUID) error
+	RemoveMember(ctx context.Context, crewID, userID uuid.UUID) error
+	SetMemberRole(ctx context.Context, crewID, userID uuid.UUID, role Role) error
+	MemberRole(ctx context.Context, crewID, userID uuid.UUID) (Role, error)
+	MemberSettings(ctx context.Context, crewID, userID uuid.UUID) (string, *time.Time, error)
+	SetNotify(ctx context.Context, crewID, userID uuid.UUID, notify string, mutedUntil *time.Time) error
+	ListMine(ctx context.Context, userID uuid.UUID) ([]Crew, error)
+	CrewmatesOf(ctx context.Context, userID uuid.UUID) ([]crewmate, error)
+	Challenge(ctx context.Context, crewID uuid.UUID) (*Challenge, error)
+	ClearChallenge(ctx context.Context, crewID uuid.UUID) error
+	SetChallenge(ctx context.Context, crewID uuid.UUID, kind string, target int) error
+	ChallengesOf(ctx context.Context, userID uuid.UUID) ([]crewChallenge, error)
+	ListChannels(ctx context.Context, crewID uuid.UUID) ([]Channel, error)
+	ChannelInCrew(ctx context.Context, crewID, channelID uuid.UUID) (Channel, error)
+	CountChannels(ctx context.Context, crewID uuid.UUID) (int, error)
+	CreateChannel(ctx context.Context, crewID, createdBy uuid.UUID, name, topic string) (Channel, error)
+	UpdateChannel(ctx context.Context, crewID, channelID uuid.UUID, name, topic string) (Channel, error)
+	DeleteChannel(ctx context.Context, crewID, channelID uuid.UUID) error
+	MessagesAuthoredBy(ctx context.Context, userID uuid.UUID) ([]crew.ExportedMessage, error)
+	Unread(ctx context.Context, userID uuid.UUID) ([]Unread, error)
+}
+
+func NewService(repo Repository, checkIns CheckInReader, workouts WorkoutReader) *Service {
+	return &Service{repo: repo, checkIns: checkIns, workouts: workouts, now: time.Now}
 }
 
 // WithBlocks keeps people out of crews whose owner they have blocked or been
@@ -90,49 +123,24 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, name string) (C
 	if err != nil {
 		return Crew{}, err
 	}
-	tx, err := s.pool.Begin(ctx)
+	c, err := s.repo.CreateCrew(ctx, ownerID, name, newCode())
 	if err != nil {
-		return Crew{}, apperr.Wrap(err, "begin create crew")
+		return Crew{}, err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := s.q.WithTx(tx)
-	row, err := q.CreateCrew(ctx, crewsdb.CreateCrewParams{Name: name, OwnerID: ownerID, Code: newCode()})
-	if err != nil {
-		return Crew{}, apperr.Wrap(err, "create crew")
-	}
-	if _, err = q.AddMember(ctx, crewsdb.AddMemberParams{CrewID: row.ID, UserID: ownerID}); err != nil {
-		return Crew{}, apperr.Wrap(err, "add owner")
-	}
-	if err = q.CreateDefaultChannels(ctx, row.ID); err != nil {
-		return Crew{}, apperr.Wrap(err, "create default channels")
-	}
-	general, err := q.DefaultChannel(ctx, row.ID)
-	if err != nil {
-		return Crew{}, apperr.Wrap(err, "default channel")
-	}
-	if err = q.InsertSystemMessage(ctx, crewsdb.InsertSystemMessageParams{CrewID: row.ID, ChannelID: general, Body: "crews.sys.welcome"}); err != nil {
-		return Crew{}, apperr.Wrap(err, "welcome message")
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return Crew{}, apperr.Wrap(err, "commit create crew")
-	}
-	return Crew{ID: row.ID, Name: row.Name, OwnerID: row.OwnerID, Code: row.Code, Members: 1}, nil
+	c.Members = 1
+	return c, nil
 }
 
 // Preview is the crew behind a join code, for the join page.
 func (s *Service) Preview(ctx context.Context, code string) (Crew, error) {
-	row, err := s.q.CrewByCode(ctx, strings.ToLower(strings.TrimSpace(code)))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Crew{}, apperr.ErrNotFound
-	}
+	c, err := s.repo.CrewByCode(ctx, strings.ToLower(strings.TrimSpace(code)))
 	if err != nil {
-		return Crew{}, apperr.Wrap(err, "crew by code")
+		return Crew{}, err
 	}
-	n, err := s.q.CountMembers(ctx, row.ID)
-	if err != nil {
-		return Crew{}, apperr.Wrap(err, "count members")
+	if c.Members, err = s.repo.CountMembers(ctx, c.ID); err != nil {
+		return Crew{}, err
 	}
-	return Crew{ID: row.ID, Name: row.Name, OwnerID: row.OwnerID, Code: row.Code, Members: int(n)}, nil
+	return c, nil
 }
 
 // Join adds the user to the crew behind code, if it has room. Joining twice
@@ -142,9 +150,9 @@ func (s *Service) Join(ctx context.Context, userID uuid.UUID, code string) (Crew
 	if err != nil {
 		return Crew{}, err
 	}
-	member, err := s.q.IsMember(ctx, crewsdb.IsMemberParams{CrewID: c.ID, UserID: userID})
+	member, err := s.repo.IsMember(ctx, c.ID, userID)
 	if err != nil {
-		return Crew{}, apperr.Wrap(err, "check membership")
+		return Crew{}, err
 	}
 	if member {
 		return c, nil
@@ -167,8 +175,8 @@ func (s *Service) Join(ctx context.Context, userID uuid.UUID, code string) (Crew
 	if c.Members >= limit {
 		return Crew{}, apperr.FieldErrors{}.Add("crew", i18n.T(ctx, "crews.err.full"))
 	}
-	if _, err = s.q.AddMember(ctx, crewsdb.AddMemberParams{CrewID: c.ID, UserID: userID}); err != nil {
-		return Crew{}, apperr.Wrap(err, "join crew")
+	if err = s.repo.AddMember(ctx, c.ID, userID); err != nil {
+		return Crew{}, err
 	}
 	c.Members++
 	return c, nil
@@ -176,9 +184,9 @@ func (s *Service) Join(ctx context.Context, userID uuid.UUID, code string) (Crew
 
 // limit is the crew's size cap, from its owner's tier.
 func (s *Service) limit(ctx context.Context, crewID, ownerID uuid.UUID) (int, error) {
-	members, err := s.q.Members(ctx, crewID)
+	members, err := s.repo.Members(ctx, crewID)
 	if err != nil {
-		return 0, apperr.Wrap(err, "list members")
+		return 0, err
 	}
 	for _, m := range members {
 		if m.ID == ownerID && users.Tier(m.Tier) == users.TierPro {
@@ -196,22 +204,22 @@ func (s *Service) Leave(ctx context.Context, crewID, userID uuid.UUID) error {
 		return err
 	}
 	if c.OwnerID == userID {
-		next, nextErr := s.q.OldestOtherMember(ctx, crewsdb.OldestOtherMemberParams{CrewID: crewID, UserID: userID})
-		if errors.Is(nextErr, pgx.ErrNoRows) {
-			if err = s.q.DeleteCrew(ctx, crewID); err != nil {
-				return apperr.Wrap(err, "delete crew")
+		next, nextErr := s.repo.OldestOtherMember(ctx, crewID, userID)
+		if errors.Is(nextErr, apperr.ErrNotFound) {
+			if err = s.repo.DeleteCrew(ctx, crewID); err != nil {
+				return err
 			}
 			return s.removed(ctx, crewID, userID)
 		}
 		if nextErr != nil {
-			return apperr.Wrap(nextErr, "find next owner")
+			return nextErr
 		}
-		if err = s.q.SetOwner(ctx, crewsdb.SetOwnerParams{ID: crewID, OwnerID: next}); err != nil {
-			return apperr.Wrap(err, "hand over crew")
+		if err = s.repo.SetOwner(ctx, crewID, next); err != nil {
+			return err
 		}
 	}
-	if _, err = s.q.RemoveMember(ctx, crewsdb.RemoveMemberParams{CrewID: crewID, UserID: userID}); err != nil {
-		return apperr.Wrap(err, "remove member")
+	if err = s.repo.RemoveMember(ctx, crewID, userID); err != nil {
+		return err
 	}
 	return s.removed(ctx, crewID, userID)
 }
@@ -219,7 +227,7 @@ func (s *Service) Leave(ctx context.Context, crewID, userID uuid.UUID) error {
 // removed tells anyone watching that userID is out of the crew, so their
 // own open streams close. The removal is already committed.
 func (s *Service) removed(ctx context.Context, crewID, userID uuid.UUID) error {
-	return live.Notify(ctx, s.pool, live.Event{Type: live.EventRemoved, CrewID: crewID, UserID: userID})
+	return s.repo.Notify(ctx, live.Event{Type: live.EventRemoved, CrewID: crewID, UserID: userID})
 }
 
 // Remove is somebody who runs the crew taking somebody out. The owner may
@@ -248,8 +256,8 @@ func (s *Service) Remove(ctx context.Context, crewID, actorID, memberID uuid.UUI
 			return apperr.ErrNotFound
 		}
 	}
-	if _, err = s.q.RemoveMember(ctx, crewsdb.RemoveMemberParams{CrewID: crewID, UserID: memberID}); err != nil {
-		return apperr.Wrap(err, "remove member")
+	if err = s.repo.RemoveMember(ctx, crewID, memberID); err != nil {
+		return err
 	}
 	return s.removed(ctx, crewID, memberID)
 }
@@ -270,29 +278,15 @@ func (s *Service) SetRole(ctx context.Context, crewID, ownerID, memberID uuid.UU
 	if memberID == ownerID {
 		return apperr.FieldErrors{}.Add("role", "The owner's role can't change.")
 	}
-	n, err := s.q.SetMemberRole(ctx, crewsdb.SetMemberRoleParams{CrewID: crewID, UserID: memberID, Role: string(role)})
-	if err != nil {
-		return apperr.Wrap(err, "set role")
-	}
-	if n == 0 {
-		return apperr.ErrNotFound
-	}
-	return nil
+	return s.repo.SetMemberRole(ctx, crewID, memberID, role)
 }
 
 // role is what userID is in crew c; not found if they are not in it.
-func (s *Service) role(ctx context.Context, c crewsdb.Crew, userID uuid.UUID) (Role, error) {
+func (s *Service) role(ctx context.Context, c Crew, userID uuid.UUID) (Role, error) {
 	if c.OwnerID == userID {
 		return crew.RoleOwner, nil
 	}
-	r, err := s.q.MemberRole(ctx, crewsdb.MemberRoleParams{CrewID: c.ID, UserID: userID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", apperr.ErrNotFound
-	}
-	if err != nil {
-		return "", apperr.Wrap(err, "member role")
-	}
-	return Role(r), nil
+	return s.repo.MemberRole(ctx, c.ID, userID)
 }
 
 // Channels are the crew's channels in order, for members only.
@@ -300,15 +294,7 @@ func (s *Service) Channels(ctx context.Context, crewID, viewerID uuid.UUID) ([]C
 	if _, err := s.get(ctx, crewID, viewerID); err != nil {
 		return nil, err
 	}
-	rows, err := s.q.ListChannels(ctx, crewID)
-	if err != nil {
-		return nil, apperr.Wrap(err, "list channels")
-	}
-	out := make([]Channel, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, Channel{ID: r.ID, Kind: r.Kind, Name: r.Name, Topic: r.Topic, Position: int(r.Position), IsDefault: r.IsDefault})
-	}
-	return out, nil
+	return s.repo.ListChannels(ctx, crewID)
 }
 
 // SetChallenge sets the weekly challenge; the owner and admins may.
@@ -325,7 +311,7 @@ func (s *Service) SetChallenge(ctx context.Context, crewID, actorID uuid.UUID, c
 		return apperr.ErrNotFound
 	}
 	if ch == nil {
-		return s.q.ClearChallenge(ctx, crewID)
+		return s.repo.ClearChallenge(ctx, crewID)
 	}
 	if ch.Kind != crew.ChallengeCheckIns && ch.Kind != crew.ChallengeWorkouts {
 		return apperr.FieldErrors{}.Add("kind", "Choose check-ins or workouts.")
@@ -333,35 +319,23 @@ func (s *Service) SetChallenge(ctx context.Context, crewID, actorID uuid.UUID, c
 	if ch.Target < 1 || ch.Target > 7 {
 		return apperr.FieldErrors{}.Add("target", "Choose between 1 and 7 a week.")
 	}
-	return s.q.SetChallenge(ctx, crewsdb.SetChallengeParams{CrewID: crewID, Kind: ch.Kind, Target: int16(ch.Target)})
+	return s.repo.SetChallenge(ctx, crewID, ch.Kind, ch.Target)
 }
 
 func (s *Service) Mine(ctx context.Context, userID uuid.UUID) ([]Crew, error) {
-	rows, err := s.q.ListMine(ctx, userID)
-	if err != nil {
-		return nil, apperr.Wrap(err, "list crews")
-	}
-	out := make([]Crew, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, Crew{ID: r.ID, Name: r.Name, OwnerID: r.OwnerID, Code: r.Code, Members: int(r.Members)})
-	}
-	return out, nil
+	return s.repo.ListMine(ctx, userID)
 }
 
 // get is the crew if the user is in it, not found otherwise.
-func (s *Service) get(ctx context.Context, crewID, userID uuid.UUID) (crewsdb.Crew, error) {
-	member, err := s.q.IsMember(ctx, crewsdb.IsMemberParams{CrewID: crewID, UserID: userID})
+func (s *Service) get(ctx context.Context, crewID, userID uuid.UUID) (Crew, error) {
+	member, err := s.repo.IsMember(ctx, crewID, userID)
 	if err != nil {
-		return crewsdb.Crew{}, apperr.Wrap(err, "check membership")
+		return Crew{}, err
 	}
 	if !member {
-		return crewsdb.Crew{}, apperr.ErrNotFound
+		return Crew{}, apperr.ErrNotFound
 	}
-	c, err := s.q.GetCrew(ctx, crewID)
-	if err != nil {
-		return crewsdb.Crew{}, apperr.Wrap(err, "get crew")
-	}
-	return c, nil
+	return s.repo.GetCrew(ctx, crewID)
 }
 
 // Board is the crew as viewer sees it: each member's day, streak, and week.
@@ -371,20 +345,16 @@ func (s *Service) Board(ctx context.Context, crewID, viewerID uuid.UUID) (Board,
 	if err != nil {
 		return Board{}, err
 	}
-	rows, err := s.q.Members(ctx, crewID)
+	rows, err := s.repo.Members(ctx, crewID)
 	if err != nil {
-		return Board{}, apperr.Wrap(err, "list members")
+		return Board{}, err
 	}
 	out := Board{
 		Crew:    Crew{ID: c.ID, Name: c.Name, OwnerID: c.OwnerID, Code: c.Code, Members: len(rows)},
 		IsOwner: c.OwnerID == viewerID,
 	}
-	ch, err := s.q.GetChallenge(ctx, crewID)
-	switch {
-	case err == nil:
-		out.Challenge = &Challenge{Kind: ch.Kind, Target: int(ch.Target)}
-	case !errors.Is(err, pgx.ErrNoRows):
-		return Board{}, apperr.Wrap(err, "get challenge")
+	if out.Challenge, err = s.repo.Challenge(ctx, crewID); err != nil {
+		return Board{}, err
 	}
 
 	// Each member's signals are a few queries; a crew can be a hundred
@@ -394,7 +364,7 @@ func (s *Service) Board(ctx context.Context, crewID, viewerID uuid.UUID) (Board,
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(boardFillers)
 	for i, r := range rows {
-		m := Member{ID: r.ID, DisplayName: r.DisplayName, Owner: r.ID == c.OwnerID, Me: r.ID == viewerID, Role: Role(r.Role)}
+		m := Member{ID: r.ID, DisplayName: r.DisplayName, Owner: r.ID == c.OwnerID, Me: r.ID == viewerID, Role: r.Role}
 		if m.Owner {
 			m.Role = crew.RoleOwner
 		}
@@ -453,9 +423,9 @@ func weekStart(t time.Time) time.Time {
 // Crewmates are everybody sharing a crew with the user, for the evening
 // nudge. Names only.
 func (s *Service) Crewmates(ctx context.Context, userID uuid.UUID) ([]Member, error) {
-	rows, err := s.q.CrewmatesOf(ctx, userID)
+	rows, err := s.repo.CrewmatesOf(ctx, userID)
 	if err != nil {
-		return nil, apperr.Wrap(err, "crewmates")
+		return nil, err
 	}
 	out := make([]Member, 0, len(rows))
 	for _, r := range rows {
@@ -489,9 +459,9 @@ func (s *Service) CheckedInCrewmates(ctx context.Context, user users.User, now t
 	if s.checkIns == nil {
 		return nil, nil
 	}
-	rows, err := s.q.CrewmatesOf(ctx, user.ID)
+	rows, err := s.repo.CrewmatesOf(ctx, user.ID)
 	if err != nil {
-		return nil, apperr.Wrap(err, "crewmates")
+		return nil, err
 	}
 	var names []string
 	for _, r := range rows {

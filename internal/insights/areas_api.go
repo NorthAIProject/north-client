@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/labstack/echo/v5"
+
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -52,28 +54,26 @@ type AreasView struct {
 	Focus []string `json:"focus"`
 }
 
-func (a *API) areas(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	weeks, _ := strconv.Atoi(r.URL.Query().Get("weeks"))
+func (a *API) areas(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	weeks, _ := strconv.Atoi(c.QueryParam("weeks"))
 	now := time.Now()
-	data, err := a.svc.AreaTrend(r.Context(), user, weeks, now)
+	data, err := a.svc.AreaTrend(ctx, user, weeks, now)
 	if err != nil {
-		httpx.Error(w, err, "Areas could not be loaded.")
-		return
+		return httpx.Fail(err, "Areas could not be loaded.")
 	}
 	var focus []string
 	if a.focus != nil && len(data.Weeks) > 0 {
-		if focus, err = a.focus.FocusLines(r.Context(), user, data.Weeks[len(data.Weeks)-1]); err != nil {
-			httpx.Error(w, err, "Areas could not be loaded.")
-			return
+		if focus, err = a.focus.FocusLines(ctx, user, data.Weeks[len(data.Weeks)-1]); err != nil {
+			return httpx.Fail(err, "Areas could not be loaded.")
 		}
 	}
-	view, err := projectAreas(r.Context(), data, focus)
+	view, err := projectAreas(ctx, data, focus)
 	if err != nil {
-		httpx.Error(w, err, "Areas could not be loaded.")
-		return
+		return httpx.Fail(err, "Areas could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, view)
+	return c.JSON(http.StatusOK, view)
 }
 
 func projectAreas(ctx context.Context, data Areas, focus []string) (AreasView, error) {

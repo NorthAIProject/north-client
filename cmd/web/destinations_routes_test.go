@@ -91,10 +91,11 @@ var knownNonDestinations = map[string]string{
 func appGETRoutes(t *testing.T, handler http.Handler) map[string]bool {
 	t.Helper()
 
-	mux, ok := handler.(*chi.Mux)
+	srv, ok := handler.(*server)
 	if !ok {
-		t.Fatalf("routes() returned %T, not a *chi.Mux", handler)
+		t.Fatalf("routes() returned %T, not a *server", handler)
 	}
+	mux := srv.web
 
 	found := map[string]bool{}
 	err := chi.Walk(mux, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {

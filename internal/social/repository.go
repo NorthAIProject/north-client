@@ -15,19 +15,21 @@ import (
 	socialdb "github.com/NorthAIProject/north-client/internal/social/db"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	pool *pgxpool.Pool
 	q    *socialdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, q: socialdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool, q: socialdb.New(pool)}
 }
 
 // errHandleTaken is returned by SetHandle when another account holds it.
 var errHandleTaken = errors.New("handle taken")
 
-func (r *Repository) SetHandle(ctx context.Context, userID uuid.UUID, handle *string) error {
+func (r *PostgresRepository) SetHandle(ctx context.Context, userID uuid.UUID, handle *string) error {
 	_, err := r.q.SetHandle(ctx, socialdb.SetHandleParams{ID: userID, Handle: handle})
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -39,7 +41,7 @@ func (r *Repository) SetHandle(ctx context.Context, userID uuid.UUID, handle *st
 	return nil
 }
 
-func (r *Repository) Handle(ctx context.Context, userID uuid.UUID) (string, error) {
+func (r *PostgresRepository) Handle(ctx context.Context, userID uuid.UUID) (string, error) {
 	h, err := r.q.GetHandle(ctx, userID)
 	if err != nil {
 		return "", apperr.Wrap(err, "get handle")
@@ -47,7 +49,7 @@ func (r *Repository) Handle(ctx context.Context, userID uuid.UUID) (string, erro
 	return util.Val(h), nil
 }
 
-func (r *Repository) PersonByHandle(ctx context.Context, handle string) (Person, error) {
+func (r *PostgresRepository) PersonByHandle(ctx context.Context, handle string) (Person, error) {
 	row, err := r.q.PersonByHandle(ctx, &handle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Person{}, apperr.ErrNotFound
@@ -58,7 +60,7 @@ func (r *Repository) PersonByHandle(ctx context.Context, handle string) (Person,
 	return Person{ID: row.ID, DisplayName: row.DisplayName, Handle: util.Val(row.Handle)}, nil
 }
 
-func (r *Repository) PersonByID(ctx context.Context, id uuid.UUID) (Person, error) {
+func (r *PostgresRepository) PersonByID(ctx context.Context, id uuid.UUID) (Person, error) {
 	row, err := r.q.PersonByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Person{}, apperr.ErrNotFound
@@ -71,7 +73,7 @@ func (r *Repository) PersonByID(ctx context.Context, id uuid.UUID) (Person, erro
 
 // InviteFor returns the inviter's code for a channel, creating one with the
 // code given if there is none yet.
-func (r *Repository) InviteFor(ctx context.Context, inviterID uuid.UUID, channel, newCode string) (Invite, error) {
+func (r *PostgresRepository) InviteFor(ctx context.Context, inviterID uuid.UUID, channel, newCode string) (Invite, error) {
 	existing, err := r.q.InviteFor(ctx, socialdb.InviteForParams{InviterID: inviterID, Channel: channel})
 	if err == nil {
 		return Invite{Code: existing.Code, InviterID: existing.InviterID, Channel: existing.Channel}, nil
@@ -90,7 +92,7 @@ func (r *Repository) InviteFor(ctx context.Context, inviterID uuid.UUID, channel
 	return Invite{Code: created.Code, InviterID: created.InviterID, Channel: created.Channel}, nil
 }
 
-func (r *Repository) InviteByCode(ctx context.Context, code string) (InvitePreview, error) {
+func (r *PostgresRepository) InviteByCode(ctx context.Context, code string) (InvitePreview, error) {
 	row, err := r.q.InviteByCode(ctx, code)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return InvitePreview{}, apperr.ErrNotFound
@@ -115,7 +117,7 @@ type Redemption struct {
 
 // Redeem connects the two both ways and, if this is the account's first
 // invite, records it as the one that brought them, in one transaction.
-func (r *Repository) Redeem(ctx context.Context, inviteeID uuid.UUID, code string, inviterID uuid.UUID) (Redemption, error) {
+func (r *PostgresRepository) Redeem(ctx context.Context, inviteeID uuid.UUID, code string, inviterID uuid.UUID) (Redemption, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return Redemption{}, apperr.Wrap(err, "begin redeem")
@@ -153,7 +155,7 @@ func (r *Repository) Redeem(ctx context.Context, inviteeID uuid.UUID, code strin
 	return out, nil
 }
 
-func (r *Repository) Joined(ctx context.Context, inviterID uuid.UUID) (int, error) {
+func (r *PostgresRepository) Joined(ctx context.Context, inviterID uuid.UUID) (int, error) {
 	n, err := r.q.CountRedemptions(ctx, inviterID)
 	if err != nil {
 		return 0, apperr.Wrap(err, "count redemptions")
@@ -161,7 +163,7 @@ func (r *Repository) Joined(ctx context.Context, inviterID uuid.UUID) (int, erro
 	return int(n), nil
 }
 
-func (r *Repository) Follow(ctx context.Context, followerID, followeeID uuid.UUID, status string) (string, error) {
+func (r *PostgresRepository) Follow(ctx context.Context, followerID, followeeID uuid.UUID, status string) (string, error) {
 	row, err := r.q.UpsertFollow(ctx, socialdb.UpsertFollowParams{FollowerID: followerID, FolloweeID: followeeID, Status: status})
 	if err != nil {
 		return "", apperr.Wrap(err, "follow")
@@ -170,7 +172,7 @@ func (r *Repository) Follow(ctx context.Context, followerID, followeeID uuid.UUI
 }
 
 // FollowStatus is "" when there is no follow either pending or accepted.
-func (r *Repository) FollowStatus(ctx context.Context, followerID, followeeID uuid.UUID) (string, error) {
+func (r *PostgresRepository) FollowStatus(ctx context.Context, followerID, followeeID uuid.UUID) (string, error) {
 	row, err := r.q.GetFollow(ctx, socialdb.GetFollowParams{FollowerID: followerID, FolloweeID: followeeID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
@@ -181,7 +183,7 @@ func (r *Repository) FollowStatus(ctx context.Context, followerID, followeeID uu
 	return row.Status, nil
 }
 
-func (r *Repository) Accept(ctx context.Context, followerID, followeeID uuid.UUID) (bool, error) {
+func (r *PostgresRepository) Accept(ctx context.Context, followerID, followeeID uuid.UUID) (bool, error) {
 	n, err := r.q.AcceptFollow(ctx, socialdb.AcceptFollowParams{FollowerID: followerID, FolloweeID: followeeID})
 	if err != nil {
 		return false, apperr.Wrap(err, "accept follow")
@@ -189,14 +191,14 @@ func (r *Repository) Accept(ctx context.Context, followerID, followeeID uuid.UUI
 	return n > 0, nil
 }
 
-func (r *Repository) Unfollow(ctx context.Context, followerID, followeeID uuid.UUID) error {
+func (r *PostgresRepository) Unfollow(ctx context.Context, followerID, followeeID uuid.UUID) error {
 	if _, err := r.q.DeleteFollow(ctx, socialdb.DeleteFollowParams{FollowerID: followerID, FolloweeID: followeeID}); err != nil {
 		return apperr.Wrap(err, "unfollow")
 	}
 	return nil
 }
 
-func (r *Repository) Followers(ctx context.Context, userID uuid.UUID) ([]Connection, error) {
+func (r *PostgresRepository) Followers(ctx context.Context, userID uuid.UUID) ([]Connection, error) {
 	rows, err := r.q.ListFollowers(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list followers")
@@ -208,7 +210,7 @@ func (r *Repository) Followers(ctx context.Context, userID uuid.UUID) ([]Connect
 	return out, nil
 }
 
-func (r *Repository) Following(ctx context.Context, userID uuid.UUID) ([]Connection, error) {
+func (r *PostgresRepository) Following(ctx context.Context, userID uuid.UUID) ([]Connection, error) {
 	rows, err := r.q.ListFollowing(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list following")
@@ -220,7 +222,7 @@ func (r *Repository) Following(ctx context.Context, userID uuid.UUID) ([]Connect
 	return out, nil
 }
 
-func (r *Repository) Counts(ctx context.Context, userID uuid.UUID) (followers, following int, err error) {
+func (r *PostgresRepository) Counts(ctx context.Context, userID uuid.UUID) (followers, following int, err error) {
 	row, err := r.q.CountFollows(ctx, userID)
 	if err != nil {
 		return 0, 0, apperr.Wrap(err, "count follows")
@@ -230,7 +232,7 @@ func (r *Repository) Counts(ctx context.Context, userID uuid.UUID) (followers, f
 
 // Block records the block and removes every follow between the two, in one
 // transaction, so a blocked person is never left following for a moment.
-func (r *Repository) Block(ctx context.Context, blockerID, blockedID uuid.UUID) error {
+func (r *PostgresRepository) Block(ctx context.Context, blockerID, blockedID uuid.UUID) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return apperr.Wrap(err, "begin block")
@@ -249,14 +251,14 @@ func (r *Repository) Block(ctx context.Context, blockerID, blockedID uuid.UUID) 
 	return nil
 }
 
-func (r *Repository) Unblock(ctx context.Context, blockerID, blockedID uuid.UUID) error {
+func (r *PostgresRepository) Unblock(ctx context.Context, blockerID, blockedID uuid.UUID) error {
 	if _, err := r.q.Unblock(ctx, socialdb.UnblockParams{BlockerID: blockerID, BlockedID: blockedID}); err != nil {
 		return apperr.Wrap(err, "unblock")
 	}
 	return nil
 }
 
-func (r *Repository) Blocked(ctx context.Context, a, b uuid.UUID) (bool, error) {
+func (r *PostgresRepository) Blocked(ctx context.Context, a, b uuid.UUID) (bool, error) {
 	blocked, err := r.q.IsBlockedEitherWay(ctx, socialdb.IsBlockedEitherWayParams{BlockerID: a, BlockedID: b})
 	if err != nil {
 		return false, apperr.Wrap(err, "check block")
@@ -264,7 +266,7 @@ func (r *Repository) Blocked(ctx context.Context, a, b uuid.UUID) (bool, error) 
 	return blocked, nil
 }
 
-func (r *Repository) BlockedList(ctx context.Context, blockerID uuid.UUID) ([]Person, error) {
+func (r *PostgresRepository) BlockedList(ctx context.Context, blockerID uuid.UUID) ([]Person, error) {
 	rows, err := r.q.ListBlocked(ctx, blockerID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list blocked")
@@ -281,7 +283,7 @@ func connection(id uuid.UUID, name string, handle *string, status string, since 
 }
 
 // MatchContacts finds people by hashed email or phone; see MatchContactHashes.
-func (r *Repository) MatchContacts(ctx context.Context, viewerID uuid.UUID, emailHashes, phoneHashes []string) ([]Connection, error) {
+func (r *PostgresRepository) MatchContacts(ctx context.Context, viewerID uuid.UUID, emailHashes, phoneHashes []string) ([]Connection, error) {
 	rows, err := r.q.MatchContactHashes(ctx, socialdb.MatchContactHashesParams{
 		Viewer: viewerID, EmailHashes: emailHashes, PhoneHashes: phoneHashes,
 	})
