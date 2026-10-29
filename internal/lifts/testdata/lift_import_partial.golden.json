@@ -1,0 +1,13 @@
+{
+  "error": {
+    "message": "The import stopped part way.",
+    "code": "import_partial"
+  },
+  "imported": {
+    "workouts": 3,
+    "duplicates": 1,
+    "sets": 24,
+    "skipped": 2,
+    "unmatched": []
+  }
+}
