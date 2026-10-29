@@ -3,8 +3,8 @@ package documents
 import (
 	"strings"
 	"testing"
-	"unicode/utf8"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 

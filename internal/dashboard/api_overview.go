@@ -116,10 +116,10 @@ func projectOverview(r *http.Request, snap Snapshot) OverviewResponse {
 		out.PlanID = &id
 	}
 	for i, d := range snap.CheckIns.Days {
-		out.CheckIns[i] = OverviewCheckInDay{Label: d.Label, Mood: d.Mood, Energy: d.Energy}
+		out.CheckIns[i] = OverviewCheckInDay(d)
 	}
 	for i, d := range snap.Hydration.Days {
-		out.HydrationDays[i] = OverviewHydrationDay{Label: d.Label, TotalML: d.TotalML, TargetML: d.TargetML}
+		out.HydrationDays[i] = OverviewHydrationDay(d)
 	}
 	return out
 }
