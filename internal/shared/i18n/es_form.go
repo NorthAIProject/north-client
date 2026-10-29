@@ -3,7 +3,7 @@ package i18n
 var spanishForm = map[string]string{
 	"form.title":         "Revisión de técnica",
 	"form.lede":          "Sube un vídeo de una serie efectiva. Khepri lo mira y señala los momentos que vale la pena corregir; puedes comprobar cada uno por ti mismo.",
-	"form.upload.help":   "MP4, MOV o WebM, de menos de 200 MB. Graba de lado, con el cuerpo entero en el plano, una sola serie.",
+	"form.upload.help":   "MP4, MOV o WebM, de menos de 90 MB. Graba de lado, con el cuerpo entero en el plano, una sola serie.",
 	"form.upload.submit": "Analizar mi técnica",
 	"form.previous":      "Revisiones anteriores",
 	"form.new":           "Nueva revisión",

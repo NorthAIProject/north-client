@@ -24,9 +24,11 @@ import (
 	"github.com/NorthAIProject/north-client/internal/spend"
 )
 
-// MaxVideoBytes bounds an upload. Generous enough for a phone clip of a working
-// set, small enough that one request cannot fill the disk.
-const MaxVideoBytes int64 = 200 << 20 // 200 MB
+// MaxVideoBytes bounds an upload. Enough for a phone clip of a working set,
+// small enough that one request cannot fill the disk, and under Cloudflare's
+// 100 MB request-body cap on kheprios.com's proxied zone with the multipart
+// overhead included (platform/infra docs; north-web-app hosting-cloudflare.md).
+const MaxVideoBytes int64 = 90 << 20 // 90 MB
 
 // MaxImageBytes bounds a chat photo. Vision models accept a few megabytes;
 // a 20 MB phone dump does not help the coach and blows the request.

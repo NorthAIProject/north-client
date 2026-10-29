@@ -114,7 +114,7 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, MaxVideoBytes+(1<<20))
 	file, header, err := r.FormFile("video")
 	if err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("video", "Choose a video under 200 MB."), "Choose a video under 200 MB.")
+		httpx.Error(w, apperr.FieldErrors{}.Add("video", "Choose a video under 90 MB."), "Choose a video under 90 MB.")
 		return
 	}
 	defer func() { _ = file.Close() }()

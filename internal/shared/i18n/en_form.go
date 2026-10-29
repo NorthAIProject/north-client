@@ -4,7 +4,7 @@ package i18n
 var englishForm = map[string]string{
 	"form.title":         "Form check",
 	"form.lede":          "Upload a clip of a working set. Khepri watches it and points at the moments worth fixing — you can see each one for yourself.",
-	"form.upload.help":   "MP4, MOV, or WebM, under 200 MB. Film from the side, full body in frame, one set.",
+	"form.upload.help":   "MP4, MOV, or WebM, under 90 MB. Film from the side, full body in frame, one set.",
 	"form.upload.submit": "Analyse my form",
 	"form.previous":      "Previous checks",
 	"form.new":           "New check",
