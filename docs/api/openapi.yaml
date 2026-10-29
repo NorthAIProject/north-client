@@ -7679,7 +7679,9 @@ paths:
         adds nothing; a workout Apple Health already recorded keeps that
         session and gains the sets. Exercise names are matched to the catalog;
         names with no match are kept as typed and listed in unmatched. A file
-        that is not a Hevy export is a 422 with the reason in fields.file.
+        that is not a Hevy export is a 422 with the reason in fields.file. An
+        import that fails part way is a 500 with code import_partial and, in
+        imported, what was saved before it stopped.
       requestBody:
         required: true
         content:
@@ -7703,6 +7705,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '500':
+          description: The import stopped part way; what was saved is in imported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiftImportPartial'
   /lifts/sessions/{sessionID}/recap:
     parameters:
       - name: sessionID
@@ -10496,6 +10504,14 @@ components:
           items:
             type: string
           description: Exercise names with no catalog entry, kept as typed.
+    LiftImportPartial:
+      type: object
+      required: [error, imported]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+        imported:
+          $ref: '#/components/schemas/LiftImport'
     LiftLastExercise:
       type: object
       required: [key, name, performedOn, sets]

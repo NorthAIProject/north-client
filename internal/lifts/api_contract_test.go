@@ -37,6 +37,14 @@ func TestLiftLastShape(t *testing.T) {
 		map[string][]lifts.Set{"barbell-squat": sets}))
 }
 
+func TestLiftImportPartialShape(t *testing.T) {
+	t.Parallel()
+	apitest.AssertGolden(t, "lift_import_partial.golden.json", lifts.ProjectImportPartial(
+		"The import stopped part way.",
+		lifts.ImportResult{Workouts: 3, Duplicates: 1, Sets: 24, Skipped: 2},
+	))
+}
+
 func TestLiftStatsShape(t *testing.T) {
 	t.Parallel()
 	sets := fixtureSets()
