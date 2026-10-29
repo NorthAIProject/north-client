@@ -1,0 +1,56 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      }
+    ]
+  },
+  "hasData": true,
+  "tiles": [
+    {
+      "label": "Average",
+      "value": "7h 12m",
+      "note": "across 2 nights"
+    }
+  ],
+  "nights": {
+    "labels": [
+      "Oct 1",
+      "Oct 2"
+    ],
+    "series": [
+      {
+        "label": "Hours",
+        "values": [
+          7.5,
+          6.9
+        ]
+      }
+    ]
+  },
+  "stages": [
+    {
+      "label": "Deep",
+      "value": "18%",
+      "pct": 18
+    }
+  ],
+  "schedule": [
+    {
+      "label": "Bedtime",
+      "value": "23:10",
+      "note": "varies by 20m"
+    }
+  ],
+  "extremes": [
+    {
+      "label": "Longest",
+      "value": "7h 30m",
+      "note": "Wed, Oct 1"
+    }
+  ]
+}

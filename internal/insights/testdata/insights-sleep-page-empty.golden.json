@@ -1,0 +1,21 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      }
+    ]
+  },
+  "hasData": false,
+  "tiles": [],
+  "nights": {
+    "labels": [],
+    "series": []
+  },
+  "stages": [],
+  "schedule": [],
+  "extremes": []
+}

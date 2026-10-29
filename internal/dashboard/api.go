@@ -31,6 +31,8 @@ func NewAPI(svc *Service) *API {
 
 func (a *API) Routes(r chi.Router) {
 	r.Get("/today", a.today)
+	r.Get("/overview", a.overview)
+	r.Get("/overview/version", a.version)
 }
 
 type TodayResponse struct {

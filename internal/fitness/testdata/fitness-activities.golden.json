@@ -1,0 +1,69 @@
+{
+  "strava": {
+    "configured": true,
+    "connected": true,
+    "syncPending": false
+  },
+  "trend": {
+    "days": [
+      {
+        "date": "2026-09-23",
+        "minutes": 0,
+        "future": false
+      },
+      {
+        "date": "2026-09-24",
+        "minutes": 45,
+        "future": false
+      },
+      {
+        "date": "2026-09-25",
+        "minutes": 0,
+        "future": true
+      }
+    ],
+    "bands": [
+      {
+        "family": "run",
+        "values": [
+          0,
+          45,
+          0
+        ]
+      }
+    ],
+    "normal": [
+      12.5,
+      14,
+      14
+    ],
+    "recentMinutes": 45,
+    "normalMinutes": 98,
+    "ratio": 0.46,
+    "streakWeeks": 3,
+    "shape": "well_down",
+    "sessions": 1,
+    "distanceM": 8200,
+    "elevationM": 64,
+    "activeDays": 1,
+    "countedDays": 2
+  },
+  "sessions": {
+    "sessions": [
+      {
+        "stravaId": 1234567,
+        "name": "Morning Run",
+        "sport": "Run",
+        "family": "run",
+        "distanceM": 8200,
+        "elevationM": 64,
+        "movingTimeS": 2700,
+        "startedAt": "2026-09-24T06:30:00Z"
+      }
+    ],
+    "page": 1,
+    "perPage": 10,
+    "totalPages": 1,
+    "total": 1
+  }
+}

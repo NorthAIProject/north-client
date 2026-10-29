@@ -1,0 +1,29 @@
+{
+  "range": {
+    "key": "week",
+    "label": "Last 7 days",
+    "options": [
+      {
+        "key": "week",
+        "label": "Last 7 days"
+      }
+    ]
+  },
+  "days": 30,
+  "findings": [
+    {
+      "title": "You sleep longer after training",
+      "detail": "Across 30 days.",
+      "a": {
+        "label": "Trained (8)",
+        "value": "7h 40m",
+        "pct": 100
+      },
+      "b": {
+        "label": "Rest (22)",
+        "value": "6h 55m",
+        "pct": 90
+      }
+    }
+  ]
+}

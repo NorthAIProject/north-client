@@ -150,6 +150,7 @@ func routes(
 		AppleBundleID:       cfg.AppleBundleID,
 		WebAuthnRPID:        cfg.WebAuthnRPID,
 		WebAuthnDisplayName: cfg.WebAuthnDisplayName,
+		WebAuthnRPOrigins:   cfg.WebAuthnRPOrigins,
 		Log:                 slog.Default(),
 	}).WithFunnel(funnel)
 	authMW := auth.NewMiddleware(sessions, cfg.Env.IsProduction(), cfg.TrustedProxies)
@@ -1033,6 +1034,8 @@ func routes(
 	mcpAuthBrowser := mcpauth.NewBrowserHandler(
 		mcpAuthSvc, authSvc, authMW, onboardingSvc, slog.Default(), cfg.Env.IsProduction(),
 	).WithFunnel(funnel)
+	// The same screen's JSON half, for the SvelteKit front end.
+	mcpAuthAPI := mcpauth.NewAPI(mcpAuthSvc, authSvc, authMW, onboardingSvc, slog.Default()).WithFunnel(funnel)
 
 	// The MCP endpoint an outside agent connects to.
 	//
@@ -1112,9 +1115,18 @@ func routes(
 	// and a bearer a browser never attaches on its own. The native app signs
 	// in for a bearer session; capture keeps its nk_ connection token. Body
 	// caps are set per group inside mountAPI.
+	// The web transcript loads a photo a turn carried through the API.
+	coachAPI := coach.NewAPI(coachSvc, quotaSvc, mediaSvc).WithAttachmentURLs(func(ctx context.Context, id, userID uuid.UUID) (string, error) {
+		m, err := mediaSvc.GetMedia(ctx, id, userID)
+		if err != nil {
+			return "", err
+		}
+		return mediaSvc.PlaybackURL(ctx, m)
+	})
 	r.Group(func(r chi.Router) {
 		mountAPI(r, sessions, apiSet{
 			auth:         authAPI,
+			mcpAuth:      mcpAuthAPI,
 			capture:      captureAPI,
 			onboarding:   onboardingAPI,
 			dashboard:    dashboardAPI,
@@ -1129,18 +1141,20 @@ func routes(
 			screenTime:   screentime.NewAPI(screenTimeSvc),
 			soreness:     soreness.NewAPI(sorenessSvc),
 			milestones:   milestones.NewAPI(milestoneSvc),
-			coach:        coach.NewAPI(coachSvc, quotaSvc, mediaSvc),
+			coach:        coachAPI,
+			voice:        voice.NewAPI(voiceSvc, quotaSvc),
 			exercises:    exercises.NewAPI(exerciseSvc, assets.Assets),
 			settings:     settings.NewAPI(settingsHandler),
-			training:     workouts.NewAPI(workoutSvc),
+			vault:        vaultHandler,
+			training:     workouts.NewAPI(workoutSvc).WithRecaps(liftSvc).WithLoads(liftSvc),
 			activity:     activity.NewAPI(activitySvc),
 			health:       health.NewAPI(healthSvc),
-			fitness:      fitness.NewAPI(stravaSvc, cfg.BaseURL),
+			fitness:      fitness.NewAPI(stravaSvc, cfg.BaseURL).WithHub(fitnessHandler.Hub()),
 			insights:     insights.NewAPI(insightsSvc).WithFocus(weeklySvc),
 			goals:        goals.NewAPI(goalSvc),
 			checkins:     checkins.NewAPI(checkinSvc).WithFunnel(funnel),
 			checkinReply: checkinreply.NewAPI(checkinReplySvc),
-			reports:      reports.NewAPI(reportSvc),
+			reports:      reports.NewAPI(reportSvc).WithQuotas(quotaSvc),
 			memories:     memories.NewAPI(memorySvc),
 			knowledge:    documents.NewAPI(documentSvc, quotaSvc),
 			formChecks:   media.NewAPI(mediaSvc, quotaSvc),
@@ -1157,7 +1171,7 @@ func routes(
 			social:       social.NewAPI(socialSvc, cfg.BaseURL),
 			profiles:     profiles.NewAPI(profilesSvc),
 			achievements: achievements.NewAPI(achievementSvc),
-			awards:       awards.NewAPI(awardsSvc),
+			awards:       awards.NewAPI(awardsSvc).WithPeople(profilesSvc),
 			crews:        crews.NewAPI(crewSvc, cfg.BaseURL).WithLive(crewChat, crewLive),
 			moderation:   moderation.NewAPI(moderationSvc),
 			xp:           xp.NewAPI(xpSvc),
@@ -1165,9 +1179,12 @@ func routes(
 			recaps:       recaps.NewAPI(recapSvc),
 			dailyPosts:   dailyposts.NewAPI(dailyPostSvc),
 			inbox:        inbox.NewAPI(inboxSvc),
-			lighter:      lighterday.NewAPI(lighterSvc),
-			outreach:     outreach.NewAPI(outreachSvc),
-			firstWeek:    firstweek.NewAPI(firstWeekSvc),
+			lighter: lighterday.NewAPI(lighterSvc).WithCoveredBy(func(ctx context.Context, u users.User) bool {
+				return outreachSvc != nil && outreachSvc.CoversRecovery(ctx, u)
+			}),
+			outreach:  outreach.NewAPI(outreachSvc),
+			firstWeek: firstweek.NewAPI(firstWeekSvc),
+			push:      push.NewAPI(pushSvc),
 		})
 	})
 

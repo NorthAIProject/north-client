@@ -3,7 +3,7 @@ package i18n
 var portugueseEuropeanForm = map[string]string{
 	"form.title":         "Análise de técnica",
 	"form.lede":          "Carrega um vídeo de uma série efetiva. O Khepri vê-o e aponta os momentos que vale a pena corrigir — podes confirmar cada um por ti.",
-	"form.upload.help":   "MP4, MOV ou WebM, com menos de 200 MB. Filma de lado, com o corpo inteiro no enquadramento, uma só série.",
+	"form.upload.help":   "MP4, MOV ou WebM, com menos de 90 MB. Filma de lado, com o corpo inteiro no enquadramento, uma só série.",
 	"form.upload.submit": "Analisar a minha técnica",
 	"form.previous":      "Análises anteriores",
 	"form.new":           "Nova análise",

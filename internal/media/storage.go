@@ -67,7 +67,7 @@ func NewS3Storage(ctx context.Context, opts S3Options) (*S3Storage, error) {
 
 		// The SDK defaults to calculating a checksum on every upload, which it
 		// can only do over a plain HTTP connection if the body is seekable. An
-		// upload arrives as a stream, and buffering a 200 MB video into memory
+		// upload arrives as a stream, and buffering a 90 MB video into memory
 		// to satisfy that is not a trade worth making. Requiring it only where
 		// S3 itself requires it keeps streaming uploads working against MinIO
 		// on http:// and against S3 and R2 on https://, where the SDK uses a
@@ -87,7 +87,7 @@ func NewS3Storage(ctx context.Context, opts S3Options) (*S3Storage, error) {
 //
 // It goes through the transfer manager rather than calling PutObject directly.
 // PutObject signs the whole payload up front, which needs a seekable body; an
-// upload arrives as a stream, and buffering a 200 MB video into memory to make
+// upload arrives as a stream, and buffering a 90 MB video into memory to make
 // it seekable is not a trade worth making. The transfer manager reads the
 // stream in parts and uses a multipart upload, so memory stays bounded no
 // matter how long the clip is.

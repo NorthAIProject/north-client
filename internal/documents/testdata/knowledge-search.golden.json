@@ -21,7 +21,9 @@
           "matched": false
         }
       ],
-      "startLine": 2
+      "startLine": 2,
+      "endLine": 2
     }
-  ]
+  ],
+  "hasMore": true
 }

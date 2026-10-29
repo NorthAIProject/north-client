@@ -51,6 +51,9 @@ type ExerciseSummary struct {
 	Difficulty string   `json:"difficulty"`
 	Primary    []string `json:"primaryMuscles"`
 	HasArt     bool     `json:"hasArt"`
+	// IllustrationSlug names the artwork's frames under
+	// /assets/exercises/{illustrationSlug}/; absent without artwork.
+	IllustrationSlug string `json:"illustrationSlug,omitempty"`
 }
 
 type ExerciseList struct {
@@ -66,6 +69,7 @@ func ProjectList(found []Exercise) ExerciseList {
 		out.Exercises = append(out.Exercises, ExerciseSummary{
 			Slug: e.Slug, Name: e.Name, Category: e.Category, Equipment: e.Equipment,
 			Difficulty: e.Difficulty, Primary: nonNil(e.Primary), HasArt: e.HasIllustration(),
+			IllustrationSlug: illustration(e),
 		})
 	}
 	return out
@@ -105,6 +109,10 @@ type ExerciseDetail struct {
 	Primary      []string `json:"primaryMuscles"`
 	Secondary    []string `json:"secondaryMuscles"`
 	Art          *Art     `json:"art,omitempty"`
+	// IllustrationSlug names the artwork's frames under
+	// /assets/exercises/{illustrationSlug}/, for a web page that masks the
+	// files rather than drawing path data; absent without artwork.
+	IllustrationSlug string `json:"illustrationSlug,omitempty"`
 }
 
 // Art is the three pose frames of a movement, drawn in a square of Size
@@ -124,15 +132,16 @@ func (a *API) show(w http.ResponseWriter, r *http.Request) {
 	}
 
 	detail := ExerciseDetail{
-		Slug:         e.Slug,
-		Name:         e.Name,
-		Category:     e.Category,
-		Equipment:    e.Equipment,
-		Difficulty:   e.Difficulty,
-		Instructions: e.Instructions,
-		VideoURL:     e.VideoURL,
-		Primary:      nonNil(e.Primary),
-		Secondary:    nonNil(e.Secondary),
+		Slug:             e.Slug,
+		Name:             e.Name,
+		Category:         e.Category,
+		Equipment:        e.Equipment,
+		Difficulty:       e.Difficulty,
+		Instructions:     e.Instructions,
+		VideoURL:         e.VideoURL,
+		Primary:          nonNil(e.Primary),
+		Secondary:        nonNil(e.Secondary),
+		IllustrationSlug: illustration(e),
 	}
 	if e.HasIllustration() {
 		art, err := a.frames(e.IllustrationSlug)
@@ -193,6 +202,14 @@ func readGzip(fsys fs.FS, name string) (string, error) {
 	defer func() { _ = zr.Close() }()
 	b, err := io.ReadAll(zr)
 	return string(b), err
+}
+
+// illustration is the artwork's slug, or "" when the exercise has none.
+func illustration(e Exercise) string {
+	if !e.HasIllustration() {
+		return ""
+	}
+	return e.IllustrationSlug
 }
 
 func nonNil(s []string) []string {

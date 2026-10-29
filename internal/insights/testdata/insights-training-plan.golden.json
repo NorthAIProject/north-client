@@ -70,5 +70,24 @@
         "e1rmKg": 68
       }
     ]
+  },
+  "lifting": {
+    "hasSets": false,
+    "volume": "",
+    "delta": {
+      "direction": 0,
+      "pct": 0,
+      "hasPrior": false
+    },
+    "sets": 0,
+    "workouts": 0,
+    "hasWeekly": false,
+    "weekly": {
+      "labels": [],
+      "series": []
+    },
+    "exercises": [],
+    "records": [],
+    "muscles": []
   }
 }

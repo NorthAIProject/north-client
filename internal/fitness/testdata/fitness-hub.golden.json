@@ -1,0 +1,109 @@
+{
+  "strava": {
+    "configured": true,
+    "connected": true,
+    "lastSyncedAt": "2026-09-24T06:30:00Z",
+    "syncPending": false
+  },
+  "week": {
+    "days": [
+      {
+        "date": "2026-09-23",
+        "minutes": 0,
+        "isToday": false
+      },
+      {
+        "date": "2026-09-24",
+        "minutes": 45,
+        "isToday": true
+      }
+    ],
+    "sessions": 1,
+    "minutes": 45,
+    "distanceKm": 8.2,
+    "calories": 512
+  },
+  "recent": [
+    {
+      "activityCode": "running_9_8kmh",
+      "name": "Running (9.8 km/h)",
+      "category": "running",
+      "source": "strava",
+      "endedAt": "2026-09-24T06:30:00Z",
+      "durationSeconds": 2700,
+      "distanceKm": 8.2,
+      "calories": 512
+    }
+  ],
+  "steps": [
+    {
+      "date": "2026-09-24",
+      "value": 9120
+    }
+  ],
+  "vo2": [],
+  "weight": {
+    "kg": 78.4,
+    "deltaKg": -0.4,
+    "at": "2026-09-24T06:30:00Z"
+  },
+  "strength": {
+    "workouts": 6,
+    "sets": 72,
+    "volumeKg": 18400,
+    "exercises": [
+      {
+        "name": "Back squat",
+        "bestKg": 100,
+        "e1rmKg": 116.7,
+        "changeKg": 5
+      }
+    ],
+    "record": {
+      "exercise": "Back squat",
+      "weightKg": 100,
+      "reps": 5,
+      "e1rmKg": 116.7,
+      "on": "2026-09-22"
+    }
+  },
+  "cardio": {
+    "sessions": 4,
+    "minutes": 180,
+    "distanceKm": 30.5,
+    "runs": 3,
+    "bestPaceSeconds": 320,
+    "best5kSeconds": 1610,
+    "longestKm": 12,
+    "restingHr": 52
+  },
+  "planId": "abababab-abab-abab-abab-abababababab",
+  "nextSession": {
+    "weekday": "Friday",
+    "startTime": "07:30",
+    "focus": "Pull",
+    "exerciseCount": 5
+  },
+  "doneToday": {
+    "weekday": "Wednesday",
+    "focus": "Push",
+    "exerciseCount": 6
+  },
+  "meals": {
+    "logged": {
+      "calories": 1450,
+      "proteinG": 110,
+      "carbG": 150,
+      "fatG": 45
+    },
+    "goal": {
+      "calories": 2300,
+      "proteinG": 160,
+      "carbG": 250,
+      "fatG": 70
+    }
+  },
+  "deviceReadings": [
+    "Resting heart rate averaged 52 bpm."
+  ]
+}

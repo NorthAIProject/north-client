@@ -3,7 +3,7 @@ package i18n
 var portugueseBrazilianForm = map[string]string{
 	"form.title":         "Análise de execução",
 	"form.lede":          "Envie um vídeo de uma série válida. O Khepri assiste e aponta os momentos que vale a pena corrigir — você pode conferir cada um.",
-	"form.upload.help":   "MP4, MOV ou WebM, com menos de 200 MB. Grave de lado, com o corpo inteiro no quadro, uma única série.",
+	"form.upload.help":   "MP4, MOV ou WebM, com menos de 90 MB. Grave de lado, com o corpo inteiro no quadro, uma única série.",
 	"form.upload.submit": "Analisar minha execução",
 	"form.previous":      "Análises anteriores",
 	"form.new":           "Nova análise",

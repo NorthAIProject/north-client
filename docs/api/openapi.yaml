@@ -219,6 +219,222 @@ paths:
           $ref: '#/components/responses/PasskeysUnavailable'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /auth/options:
+    get:
+      operationId: getAuthOptions
+      summary: Which optional sign-in methods this deployment has switched on
+      security: []
+      responses:
+        '200':
+          description: The enabled methods
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthOptionsResponse'
+  /auth/reset-password:
+    post:
+      operationId: resetPassword
+      summary: Set a new password from an emailed reset link, and sign in
+      description: |
+        The token is the `token` query parameter of the emailed
+        `/reset-password?token=…` link. Every other session of the account is
+        revoked. 404 when this deployment cannot deliver reset mail.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/google/start:
+    post:
+      operationId: startGoogleWebSignIn
+      summary: Begin Google's web redirect flow for a front end that serves the callback
+      description: |
+        Returns Google's consent URL and the opaque state. The front end keeps
+        the state (an HttpOnly cookie, ten minutes) and compares it with the
+        callback's `state` before calling /auth/google/code. The client secret
+        stays on the server. 404 when Google web sign-in is not configured.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleStartRequest'
+      responses:
+        '200':
+          description: Where to send the browser
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleStartResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /auth/google/code:
+    post:
+      operationId: finishGoogleWebSignIn
+      summary: Exchange the callback's code, find or create the account, and sign in
+      description: Links an existing account with the same email, as the Go callback does.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCodeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /auth/oauth/authorize:
+    post:
+      operationId: beginMCPAuthorization
+      summary: Park an MCP OAuth authorization request for the consent screen
+      description: |
+        The query string of `/oauth/authorize`, as JSON. 201 parks it and returns
+        the verifier the front end keeps in its `north_oauth_req` cookie
+        (HttpOnly, path /oauth). 200 with `redirect` means the request was bad in
+        a way the client should hear about: send the browser there. 400 means
+        it was too bad to redirect anywhere; show `error.message`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPAuthorizeRequest'
+      responses:
+        '200':
+          description: Redirect the browser to the client's callback
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPAuthorizeResponse'
+        '201':
+          description: Parked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPAuthorizeResponse'
+        '400':
+          description: Not redirectable; show the message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+  /auth/oauth/requests/{requestID}:
+    get:
+      operationId: getMCPConsentRequest
+      summary: A parked authorization request, for the consent screen
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/MCPRequestID'
+        - name: X-OAuth-Request-Verifier
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPConsentRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /auth/oauth/requests/{requestID}/account:
+    post:
+      operationId: consentAccount
+      summary: Create an account or sign in from the consent screen
+      description: |
+        mode signup (default) creates an onboarded account, as the Go screen
+        does; mode login signs in. Returns a session like every sign-in route.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/MCPRequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPConsentAccountRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Authenticated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /oauth/requests/{requestID}/approve:
+    post:
+      operationId: approveMCPConsent
+      summary: Approve a parked request as the signed-in user
+      parameters:
+        - $ref: '#/components/parameters/MCPRequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPConsentDecisionRequest'
+      responses:
+        '200':
+          description: The client's callback with the code on it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPConsentDecisionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /oauth/requests/{requestID}/deny:
+    post:
+      operationId: denyMCPConsent
+      summary: Refuse a parked request
+      parameters:
+        - $ref: '#/components/parameters/MCPRequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPConsentDecisionRequest'
+      responses:
+        '200':
+          description: The client's callback with access_denied on it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPConsentDecisionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /conversations:
     get:
       operationId: listConversations
@@ -279,6 +495,39 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /conversations/stats:
+    get:
+      operationId: getCoachStats
+      summary: Thread count and this week's messages, for the coach page
+      responses:
+        '200':
+          description: The counters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /conversations/{id}/attachments/{mediaID}:
+    parameters:
+      - $ref: '#/components/parameters/ConversationID'
+      - name: mediaID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getChatAttachment
+      summary: Redirect to a file a turn carried
+      description: Answers 302 to a short-lived URL for the stored file. Only this account's files resolve.
+      responses:
+        '302':
+          description: Redirect to the file
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /conversations/{id}/reply:
     parameters:
       - $ref: '#/components/parameters/ConversationID'
@@ -294,6 +543,7 @@ paths:
         | `token`     | `ReplyTokenEvent`            |
         | `exercises` | `ReplyExercisesEvent`        |
         | `approval`  | `Approval`                   |
+        | `status`    | `ReplyStatusEvent`           |
         | `error`     | `ReplyErrorEvent`            |
         | `done`      | `ReplyDoneEvent`, always last |
 
@@ -422,6 +672,62 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /voice:
+    get:
+      operationId: getVoiceCapabilities
+      summary: Whether this server can transcribe dictation, and its limits
+      responses:
+        '200':
+          description: Dictation capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceCapabilities'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /voice/transcribe:
+    post:
+      operationId: transcribeVoice
+      summary: Turn a recording into text for a text box
+      description: >-
+        Answers with the words only; nothing is submitted. Spends the voice
+        capture quota. Silence answers 422 with a message to show.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: WAV, OGG/Opus, m4a, mp3 or webm, up to maxBytes.
+                surface:
+                  type: string
+                  description: Spend label; "capture" or empty for dictation.
+      responses:
+        '200':
+          description: The words heard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceTranscript'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/ContentTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: No transcriber on this server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
   /exercises/{slug}:
     parameters:
       - name: slug
@@ -637,6 +943,21 @@ paths:
         schema:
           type: string
           format: uuid
+    get:
+      operationId: getConnection
+      summary: One agent connection (polled while waiting for its first use)
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
       operationId: revokeConnection
       summary: Revoke an agent's token
@@ -920,6 +1241,19 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /training/overview:
+    get:
+      operationId: getTrainingOverview
+      summary: This week's latest workout and the body's readiness, for the plan page
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /training/plans/{planID}:
     parameters:
       - name: planID
@@ -1103,6 +1437,13 @@ paths:
     get:
       operationId: suggestExercisesForDay
       summary: Exercises that would fit this day
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: A typed search over the catalog, among the equipment the person has; absent or empty answers with the ranked suggestions.
+          schema:
+            type: string
       responses:
         '200':
           description: OK
@@ -1336,6 +1677,13 @@ paths:
     get:
       operationId: suggestReplacements
       summary: Exercises that could replace this one
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: A typed search over the catalog, among the equipment the person has; absent or empty answers with the ranked suggestions.
+          schema:
+            type: string
       responses:
         '200':
           description: OK
@@ -1914,6 +2262,77 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /reports/generate:
+    post:
+      operationId: generateReport
+      summary: Ask for this week's review now
+      description: >-
+        Creates or reuses this week's review and queues writing it. Answers at
+        once with the report, pending until the text is written. A 409 with
+        code cooldown means one was already generated this hour.
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /reports/briefing:
+    post:
+      operationId: generateBriefing
+      summary: Ask for today's briefing now
+      description: >-
+        Queues today's daily briefing, as the dashboard button does. A 409 with
+        code cooldown means one was already generated this hour.
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /reports/{reportID}/regenerate:
+    parameters:
+      - name: reportID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: regenerateReport
+      summary: Write a report again
+      description: >-
+        Queues the report's week again. The answer may be a different report,
+        the one now being written in its place. A 409 carries code archived
+        (the report is archived) or cooldown (generated this hour).
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /reports/{reportID}/archive:
     parameters:
       - name: reportID
@@ -1993,6 +2412,28 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /memories/for/{conversationID}:
+    parameters:
+      - name: conversationID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listConversationMemories
+      summary: What the coach proposed to remember from one conversation, still waiting for a verdict
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationMemories'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /memories/{memoryID}:
     parameters:
       - name: memoryID
@@ -2163,6 +2604,12 @@ paths:
           required: false
           schema:
             type: integer
+        - name: offset
+          in: query
+          required: false
+          description: Hits to skip, for the next page; see hasMore.
+          schema:
+            type: integer
       responses:
         '200':
           description: OK
@@ -2172,6 +2619,43 @@ paths:
                 $ref: '#/components/schemas/KnowledgeSearchResults'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /knowledge/passages:
+    get:
+      operationId: knowledgePassages
+      summary: The passages a coach reply cited
+      description: >-
+        Resolves a message's evidenceRefs. Only chunk refs resolve, and only
+        the caller's own; refs that no longer resolve are left out.
+      parameters:
+        - name: ref
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeSearchResults'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /knowledge/retry-embeddings:
+    post:
+      operationId: retryKnowledgeEmbeddings
+      summary: Queue meaning search for passages still waiting on it
+      responses:
+        '202':
+          description: Queued
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /knowledge/notes:
     post:
       operationId: createKnowledgeNote
@@ -2315,7 +2799,7 @@ paths:
                 video:
                   type: string
                   format: binary
-                  description: A video up to 200 MB.
+                  description: A video up to 90 MB.
       responses:
         '202':
           description: OK
@@ -2347,6 +2831,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FormCheck'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /media/{mediaID}:
+    parameters:
+      - name: mediaID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getMediaLink
+      summary: A short-lived signed link to one of your stored files
+      description: The web's /app/media/{id} as JSON. Photos, progress photos and form clips; fetch the bytes from url directly.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaLink'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -2613,6 +3120,14 @@ paths:
           required: false
           schema:
             type: string
+        - name: limit
+          in: query
+          required: false
+          description: How many to return, 1–200; 60 when absent.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
       responses:
         '200':
           description: OK
@@ -3239,6 +3754,23 @@ paths:
                 $ref: '#/components/schemas/FoodLog'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /nutrition/log/meal-options:
+    get:
+      operationId: listLoggableMeals
+      summary: The meals that can be logged today, as the web log page's picker offers them
+      description: >-
+        Every option of every meal of each plan, labelled "Plan – Meal · Option".
+        A plan with a day for today offers only that day; one without offers
+        all its days, labelled with the weekday. An optional meal says so.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoggableMealList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /nutrition/log/ingredients:
     post:
       operationId: logFood
@@ -3492,6 +4024,66 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /settings/vault:
+    get:
+      operationId: getVault
+      summary: The linked notes-vault folder (local/dev deployments only)
+      tags: [settings]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VaultStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: connectVault
+      summary: Link a vault folder on the server's own filesystem and queue a sync
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rootPath]
+              properties:
+                rootPath:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VaultStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: disconnectVault
+      summary: Unlink the vault folder
+      tags: [settings]
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings/vault/sync:
+    post:
+      operationId: syncVault
+      summary: Queue a vault sync now
+      tags: [settings]
+      responses:
+        '202':
+          description: Queued
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /account/export:
     get:
       operationId: exportAccount
@@ -3958,6 +4550,29 @@ paths:
                 $ref: '#/components/schemas/Awards'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /profiles/{handle}/awards:
+    parameters:
+      - name: handle
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getPersonAwards
+      summary: One person's awards as you may see them
+      description: The web's awards page for a handle. Your own handle gets locked badges and the month's challenge too; anyone else's gets their public badges and monthly medals, only when they share awards (`shared`). An unknown handle or a block either way is 404.
+      tags: [awards]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonAwards'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /awards/unseen:
     get:
       operationId: getUnseenAwards
@@ -4620,8 +5235,9 @@ paths:
           type: string
     get:
       operationId: previewCrew
-      summary: The crew behind a join link
+      summary: The crew behind a join link. Public, for the signed-out landing page.
       tags: [crews]
+      security: []
       responses:
         '200':
           description: OK
@@ -4629,8 +5245,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Crew'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
     post:
@@ -4759,6 +5373,82 @@ paths:
           description: Accepted
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /ops/moderation:
+    get:
+      operationId: getModerationQueue
+      summary: The operator queue of open reports
+      description: Every subject with open reports, oldest first. Only for operators (OPERATOR_USER_IDS); anyone else gets 404.
+      tags: [moderation]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModerationQueue'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /ops/moderation/users/{userID}/suspend:
+    parameters:
+      - name: userID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: suspendUser
+      summary: Stop someone posting
+      description: For `hours`, or until lifted when it is 0 or absent. Operators only; anyone else gets 404.
+      tags: [moderation]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuspendRequest'
+      responses:
+        '204':
+          description: Suspended
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /ops/moderation/{kind}/{subjectID}/{action}:
+    parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: subjectID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: action
+        in: path
+        required: true
+        description: hide, unhide or dismiss.
+        schema:
+          type: string
+    post:
+      operationId: decideModerationReport
+      summary: Decide a reported subject
+      description: Every decision closes the subject's open reports; hide and unhide also change what people see. Operators only; anyone else gets 404.
+      tags: [moderation]
+      responses:
+        '204':
+          description: Decided
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /crews/unread:
     get:
       operationId: listCrewUnread
@@ -5375,6 +6065,24 @@ paths:
           description: Removed
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /social/phone/countries:
+    get:
+      operationId: getPhoneCountries
+      summary: The calling codes offered beside a national number
+      description: >-
+        defaultDial is read from the account's timezone and language (empty
+        when neither says). name is English; show social.country.<dial> from
+        the catalogue when there is one.
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneCountries'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /social/phone/verification:
     post:
       operationId: startPhoneVerification
@@ -5501,6 +6209,56 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /social/facebook/web:
+    post:
+      operationId: startFacebookWeb
+      summary: Begin connecting Facebook from a web Friends page
+      description: >-
+        Returns Facebook's consent URL and the OAuth state. The web front end
+        keeps the state in its own short-lived cookie (expiresIn seconds),
+        sends the browser to url, and on /app/friends/facebook/callback
+        compares the returned state before posting the code to
+        /social/facebook/web/callback. 404 when this deployment has no Meta app.
+      tags: [social]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacebookWebStart'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /social/facebook/web/callback:
+    post:
+      operationId: finishFacebookWeb
+      summary: Finish a web Facebook connection with the code Facebook returned
+      description: >-
+        Connects the Facebook account behind code and imports which of its
+        friends are here. 409 when that Facebook account is connected to
+        another Khepri account.
+      tags: [social]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FacebookWebCode'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacebookFriends'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /social/facebook/callback:
     get:
       operationId: facebookCallback
@@ -5540,6 +6298,95 @@ paths:
                 $ref: '#/components/schemas/NewsTicker'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /news/settings:
+    get:
+      operationId: getNewsSettings
+      summary: The news ticker switch and the feeds you follow
+      tags: [news]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: setNewsSettings
+      summary: Turn the news ticker on or off
+      tags: [news]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /news/feeds:
+    post:
+      operationId: addNewsFeed
+      summary: Follow an RSS or Atom feed
+      description: A refused address is 422 with `fields.url`.
+      tags: [news]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+      responses:
+        '201':
+          description: Followed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /news/feeds/{feedID}:
+    parameters:
+      - name: feedID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: removeNewsFeed
+      summary: Stop following a feed; one already gone is still 204
+      tags: [news]
+      responses:
+        '204':
+          description: Removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /insights:
     get:
       operationId: getInsights
@@ -5742,6 +6589,60 @@ paths:
                 $ref: '#/components/schemas/InsightsCoach'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /insights/sleep:
+    get:
+      operationId: getInsightsSleep
+      summary: The sleep page — nights, schedule, stages and extremes, localised
+      description: >-
+        The web's sleep view. /stats/sleep carries the same numbers raw; this is
+        the rows, bars and chart a page draws. 404 when stats are not available.
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsSleep'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /insights/cardio:
+    get:
+      operationId: getInsightsCardio
+      summary: The cardio page — sessions, weekly volume, kinds, runs and heart, localised
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsCardio'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /insights/patterns:
+    get:
+      operationId: getInsightsPatterns
+      summary: The patterns page — what moves with what in your logs, localised
+      parameters:
+        - $ref: '#/components/parameters/InsightsRange'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsPatterns'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /insights/areas:
     get:
       operationId: getInsightsAreas
@@ -5853,6 +6754,104 @@ paths:
       responses:
         '302':
           description: Back to the app
+  /fitness/strava/connect/web:
+    post:
+      operationId: connectStravaWeb
+      summary: Begin connecting Strava from the web app
+      description: >-
+        Returns Strava's consent URL, sending Strava back to the web app's own
+        /app/fitness/strava/callback page (callbackUrl, absolute). That page
+        finishes with /fitness/strava/connect/web/finish.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StravaWebConnectRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaConnect'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /fitness/strava/connect/web/finish:
+    post:
+      operationId: finishStravaWeb
+      summary: Finish a web Strava connection with the callback's state and code
+      description: The state must have been issued to the signed-in person.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StravaWebFinishRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaConnectResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /fitness/hub:
+    get:
+      operationId: getFitnessHub
+      summary: The web fitness hub - week, recent sessions, cards and Strava status
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FitnessHub'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /fitness/activities:
+    get:
+      operationId: getFitnessActivities
+      summary: The Strava activities page - training trend and one page of sessions
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FitnessActivities'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /fitness/activities/sessions:
+    get:
+      operationId: listFitnessActivitySessions
+      summary: One page of imported Strava sessions, newest first
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StravaSessionPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /health/samples:
     post:
       operationId: syncHealth
@@ -5903,6 +6902,18 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
   /onboarding:
+    get:
+      operationId: getOnboardingForm
+      summary: The choices the first-run questionnaire offers
+      responses:
+        '200':
+          description: The form's choices
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingFormResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       operationId: completeOnboarding
       summary: Save first-run answers and open the first coach thread
@@ -5923,6 +6934,22 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /onboarding/skip:
+    post:
+      operationId: skipOnboarding
+      summary: Finish onboarding without answers
+      description: Idempotent; an onboarded account comes back unchanged.
+      responses:
+        '200':
+          description: The account after skipping
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingSkipResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
   /today:
@@ -5947,6 +6974,100 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /overview:
+    get:
+      operationId: getOverview
+      summary: The web overview page for a time range
+      description: The Today snapshot plus what only the web overview draws (chart series, the plan's next session, the check-in version its live region polls with). /today keeps its shape for the app.
+      tags: [dashboard]
+      parameters:
+        - name: range
+          in: query
+          required: false
+          description: Range key (`today`, `yesterday`, `week`, `month`, `quarter`, `year`). Unknown values are today.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /overview/version:
+    get:
+      operationId: getOverviewVersion
+      summary: The check-in fingerprint, for polling whether the overview's Today card changed
+      tags: [dashboard]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewVersion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /push/config:
+    get:
+      operationId: getPushConfig
+      summary: Whether Web Push is available, its VAPID key, and how many of your browsers listen
+      tags: [push]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /push/subscriptions:
+    post:
+      operationId: subscribeWebPush
+      summary: Keep a browser's Web Push subscription (PushSubscription.toJSON())
+      description: Unknown fields are allowed. 404 when this deployment does not send Web Push.
+      tags: [push]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebPushSubscription'
+      responses:
+        '204':
+          description: Kept
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: unsubscribeWebPush
+      summary: Forget one browser's subscription; an endpoint already gone is still 204
+      tags: [push]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint]
+              properties:
+                endpoint:
+                  type: string
+      responses:
+        '204':
+          description: Forgotten
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /day:
     get:
       operationId: getDay
@@ -5981,6 +7102,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DayTrends'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /day/checkin:
+    get:
+      operationId: getDayCheckIn
+      summary: The streak tile alone, for a live poll
+      description: |
+        The streak and today's check-in. Pass the version the client holds as
+        `v`; when nothing changed the answer is 204 with no body, so polling
+        every 20 seconds costs one small query.
+      parameters:
+        - name: v
+          in: query
+          required: false
+          description: The version from the last streak tile.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The tile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DayStreakTile'
+        '204':
+          description: Unchanged since v
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -6478,6 +7627,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LiftLast'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /lifts/today:
+    get:
+      operationId: getLiftsToday
+      summary: Today's sets and recently done exercise names, for a set logger
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiftToday'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -7133,6 +8297,33 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /settings/appearance:
+    put:
+      operationId: setAppearance
+      summary: Change the appearance alone (system, light or dark)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appearance]
+              properties:
+                appearance:
+                  type: string
+                  description: system, light or dark.
+                surface:
+                  type: string
+                  description: Where the change was made, for analytics — "switcher" or "settings".
+      responses:
+        '204':
+          description: Saved
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /devices/apns:
     put:
       operationId: registerAPNsDevice
@@ -7278,6 +8469,13 @@ components:
       scheme: bearer
       description: An `nk_` connection token from Settings → Connections.
   parameters:
+    MCPRequestID:
+      name: requestID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     WeekParam:
       name: week
       in: query
@@ -7309,7 +8507,7 @@ components:
         format: uuid
   responses:
     TooManyRequests:
-      description: This kind of request's quota is spent for now; see Retry-After.
+      description: This kind of request's quota is spent for now; see Retry-After. A quota refusal carries code `quota_exceeded`, with `fields.action` (the quota's wire name, such as coach_message) and `fields.retryAfter` (seconds).
       content:
         application/json:
           schema:
@@ -7453,6 +8651,38 @@ components:
         importedAt:
           type: string
           format: date-time
+    FacebookWebStart:
+      type: object
+      required: [url, state, expiresIn]
+      properties:
+        url:
+          type: string
+        state:
+          type: string
+        expiresIn:
+          type: integer
+    FacebookWebCode:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+    PhoneCountries:
+      type: object
+      required: [defaultDial, countries]
+      properties:
+        defaultDial:
+          type: string
+        countries:
+          type: array
+          items:
+            type: object
+            required: [dial, name]
+            properties:
+              dial:
+                type: string
+              name:
+                type: string
     FacebookConnect:
       type: object
       required: [authorizeUrl]
@@ -7811,6 +9041,9 @@ components:
         source:
           type: string
           description: Who chose, person or coach, as an open string. coach is a low morning the coach lightened itself; undo it with PUT choice=keep.
+        covered:
+          type: boolean
+          description: Today's coach message already speaks about recovery with the same answers, so the web card stays out of the way. Absent means false.
     FirstWeek:
       type: object
       required: [status, day, totalDays, done, doneCount, days]
@@ -8374,6 +9607,85 @@ components:
         monthlyChallenge:
           $ref: '#/components/schemas/MonthlyChallengeView'
           description: This local month's challenge, created on first view. `earned` also lists monthly medals, with the badges, oldest first; counts such as "N of 31" stay badges only.
+        handle:
+          type: string
+          description: Your own handle; absent when you have none.
+    PersonAwards:
+      type: object
+      required: [displayName, handle, self, shared, earned, locked]
+      properties:
+        displayName:
+          type: string
+        handle:
+          type: string
+        self:
+          type: boolean
+        shared:
+          type: boolean
+          description: Whether the person shows their awards; always true for your own. When false, earned and locked are empty.
+        earned:
+          type: array
+          items:
+            $ref: '#/components/schemas/AwardView'
+        locked:
+          type: array
+          description: Only on your own page.
+          items:
+            $ref: '#/components/schemas/AwardView'
+        monthlyChallenge:
+          $ref: '#/components/schemas/MonthlyChallengeView'
+          description: Only on your own page.
+    ModerationQueue:
+      type: object
+      required: [reports]
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModerationReportGroup'
+    ModerationReportGroup:
+      type: object
+      required: [kind, subjectId, reasons, count, hidden, excerpt, firstAt, actions]
+      properties:
+        kind:
+          type: string
+          description: The subject's kind, such as crew_message. Open-ended.
+        subjectId:
+          type: string
+          format: uuid
+        authorId:
+          type: string
+          format: uuid
+        reasons:
+          type: array
+          items:
+            type: object
+            required: [reason, count]
+            properties:
+              reason:
+                type: string
+              count:
+                type: integer
+        count:
+          type: integer
+        hidden:
+          type: boolean
+        excerpt:
+          type: string
+        firstAt:
+          type: string
+          format: date-time
+        actions:
+          type: array
+          description: The decisions offered, in order. Open strings (hide, unhide, dismiss today).
+          items:
+            type: string
+    SuspendRequest:
+      type: object
+      properties:
+        hours:
+          type: integer
+          description: 0 or absent suspends until lifted.
     UnseenAwards:
       type: object
       required: [awards]
@@ -9071,6 +10383,20 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/StatsFinding'
+    LiftToday:
+      type: object
+      required: [sets, recent]
+      properties:
+        sets:
+          type: array
+          description: Sets logged since local midnight, oldest first.
+          items:
+            $ref: '#/components/schemas/LiftSet'
+        recent:
+          type: array
+          description: Exercise names done in the last fortnight, most recent first.
+          items:
+            type: string
     LiftSetInput:
       type: object
       additionalProperties: false
@@ -9083,6 +10409,7 @@ components:
           description: The catalog slug, when the exercise came from the catalog.
         setNumber:
           type: integer
+          description: 1 to 50. 0 asks the server to number it as the next set of this exercise today and, when exerciseSlug is absent, to match the name to the catalog (the web set logger's behaviour).
         weightKg:
           type: number
           description: 0 for bodyweight.
@@ -9415,7 +10742,7 @@ components:
           description: The estimate's one-line note, up to 280 characters.
     ProgressPhoto:
       type: object
-      required: [pose, url]
+      required: [pose, url, mediaId]
       properties:
         pose:
           type: string
@@ -9423,6 +10750,10 @@ components:
         url:
           type: string
           description: A signed link to the private photo, valid for two hours.
+        mediaId:
+          type: string
+          format: uuid
+          description: The stored photo, for linking it through GET /media/{mediaID}, which signs a fresh link each time.
     ProgressCheck:
       type: object
       required: [id, measuredOn, weightCarried, source, complete, photos, createdAt]
@@ -10177,6 +11508,72 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DayMarker'
+        around:
+          type: array
+          description: The timeline from the evening before the date to the small hours after it, for a rail that shows nearby entries faded beside the date. Absent when only the date itself was read.
+          items:
+            $ref: '#/components/schemas/DayTimelineEntry'
+        fasts:
+          type: array
+          description: Every fast touching that wider window, for the rail's bands.
+          items:
+            $ref: '#/components/schemas/DayFast'
+        checkIn:
+          $ref: '#/components/schemas/DayStreakTile'
+        presets:
+          $ref: '#/components/schemas/DayPresets'
+    DayStreakTile:
+      type: object
+      required: [streak, version]
+      description: The streak card's face. Send version back to GET /day/checkin as ?v=; an unchanged tile answers 204.
+      properties:
+        streak:
+          type: integer
+        version:
+          type: string
+        today:
+          $ref: '#/components/schemas/DayTodayCheckIn'
+    DayTodayCheckIn:
+      type: object
+      required: [mood, energy, updatedAt]
+      description: Today's check-in; absent until there is one.
+      properties:
+        mood:
+          type: integer
+        energy:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+    DayPresets:
+      type: object
+      required: [caffeine, supplements, sorenessRegions]
+      description: The quick-add choices. Keys are open strings.
+      properties:
+        caffeine:
+          type: array
+          items:
+            type: object
+            required: [key, mg]
+            properties:
+              key:
+                type: string
+              mg:
+                type: integer
+        supplements:
+          type: array
+          items:
+            type: object
+            required: [key, name]
+            properties:
+              key:
+                type: string
+              name:
+                type: string
+        sorenessRegions:
+          type: array
+          items:
+            type: string
     DayVitals:
       type: object
       description: Absent fields were not measured.
@@ -10333,6 +11730,9 @@ components:
           type: string
         icon:
           type: string
+        presetKey:
+          type: string
+          description: The caffeine preset a drink was logged from (espresso, coffee…), so a client can name it in the reader's language. An open string; absent for anything else.
     DayMarker:
       type: object
       required: [kind, label, at, passed]
@@ -10993,6 +12393,17 @@ components:
           type: string
         needsOnboarding:
           type: boolean
+        locale:
+          type: string
+          description: |
+            BCP 47 tag the account reads Khepri in (en, pt-PT, pt-BR, es). A
+            plain string rather than an enum, so a language added later does
+            not break a shipped client's decode.
+        appearance:
+          type: string
+          description: |
+            system, light or dark. Empty when the account never chose; the
+            web client then falls back to its visitor cookie, then dark.
     MeResponse:
       type: object
       required: [user]
@@ -11020,6 +12431,167 @@ components:
             The change picked for the first seven days: sleep, train, protein,
             journal or custom, as an open string. Optional; absent or unknown,
             the first week runs on nearTermGoal.
+    AuthOptionsResponse:
+      type: object
+      required: [google, passkey, passwordReset]
+      properties:
+        google:
+          type: boolean
+          description: Google web sign-in (/auth/google/start) is configured.
+        passkey:
+          type: boolean
+        passwordReset:
+          type: boolean
+          description: Reset mail can be delivered; hide "forgot password" when false.
+    ResetPasswordRequest:
+      type: object
+      required: [token, password, passwordConfirmation]
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+        passwordConfirmation:
+          type: string
+    GoogleStartRequest:
+      type: object
+      properties:
+        redirectUri:
+          type: string
+          description: |
+            The front end's https://<host>/auth/google/callback (http only on
+            localhost). Empty means this server's own callback.
+    GoogleStartResponse:
+      type: object
+      required: [url, state]
+      properties:
+        url:
+          type: string
+        state:
+          type: string
+    GoogleCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+        redirectUri:
+          type: string
+          description: The same redirectUri the flow was started with.
+    MCPAuthorizeRequest:
+      type: object
+      properties:
+        clientId:
+          type: string
+        redirectUri:
+          type: string
+        responseType:
+          type: string
+        state:
+          type: string
+        scope:
+          type: string
+        codeChallenge:
+          type: string
+        codeChallengeMethod:
+          type: string
+        resource:
+          type: string
+        signedIn:
+          type: boolean
+          description: Whether the browser had a session. Analytics only.
+    MCPAuthorizeResponse:
+      type: object
+      properties:
+        request:
+          $ref: '#/components/schemas/MCPConsentRequest'
+        verifier:
+          type: string
+          description: The north_oauth_req cookie value; quote it back on every consent call.
+        redirect:
+          type: string
+          description: Set instead of request when the browser goes back to the client.
+    MCPConsentRequest:
+      type: object
+      required: [id, clientName, redirectHost, isLoopback, readOnlyRequested, accountCreated, expiresAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        clientName:
+          type: string
+          description: Chosen by the client's registrant; always show beside redirectHost.
+        redirectHost:
+          type: string
+        isLoopback:
+          type: boolean
+        readOnlyRequested:
+          type: boolean
+        accountCreated:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+    MCPConsentAccountRequest:
+      type: object
+      required: [verifier, email, password]
+      properties:
+        verifier:
+          type: string
+        mode:
+          type: string
+          description: signup (default) or login, as an open string.
+        email:
+          type: string
+        password:
+          type: string
+        displayName:
+          type: string
+        timezone:
+          type: string
+    MCPConsentDecisionRequest:
+      type: object
+      required: [verifier]
+      properties:
+        verifier:
+          type: string
+        readOnly:
+          type: boolean
+          description: Narrow the grant to read access. Cannot widen it.
+    MCPConsentDecisionResponse:
+      type: object
+      required: [redirect]
+      properties:
+        redirect:
+          type: string
+    OnboardingFormResponse:
+      type: object
+      required: [needsOnboarding, focusAreas, coachingStyles, firstWeek, firstWeekTemplates]
+      properties:
+        needsOnboarding:
+          type: boolean
+        focusAreas:
+          type: array
+          description: Open strings, in the order offered.
+          items:
+            type: string
+        coachingStyles:
+          type: array
+          items:
+            type: string
+        firstWeek:
+          type: boolean
+          description: Completing starts a first week; offer firstWeekTemplates.
+        firstWeekTemplates:
+          type: array
+          items:
+            type: string
+    OnboardingSkipResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
     OnboardingResponse:
       type: object
       required: [user]
@@ -11038,6 +12610,137 @@ components:
           $ref: '#/components/schemas/User'
         snapshot:
           $ref: '#/components/schemas/TodaySnapshot'
+    OverviewResponse:
+      type: object
+      required: [snapshot, newsTickerEnabled, checkInVersion, sessionToday, checkIns, habits, hydrationDays]
+      properties:
+        snapshot:
+          $ref: '#/components/schemas/TodaySnapshot'
+        newsTickerEnabled:
+          type: boolean
+        checkInVersion:
+          type: string
+          description: Opaque; compare with /overview/version.
+        planId:
+          type: string
+          format: uuid
+          description: The active training plan; absent without one.
+        nextSession:
+          $ref: '#/components/schemas/OverviewPlanDay'
+        doneToday:
+          $ref: '#/components/schemas/OverviewPlanDay'
+        sessionToday:
+          type: boolean
+          description: nextSession falls on the reader's local today.
+        checkIns:
+          type: array
+          description: Mood and energy per chart bucket; 0 is no check-in.
+          items:
+            type: object
+            required: [label, mood, energy]
+            properties:
+              label:
+                type: string
+              mood:
+                type: integer
+              energy:
+                type: integer
+        habits:
+          type: object
+          required: [hasHabits, rate, kept, scheduled, bestStreak]
+          properties:
+            hasHabits:
+              type: boolean
+            rate:
+              type: integer
+            kept:
+              type: integer
+            scheduled:
+              type: integer
+            bestStreak:
+              type: integer
+        hydrationDays:
+          type: array
+          items:
+            type: object
+            required: [label, totalML, targetML]
+            properties:
+              label:
+                type: string
+              totalML:
+                type: integer
+              targetML:
+                type: integer
+    OverviewPlanDay:
+      type: object
+      required: [weekday, focus, exerciseCount]
+      properties:
+        weekday:
+          type: string
+          description: English weekday name, as the plan stores it.
+        focus:
+          type: string
+        startTime:
+          type: string
+          description: HH:MM local; absent for whenever.
+        exerciseCount:
+          type: integer
+    OverviewVersion:
+      type: object
+      required: [checkInVersion]
+      properties:
+        checkInVersion:
+          type: string
+    PushConfig:
+      type: object
+      required: [enabled, publicKey, devices]
+      properties:
+        enabled:
+          type: boolean
+        publicKey:
+          type: string
+          description: VAPID applicationServerKey, base64url; empty when not enabled.
+        devices:
+          type: integer
+    WebPushSubscription:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint:
+          type: string
+        keys:
+          type: object
+          required: [p256dh, auth]
+          properties:
+            p256dh:
+              type: string
+            auth:
+              type: string
+        userAgent:
+          type: string
+          description: The browser's user agent, for a client calling through a proxy.
+    NewsSettings:
+      type: object
+      required: [enabled, feeds, maxFeeds]
+      properties:
+        enabled:
+          type: boolean
+        feeds:
+          type: array
+          items:
+            type: object
+            required: [id, title, url]
+            properties:
+              id:
+                type: string
+                format: uuid
+              title:
+                type: string
+                description: The feed's own name once fetched; empty before.
+              url:
+                type: string
+        maxFeeds:
+          type: integer
     TodaySnapshot:
       type: object
       required: [range, checkedInToday, streak, goalActivity7d, pendingMemories, goals, hydration, sleep, activityCalories, timeline, deltas, nudges]
@@ -11349,6 +13052,23 @@ components:
         createdAt:
           type: string
           format: date-time
+        toolTurn:
+          type: boolean
+          description: A coach turn that called tools; the web transcript leaves it out.
+        proactive:
+          type: boolean
+          description: A turn nobody asked for (briefing, standing task, check-in).
+        sourceLabel:
+          type: string
+          description: What sent a proactive turn; an open string ("Daily briefing", "Standing task", a skill name).
+        evidenceRefs:
+          type: array
+          description: Refs to pass to GET /knowledge/passages for this reply's sources. Absent when none is a document passage.
+          items:
+            type: string
+        sourceCount:
+          type: integer
+          description: How many document passages the reply drew on.
     ChatAttachment:
       type: object
       required: [mediaId, kind, mimeType, name]
@@ -11385,6 +13105,59 @@ components:
         summary:
           type: string
           description: The call in words a person can judge.
+        watch:
+          $ref: '#/components/schemas/WatchProposal'
+    WatchProposal:
+      type: object
+      description: A standing task create_watch proposes, set when its arguments parse.
+      required: [title, condition, spec, cadence, weekday, clock]
+      properties:
+        title:
+          type: string
+        condition:
+          type: string
+        spec:
+          type: string
+        cadence:
+          type: string
+          description: '"daily" or "weekly"; an open string.'
+        weekday:
+          type: integer
+          description: 0 (Sunday) to 6; read only for a weekly watch.
+        clock:
+          type: string
+          description: Local time of day, "8:00".
+    CoachStats:
+      type: object
+      required: [threadCount, messagesThisWeek]
+      properties:
+        threadCount:
+          type: integer
+        messagesThisWeek:
+          type: integer
+    ReplyStatusEvent:
+      type: object
+      required: [line]
+      properties:
+        line:
+          type: string
+          description: What the coach is doing while tools run, in the reader's language ("is checking your goals").
+    VoiceCapabilities:
+      type: object
+      required: [available, maxSeconds, maxBytes]
+      properties:
+        available:
+          type: boolean
+        maxSeconds:
+          type: integer
+        maxBytes:
+          type: integer
+    VoiceTranscript:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
     ReplyRequest:
       type: object
       properties:
@@ -11465,6 +13238,9 @@ components:
             type: string
         art:
           $ref: '#/components/schemas/ExerciseArt'
+        illustrationSlug:
+          type: string
+          description: Names the artwork's frames under /assets/exercises/{illustrationSlug}/frame-N.svg; absent without artwork.
     ExerciseArt:
       type: object
       required: [size, frames, credit]
@@ -11600,6 +13376,12 @@ components:
         keyHint:
           type: string
           description: What a key for this provider looks like.
+        note:
+          type: string
+          description: One line under the option, in the request's language.
+        requiresBaseUrl:
+          type: boolean
+          description: The backend has no public address; the person names their gateway in baseUrl.
     AICurrent:
       type: object
       required: [provider, keyHint, updatedAt]
@@ -11639,7 +13421,7 @@ components:
           type: string
     Connection:
       type: object
-      required: [id, name, kind, tokenPrefix, createdAt]
+      required: [id, name, kind, kindLabel, tokenPrefix, createdAt]
       properties:
         id:
           type: string
@@ -11657,9 +13439,16 @@ components:
         lastUsedAt:
           type: string
           format: date-time
+        kindLabel:
+          type: string
+          description: The client as written for a person ("Claude Code").
+        expiresAt:
+          type: string
+          format: date-time
+          description: Set for an OAuth grant; a past value means the token needs refreshing, not that it is gone.
     ConnectionList:
       type: object
-      required: [connections, connectorUrl]
+      required: [connections, connectorUrl, previews]
       properties:
         connections:
           type: array
@@ -11667,6 +13456,11 @@ components:
             $ref: '#/components/schemas/Connection'
         connectorUrl:
           type: string
+        previews:
+          type: array
+          description: The setup for each client, in the order offered, with a placeholder where the key goes.
+          items:
+            $ref: '#/components/schemas/ConnectionSetup'
     CreateConnectionRequest:
       type: object
       required: [name, kind]
@@ -11702,6 +13496,32 @@ components:
         export:
           type: string
         prompt:
+          type: string
+        kind:
+          type: string
+          description: The client this setup is for (claude_code, codex, hermes, other).
+        kindLabel:
+          type: string
+        safeLabel:
+          type: string
+        safeLang:
+          type: string
+        safe:
+          type: string
+          description: The configuration reading the token from an environment variable, which export sets.
+        safeNote:
+          type: string
+    VaultStatus:
+      type: object
+      required: [rootPath]
+      properties:
+        rootPath:
+          type: string
+          description: Empty when no folder is linked.
+        lastSyncAt:
+          type: string
+          format: date-time
+        lastError:
           type: string
     ActivityList:
       type: object
@@ -12035,6 +13855,9 @@ components:
           type: string
         hasArt:
           type: boolean
+        illustrationSlug:
+          type: string
+          description: Names the pose artwork's frames (/assets/exercises/{slug}/frame-N.svg); absent when hasArt is false.
         primaryMuscles:
           type: array
           items:
@@ -12043,6 +13866,49 @@ components:
           type: array
           items:
             type: string
+        stabilizerMuscles:
+          type: array
+          items:
+            type: string
+    TrainingOverview:
+      type: object
+      description: Each part is absent until there is something to show.
+      properties:
+        recap:
+          $ref: '#/components/schemas/LiftRecap'
+        readiness:
+          $ref: '#/components/schemas/TrainingReadiness'
+    TrainingReadiness:
+      type: object
+      required: [fatigued, recovering, fresh, stale, lastSession]
+      properties:
+        fatigued:
+          type: array
+          items:
+            type: string
+        recovering:
+          type: array
+          items:
+            type: string
+        fresh:
+          type: array
+          description: Muscles trained this past week that have already recovered.
+          items:
+            type: string
+        stale:
+          type: array
+          description: Muscles going untrained, longest gap first.
+          items:
+            type: object
+            required: [name, days]
+            properties:
+              name:
+                type: string
+              days:
+                type: integer
+        lastSession:
+          type: string
+          format: date-time
     TrainingIntake:
       type: object
       required: [goal, experience, daysPerWeek, sessionMinutes, equipment]
@@ -12129,10 +13995,16 @@ components:
             type: string
         hasArt:
           type: boolean
+        illustrationSlug:
+          type: string
+          description: Names the artwork's frames under /assets/exercises/{illustrationSlug}/frame-N.svg; absent without artwork.
     ActivityOverview:
       type: object
-      required: [recent, kinds]
+      required: [recent, kinds, todayCalories]
       properties:
+        todayCalories:
+          type: number
+          description: Calories completed sessions burned since local midnight.
         active:
           $ref: '#/components/schemas/ActivitySession'
         recent:
@@ -12241,6 +14113,9 @@ components:
           format: uuid
         title:
           type: string
+        motivation:
+          type: string
+          description: Why the goal matters. Absent when blank.
         category:
           type: string
         status:
@@ -12270,6 +14145,9 @@ components:
           type: array
           items:
             type: string
+        overdueMilestones:
+          type: integer
+          description: Open milestones past their date, across all goals.
     GoalDetail:
       allOf:
         - $ref: '#/components/schemas/GoalSummary'
@@ -12399,6 +14277,9 @@ components:
         restDaysUsed:
           type: integer
           description: Rest days the current run has spent.
+        previousRun:
+          type: integer
+          description: Length of the run before the current one.
         perfectWeek:
           type: boolean
           description: Every day of this week so far checked in, today checked or still open. A rest day keeps the run, not the perfect week.
@@ -12484,7 +14365,7 @@ components:
             type: string
         source:
           type: string
-          description: Where the check-in was filed - ios, siri, widget or notification. Anything else is recorded as ios.
+          description: Where the check-in was filed - ios, siri, widget, notification or web. Anything else is recorded as ios.
     ReportSummary:
       type: object
       required: [id, kind, title, periodStart, periodEnd, status, archived]
@@ -12562,9 +14443,28 @@ components:
         sourceConversationId:
           type: string
           format: uuid
+        supersedesId:
+          type: string
+          format: uuid
+          description: Set on a proposal that would replace an existing fact; approving it retires that fact.
+        validTo:
+          type: string
+          format: date-time
+          description: Set once a newer fact replaced this one. A retired fact never reaches the coach.
         createdAt:
           type: string
           format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ConversationMemories:
+      type: object
+      required: [pending]
+      properties:
+        pending:
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
     MemoryList:
       type: object
       required: [pending, approved, categories]
@@ -12622,6 +14522,12 @@ components:
         createdAt:
           type: string
           format: date-time
+        lineCount:
+          type: integer
+          description: Lines the reader numbered; 0 before the first read.
+        stale:
+          type: boolean
+          description: Ready, but the text changed after it was last read.
     KnowledgeDocumentDetail:
       allOf:
         - $ref: '#/components/schemas/KnowledgeDocument'
@@ -12630,6 +14536,19 @@ components:
           properties:
             text:
               type: string
+            headings:
+              type: array
+              description: Section markers, each with its one-based line in text.
+              items:
+                type: object
+                required: [level, text, line]
+                properties:
+                  level:
+                    type: integer
+                  text:
+                    type: string
+                  line:
+                    type: integer
     KnowledgeList:
       type: object
       required: [documents, counts]
@@ -12650,10 +14569,57 @@ components:
               type: integer
             stale:
               type: integer
+            chunks:
+              type: integer
+              description: Passages the coach can search.
+        problems:
+          type: array
+          description: Documents that need something done to them, worst first.
+          items:
+            type: object
+            required: [documentId, title, kind, detail]
+            properties:
+              documentId:
+                type: string
+                format: uuid
+              title:
+                type: string
+              kind:
+                type: string
+                description: failed, empty, stale, old-reader or stuck (open set).
+              detail:
+                type: string
+        embeddingGap:
+          type: integer
+          description: Passages searchable by word but not yet by meaning.
+        lastRun:
+          type: object
+          description: The most recent indexing pass; absent when there never was one.
+          required: [startedAt, seen, added, updated, unchanged, failed]
+          properties:
+            startedAt:
+              type: string
+              format: date-time
+            completedAt:
+              type: string
+              format: date-time
+            seen:
+              type: integer
+            added:
+              type: integer
+            updated:
+              type: integer
+            unchanged:
+              type: integer
+            failed:
+              type: integer
     KnowledgeSearchResults:
       type: object
       required: [hits]
       properties:
+        hasMore:
+          type: boolean
+          description: A further page exists past offset+limit.
         hits:
           type: array
           items:
@@ -12684,6 +14650,8 @@ components:
                     matched:
                       type: boolean
               startLine:
+                type: integer
+              endLine:
                 type: integer
     KnowledgeNoteRequest:
       type: object
@@ -12745,6 +14713,22 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FormCheck'
+    MediaLink:
+      type: object
+      required: [id, url, kind, mimeType]
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+          description: Short-lived signed link to the bytes.
+        kind:
+          type: string
+          description: image, video or file. Open set.
+        mimeType:
+          type: string
     CarePoint:
       type: object
       required: [label, value]
@@ -13438,6 +15422,22 @@ components:
               type: string
             recommendation:
               type: string
+    LoggableMealList:
+      type: object
+      required: [options]
+      properties:
+        options:
+          type: array
+          items:
+            type: object
+            required: [id, label]
+            properties:
+              id:
+                type: string
+                format: uuid
+                description: The meal option's id, for POST /nutrition/log/meals.
+              label:
+                type: string
     Decision:
       type: object
       required: [id, title, options, rationale, outcome, decidedAt]
@@ -13536,7 +15536,7 @@ components:
       properties:
         biometrics:
           type: object
-          required: [weightKg, heightCm, dateOfBirth, sex]
+          required: [weightKg, heightCm, dateOfBirth, sex, ageYears]
           properties:
             weightKg:
               type: number
@@ -13546,9 +15546,12 @@ components:
               type: string
             sex:
               type: string
+            ageYears:
+              type: integer
+              description: The age the measurements are worked out at, today.
         goal:
           type: object
-          required: [activityLevel, goal, macroSplit, bmr, tdee, calorieGoal, proteinG, fatG, carbG, createdAt]
+          required: [activityLevel, goal, macroSplit, bmr, tdee, calorieGoal, proteinG, fatG, carbG, createdAt, comparison]
           properties:
             activityLevel:
               type: string
@@ -13571,6 +15574,17 @@ components:
             createdAt:
               type: string
               format: date-time
+            comparison:
+              type: array
+              description: Every objective's daily calories at this TDEE, in the order options.goals lists them.
+              items:
+                type: object
+                required: [goal, calorieGoal]
+                properties:
+                  goal:
+                    type: string
+                  calorieGoal:
+                    type: number
         options:
           type: object
           required: [activityLevels, goals, macroSplits]
@@ -13670,7 +15684,7 @@ components:
                   type: number
     InsightsSummary:
       type: object
-      required: [range, scores, pinned, highlights, onTrack, judged, empty]
+      required: [range, scores, pinned, highlights, onTrack, judged, empty, days]
       properties:
         range:
           $ref: '#/components/schemas/InsightsRange'
@@ -13744,9 +15758,32 @@ components:
           type: integer
         empty:
           type: boolean
+        days:
+          description: >-
+            The window one day at a time (a mark per metric per day); empty for
+            a window longer than a month or not counted in days.
+          type: array
+          items:
+            type: object
+            required: [label, cells]
+            properties:
+              label:
+                type: string
+              cells:
+                type: array
+                items:
+                  type: object
+                  required: [label, value, filled]
+                  properties:
+                    label:
+                      type: string
+                    value:
+                      type: string
+                    filled:
+                      type: boolean
     InsightMetric:
       type: object
-      required: [range, key, label, headline, note, chart, trend, comparison, highlights, hasData]
+      required: [range, key, label, headline, note, chart, trend, comparison, highlights, hasData, href]
       properties:
         range:
           $ref: '#/components/schemas/InsightsRange'
@@ -13801,6 +15838,115 @@ components:
           description: True for a metric synced from a health provider such as Apple Health.
         usual:
           $ref: '#/components/schemas/InsightsUsualRange'
+        href:
+          type: string
+          description: The web page of the domain this metric belongs to, such as /app/insights/body; empty when none.
+    InsightsStatsRow:
+      type: object
+      required: [label, value, note]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+        note:
+          type: string
+    InsightsStatsBar:
+      type: object
+      description: One horizontal bar; pct is its width, 0-100.
+      required: [label, value, pct]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+        pct:
+          type: integer
+    InsightsSleep:
+      type: object
+      description: The sleep page as the web shows it, localised.
+      required: [range, hasData, tiles, nights, stages, schedule, extremes]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        hasData:
+          type: boolean
+        tiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
+        nights:
+          $ref: '#/components/schemas/InsightsChart'
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsBar'
+        schedule:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
+        extremes:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
+    InsightsCardio:
+      type: object
+      description: The cardio page as the web shows it, localised.
+      required: [range, hasData, tiles, weekly, weeklyTitle, kinds, runs, hasRuns, recent, heart]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        hasData:
+          type: boolean
+        tiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
+        weekly:
+          $ref: '#/components/schemas/InsightsChart'
+        weeklyTitle:
+          type: string
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsBar'
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
+        hasRuns:
+          type: boolean
+        recent:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
+        heart:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
+    InsightsPatterns:
+      type: object
+      description: The patterns page as the web shows it, localised.
+      required: [range, days, findings]
+      properties:
+        range:
+          $ref: '#/components/schemas/InsightsRange'
+        days:
+          type: integer
+        findings:
+          type: array
+          items:
+            type: object
+            required: [title, detail, a, b]
+            properties:
+              title:
+                type: string
+              detail:
+                type: string
+              a:
+                $ref: '#/components/schemas/InsightsStatsBar'
+              b:
+                $ref: '#/components/schemas/InsightsStatsBar'
     InsightsUsualRange:
       type: object
       description: |
@@ -13984,6 +16130,12 @@ components:
           type: string
         detail:
           type: string
+        href:
+          description: The entry's own page; absent when it has none.
+          type: string
+        icon:
+          description: A lucide icon name. An open string.
+          type: string
     InsightsTimelineFilter:
       type: object
       required: [key, label, count, selected]
@@ -14122,8 +16274,10 @@ components:
           type: boolean
     InsightsTraining:
       type: object
-      required: [range, sessions, burn, kinds, calories, delta, sessionCount, totalTime, hasSessions]
+      required: [range, sessions, burn, kinds, calories, delta, sessionCount, totalTime, hasSessions, lifting]
       properties:
+        lifting:
+          $ref: '#/components/schemas/InsightsLifting'
         range:
           $ref: '#/components/schemas/InsightsRange'
         sessions:
@@ -14212,10 +16366,102 @@ components:
           type: number
         hasPrior:
           type: boolean
+    InsightsLifting:
+      type: object
+      description: What the window's logged sets add up to, worded as the web shows it. hasSets is false before the first set.
+      required: [hasSets, volume, delta, sets, workouts, hasWeekly, weekly, exercises, records, muscles]
+      properties:
+        hasSets:
+          type: boolean
+        volume:
+          type: string
+        delta:
+          $ref: '#/components/schemas/InsightsDelta'
+        sets:
+          type: integer
+        workouts:
+          type: integer
+        hasWeekly:
+          type: boolean
+        weekly:
+          $ref: '#/components/schemas/InsightsChart'
+        exercises:
+          type: array
+          items:
+            type: object
+            required: [name, sets, best, e1rm, volume, changeKg]
+            properties:
+              name:
+                type: string
+              sets:
+                type: integer
+              best:
+                type: string
+              e1rm:
+                type: string
+              volume:
+                type: string
+              changeKg:
+                type: number
+                description: The estimated max's movement across the window.
+        records:
+          type: array
+          items:
+            type: object
+            required: [exercise, lift, e1rm, gain, on]
+            properties:
+              exercise:
+                type: string
+              lift:
+                type: string
+              e1rm:
+                type: string
+              gain:
+                type: string
+              on:
+                type: string
+        muscles:
+          type: array
+          items:
+            type: object
+            required: [name, sets, pct]
+            properties:
+              name:
+                type: string
+              sets:
+                type: integer
+              pct:
+                type: integer
+                description: Against the most-trained muscle, 0-100.
+    InsightsEating:
+      type: object
+      description: The eating-habits section of the nutrition page. hasData is false without a logged day.
+      required: [hasData, tiles, slots, foods, notes]
+      properties:
+        hasData:
+          type: boolean
+        tiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsBar'
+        foods:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightsStatsRow'
     InsightsNutrition:
       type: object
-      required: [range, avgCalories, avgProtein, daysLogged, entries, hasGoal, goalCalories, goalProtein, calories, macros, hasSplit, highlights, hasData]
+      required: [range, avgCalories, avgProtein, daysLogged, entries, hasGoal, goalCalories, goalProtein, calories, macros, hasSplit, highlights, hasData, eating]
       properties:
+        eating:
+          $ref: '#/components/schemas/InsightsEating'
         range:
           $ref: '#/components/schemas/InsightsRange'
         avgCalories:
@@ -14337,6 +16583,9 @@ components:
       properties:
         configured:
           type: boolean
+        unavailable:
+          type: boolean
+          description: The connection could not be read; offer no Connect.
         connected:
           type: boolean
         lastSyncedAt:
@@ -14355,6 +16604,234 @@ components:
       properties:
         authorizeUrl:
           type: string
+    StravaWebConnectRequest:
+      type: object
+      required: [callbackUrl]
+      properties:
+        callbackUrl:
+          type: string
+          description: Absolute URL of the web app's /app/fitness/strava/callback.
+    StravaWebFinishRequest:
+      type: object
+      required: [state, code]
+      properties:
+        state:
+          type: string
+        code:
+          type: string
+    StravaConnectResult:
+      type: object
+      required: [result]
+      properties:
+        result:
+          type: string
+          description: connected, expired, unverified or failed (open set).
+    FitnessHub:
+      type: object
+      required: [strava, week, recent, steps, vo2, deviceReadings]
+      properties:
+        strava:
+          $ref: '#/components/schemas/StravaStatus'
+        week:
+          type: object
+          required: [days, sessions, minutes, distanceKm, calories]
+          properties:
+            days:
+              type: array
+              items:
+                type: object
+                required: [date, minutes, isToday]
+                properties:
+                  date: {type: string, format: date}
+                  minutes: {type: number}
+                  isToday: {type: boolean}
+            sessions: {type: integer}
+            minutes: {type: number}
+            distanceKm: {type: number}
+            calories: {type: number}
+        recent:
+          type: array
+          items:
+            type: object
+            required: [activityCode, name, category, source, endedAt, durationSeconds, distanceKm, calories]
+            properties:
+              activityCode: {type: string}
+              name: {type: string}
+              category: {type: string}
+              source: {type: string}
+              endedAt: {type: string, format: date-time}
+              durationSeconds: {type: integer}
+              distanceKm: {type: number}
+              calories: {type: number}
+        steps:
+          type: array
+          description: Daily step totals, oldest first; empty when no device pushed any.
+          items:
+            $ref: '#/components/schemas/FitnessDayValue'
+        vo2:
+          type: array
+          items:
+            $ref: '#/components/schemas/FitnessDayValue'
+        weight:
+          type: object
+          required: [kg, at]
+          properties:
+            kg: {type: number}
+            deltaKg: {type: number}
+            at: {type: string, format: date-time}
+        strength:
+          type: object
+          required: [workouts, sets, volumeKg, exercises]
+          properties:
+            workouts: {type: integer}
+            sets: {type: integer}
+            volumeKg: {type: number}
+            exercises:
+              type: array
+              items:
+                type: object
+                required: [name, bestKg, e1rmKg, changeKg]
+                properties:
+                  name: {type: string}
+                  bestKg: {type: number}
+                  e1rmKg: {type: number}
+                  changeKg: {type: number}
+            record:
+              type: object
+              required: [exercise, weightKg, reps, e1rmKg, on]
+              properties:
+                exercise: {type: string}
+                weightKg: {type: number}
+                reps: {type: integer}
+                e1rmKg: {type: number}
+                on: {type: string, format: date}
+        cardio:
+          type: object
+          required: [sessions, minutes, distanceKm, runs, bestPaceSeconds, best5kSeconds, longestKm, restingHr]
+          properties:
+            sessions: {type: integer}
+            minutes: {type: integer}
+            distanceKm: {type: number}
+            runs: {type: integer}
+            bestPaceSeconds: {type: number}
+            best5kSeconds: {type: number}
+            longestKm: {type: number}
+            restingHr: {type: number}
+        planId:
+          type: string
+          format: uuid
+        nextSession:
+          $ref: '#/components/schemas/FitnessPlanDay'
+        doneToday:
+          $ref: '#/components/schemas/FitnessPlanDay'
+        meals:
+          type: object
+          required: [logged, goal]
+          properties:
+            logged:
+              $ref: '#/components/schemas/FitnessMacros'
+            goal:
+              $ref: '#/components/schemas/FitnessMacros'
+        deviceReadings:
+          type: array
+          items:
+            type: string
+    FitnessDayValue:
+      type: object
+      required: [date, value]
+      properties:
+        date: {type: string, format: date}
+        value: {type: number}
+    FitnessPlanDay:
+      type: object
+      required: [weekday, exerciseCount]
+      properties:
+        weekday:
+          type: string
+          description: English weekday name, as the plan stores it.
+        startTime: {type: string}
+        focus: {type: string}
+        exerciseCount: {type: integer}
+    FitnessMacros:
+      type: object
+      required: [calories, proteinG, carbG, fatG]
+      properties:
+        calories: {type: number}
+        proteinG: {type: number}
+        carbG: {type: number}
+        fatG: {type: number}
+    FitnessActivities:
+      type: object
+      required: [strava]
+      properties:
+        strava:
+          $ref: '#/components/schemas/StravaStatus'
+        trend:
+          $ref: '#/components/schemas/TrainingTrend'
+        sessions:
+          $ref: '#/components/schemas/StravaSessionPage'
+    TrainingTrend:
+      type: object
+      required: [days, bands, normal, recentMinutes, normalMinutes, ratio, streakWeeks, shape, sessions, distanceM, elevationM, activeDays, countedDays]
+      properties:
+        days:
+          type: array
+          items:
+            type: object
+            required: [date, minutes, future]
+            properties:
+              date: {type: string, format: date}
+              minutes: {type: number}
+              future: {type: boolean}
+        bands:
+          type: array
+          items:
+            type: object
+            required: [family, values]
+            properties:
+              family:
+                type: string
+                description: run, ride, swim, walk, strength or other (open set).
+              values:
+                type: array
+                items: {type: number}
+        normal:
+          type: array
+          items: {type: number}
+        recentMinutes: {type: number}
+        normalMinutes: {type: number}
+        ratio: {type: number}
+        streakWeeks: {type: integer}
+        shape:
+          type: string
+          description: no_history, too_new, well_down, easier, steady, building or big_week (open set).
+        sessions: {type: integer}
+        distanceM: {type: number}
+        elevationM: {type: number}
+        activeDays: {type: integer}
+        countedDays: {type: integer}
+    StravaSessionPage:
+      type: object
+      required: [sessions, page, perPage, totalPages, total]
+      properties:
+        sessions:
+          type: array
+          items:
+            type: object
+            required: [name, sport, family, distanceM, elevationM, movingTimeS]
+            properties:
+              stravaId: {type: integer, format: int64}
+              name: {type: string}
+              sport: {type: string}
+              family: {type: string}
+              distanceM: {type: number}
+              elevationM: {type: number}
+              movingTimeS: {type: integer}
+              startedAt: {type: string, format: date-time}
+        page: {type: integer}
+        perPage: {type: integer}
+        totalPages: {type: integer}
+        total: {type: integer}
     HealthSyncRequest:
       type: object
       properties:

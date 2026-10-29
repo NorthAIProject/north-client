@@ -1,6 +1,7 @@
 package coach
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
+	"github.com/NorthAIProject/north-client/internal/watches"
 )
 
 // API is the coach for native clients: the same service the web chat and
@@ -31,6 +33,8 @@ type API struct {
 	svc    *Service
 	quotas *quota.Service
 	media  chatMedia
+
+	attachmentURL attachmentURL
 }
 
 // NewAPI builds the routes; mount them behind auth.RequireBearer.
@@ -48,6 +52,20 @@ func (a *API) Routes(r chi.Router) {
 	r.Post("/conversations/{id}/resume", a.resume)
 	r.Post("/conversations/{id}/tools/{messageID}", a.decide)
 	r.Put("/conversations/{id}/messages/{messageID}/helpful", a.rate)
+	r.Get("/conversations/stats", a.stats)
+	r.Get("/conversations/{id}/attachments/{mediaID}", a.attachment)
+}
+
+// attachmentURL resolves a stored chat attachment, owned by userID, to a URL
+// the browser can load it from. Supplied by cmd/web from the media service,
+// so this package still does not import internal/media.
+type attachmentURL func(ctx context.Context, mediaID, userID uuid.UUID) (string, error)
+
+// WithAttachmentURLs turns on GET .../attachments/{mediaID}, which the web
+// transcript uses for a photo's <img>.
+func (a *API) WithAttachmentURLs(resolve attachmentURL) *API {
+	a.attachmentURL = resolve
+	return a
 }
 
 // UploadRoutes are the routes that take a file; mount them in the upload
@@ -95,6 +113,18 @@ type Message struct {
 	Exercises []string  `json:"exercises"`
 	Helpful   *bool     `json:"helpful,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
+
+	// ToolTurn marks a coach turn that called tools. Its text is part of what
+	// the model sees; the web transcript leaves the whole turn out.
+	ToolTurn bool `json:"toolTurn,omitempty"`
+	// Proactive is a turn nobody asked for (briefing, standing task,
+	// check-in); SourceLabel names what sent it, empty for "proactive".
+	Proactive   bool   `json:"proactive,omitempty"`
+	SourceLabel string `json:"sourceLabel,omitempty"`
+	// EvidenceRefs are the stored refs the reply drew on, to pass to
+	// GET /knowledge/passages; SourceCount is how many are document passages.
+	EvidenceRefs []string `json:"evidenceRefs,omitempty"`
+	SourceCount  int      `json:"sourceCount,omitempty"`
 }
 
 type Attachment struct {
@@ -113,6 +143,28 @@ type Approval struct {
 type ApprovalCall struct {
 	Name    string `json:"name"`
 	Summary string `json:"summary"`
+	// Watch is set when the call is create_watch and its arguments parse:
+	// a client shows it as a standing task rather than as a tool call.
+	Watch *WatchProposal `json:"watch,omitempty"`
+}
+
+// WatchProposal is a standing task the coach proposes to run.
+type WatchProposal struct {
+	Title     string `json:"title"`
+	Condition string `json:"condition"`
+	Spec      string `json:"spec"`
+	// Cadence is "daily" or "weekly" (an open string).
+	Cadence string `json:"cadence"`
+	// Weekday is 0 (Sunday) to 6, read only for a weekly watch.
+	Weekday int `json:"weekday"`
+	// Clock is the local time of day it runs, "8:00", "18:30".
+	Clock string `json:"clock"`
+}
+
+// CoachStats is the coach page's two counters.
+type CoachStats struct {
+	ThreadCount      int `json:"threadCount"`
+	MessagesThisWeek int `json:"messagesThisWeek"`
 }
 
 type StartRequest struct {
@@ -218,6 +270,44 @@ func (a *API) show(w http.ResponseWriter, r *http.Request) {
 	// was handed an answer and has not replied yet.
 	detail.AwaitingResume = !waiting && len(history) > 0 && len(history[len(history)-1].ToolResults) > 0
 	httpx.WriteJSON(w, http.StatusOK, detail)
+}
+
+// stats counts threads and this week's messages, for the coach page's strip.
+func (a *API) stats(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	list, err := a.svc.Conversations().List(r.Context(), user.ID, 50)
+	if err != nil {
+		httpx.Error(w, err, "Conversations could not be loaded.")
+		return
+	}
+	stats, err := buildCoachStats(r.Context(), a.svc.Conversations(), list, time.Now())
+	if err != nil {
+		httpx.Error(w, err, "Conversations could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, CoachStats{ThreadCount: stats.ThreadCount, MessagesThisWeek: stats.MessagesThisWeek})
+}
+
+// attachment redirects to a file a turn carried, for this account only.
+func (a *API) attachment(w http.ResponseWriter, r *http.Request) {
+	user := auth.MustUser(r.Context())
+	if _, ok := pathID(w, r, "id"); !ok {
+		return
+	}
+	mediaID, ok := pathID(w, r, "mediaID")
+	if !ok {
+		return
+	}
+	if a.attachmentURL == nil {
+		httpx.Error(w, apperr.ErrNotFound, "Not found.")
+		return
+	}
+	url, err := a.attachmentURL(r.Context(), mediaID, user.ID)
+	if err != nil {
+		httpx.Error(w, err, "That file is not available.")
+		return
+	}
+	http.Redirect(w, r, url, http.StatusFound)
 }
 
 func (a *API) delete(w http.ResponseWriter, r *http.Request) {
@@ -419,6 +509,7 @@ func (a *API) rate(w http.ResponseWriter, r *http.Request) {
 //	error     {"message": "..."}                 the reply failed; show this
 //	exercises {"slugs": ["push-up"]}             render these exercise cards
 //	approval  Approval                           ask before the coach writes
+//	status    {"line": "is checking your goals"} a round of tool calls is running
 //	done      {"messageId": "..."}               the reply is stored
 const (
 	EventToken     = "token"
@@ -426,7 +517,14 @@ const (
 	EventExercises = "exercises"
 	EventApproval  = "approval"
 	EventDone      = "done"
+	EventStatus    = "status"
 )
+
+// StatusEvent is the header's status line while tools run, already in the
+// reader's language.
+type StatusEvent struct {
+	Line string `json:"line"`
+}
 
 type TokenEvent struct {
 	Text string `json:"text"`
@@ -467,6 +565,10 @@ func (a *API) relay(w http.ResponseWriter, r *http.Request, conversationID uuid.
 			writeEvent(w, rc, EventError, ErrorEvent{Message: friendly(chunk.Err)})
 			failed = true
 			break
+		}
+		if len(chunk.ToolCalls) > 0 {
+			writeEvent(w, rc, EventStatus, StatusEvent{Line: sseLine(toolStatus(r.Context(), chunk.ToolCalls))})
+			continue
 		}
 		if chunk.Text != "" {
 			writeEvent(w, rc, EventToken, TokenEvent{Text: chunk.Text})
@@ -547,7 +649,22 @@ func projectMessage(m conversations.Message) Message {
 		Exercises:   m.ExerciseSlugs(),
 		Helpful:     m.Helpful,
 		CreatedAt:   m.CreatedAt,
+
+		ToolTurn:     m.IsToolTurn(),
+		Proactive:    m.IsProactive(),
+		SourceLabel:  strings.TrimSpace(m.SourceLabel),
+		EvidenceRefs: sourceRefs(m),
+		SourceCount:  len(m.ChunkIDs()),
 	}
+}
+
+// sourceRefs is the refs to resolve for a reply's sources disclosure, or none
+// when no document passage is among them.
+func sourceRefs(m conversations.Message) []string {
+	if len(m.ChunkIDs()) == 0 {
+		return nil
+	}
+	return m.EvidenceRefs
 }
 
 func projectAttachment(a conversations.Attachment) Attachment {
@@ -557,7 +674,16 @@ func projectAttachment(a conversations.Attachment) Attachment {
 func projectApproval(p PendingCall) *Approval {
 	out := &Approval{MessageID: p.MessageID, Calls: make([]ApprovalCall, 0, len(p.Calls))}
 	for _, call := range p.Calls {
-		out.Calls = append(out.Calls, ApprovalCall{Name: call.Name, Summary: describeCall(call)})
+		item := ApprovalCall{Name: call.Name, Summary: describeCall(call)}
+		if call.Name == watches.ToolName {
+			if w, err := watches.ParseProposal(call.Arguments); err == nil {
+				item.Watch = &WatchProposal{
+					Title: w.Title, Condition: w.Condition, Spec: w.Spec,
+					Cadence: string(w.Schedule.Cadence), Weekday: int(w.Schedule.Weekday), Clock: w.Schedule.Clock(),
+				}
+			}
+		}
+		out.Calls = append(out.Calls, item)
 	}
 	return out
 }

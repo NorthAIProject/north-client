@@ -25,6 +25,7 @@ func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
 func (a *API) Routes(r chi.Router) {
 	r.Get("/memories", a.list)
+	r.Get("/memories/for/{conversationID}", a.forConversation)
 	r.Post("/memories", a.create)
 	r.Put("/memories/{memoryID}", a.update)
 	r.Post("/memories/{memoryID}/approve", a.approve)
@@ -48,13 +49,26 @@ type MemoryView struct {
 	// conversation.
 	Source               string     `json:"source"`
 	SourceConversationID *uuid.UUID `json:"sourceConversationId,omitempty"`
-	CreatedAt            time.Time  `json:"createdAt"`
+	// SupersedesID is set on a proposal that would replace an existing
+	// fact; approving it retires that fact.
+	SupersedesID *uuid.UUID `json:"supersedesId,omitempty"`
+	// ValidTo is set once a newer fact has replaced this one. A retired
+	// fact never reaches the coach, whatever pinned or excluded say.
+	ValidTo   *time.Time `json:"validTo,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt time.Time  `json:"updatedAt"`
 }
 
 type MemoryList struct {
 	Pending    []MemoryView `json:"pending"`
 	Approved   []MemoryView `json:"approved"`
 	Categories []string     `json:"categories"`
+}
+
+// ConversationMemories is what the coach proposed to remember from one
+// conversation and is still waiting for a verdict on.
+type ConversationMemories struct {
+	Pending []MemoryView `json:"pending"`
 }
 
 type MemoryRequest struct {
@@ -79,6 +93,20 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, MemoryList{Pending: project(pending), Approved: project(approved), Categories: Categories})
+}
+
+func (a *API) forConversation(w http.ResponseWriter, r *http.Request) {
+	conversationID, err := uuid.Parse(chi.URLParam(r, "conversationID"))
+	if err != nil {
+		httpx.Error(w, apperr.ErrNotFound, "Not found.")
+		return
+	}
+	pending, err := a.svc.ListPendingForConversation(r.Context(), auth.MustUser(r.Context()).ID, conversationID)
+	if err != nil {
+		httpx.Error(w, err, "Memories could not be loaded.")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ConversationMemories{Pending: project(pending)})
 }
 
 func (a *API) create(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +192,8 @@ func projectOne(m Memory) MemoryView {
 	return MemoryView{
 		ID: m.ID, Category: m.Category, Content: m.Content, Status: m.Status,
 		Pinned: m.Pinned, Excluded: m.Excluded, Source: m.Source,
-		SourceConversationID: m.SourceConversationID, CreatedAt: m.CreatedAt,
+		SourceConversationID: m.SourceConversationID, SupersedesID: m.SupersedesID,
+		ValidTo: m.ValidTo, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
 

@@ -81,13 +81,24 @@ func (s *Service) refuse(w http.ResponseWriter, r *http.Request, action Action, 
 
 // refuseJSON is refuse's 429 for the API, with the sentence as its message.
 // The native app shows the message verbatim, so it is translated here.
+//
+// Code and fields carry the raw action and wait as well, so a web client can
+// draw the same panel the cookie-session pages swap in (web/quota.Refused)
+// rather than only the one sentence. Fields here are not form errors: a
+// client keys on the code first.
 func (s *Service) refuseJSON(w http.ResponseWriter, r *http.Request, action Action, decision Decision) {
 	ctx := r.Context()
-	w.Header().Set("Retry-After", strconv.Itoa(retrySeconds(decision)))
+	seconds := strconv.Itoa(retrySeconds(decision))
+	w.Header().Set("Retry-After", seconds)
 	httpx.WriteJSON(w, http.StatusTooManyRequests, httpx.ErrorBody{Error: httpx.ErrorDetail{
 		Message: i18n.Tf(ctx, "quota.api", quotapages.ActionLabel(ctx, string(action)), quotapages.DelayLabel(ctx, decision.RetryAfter)),
+		Code:    CodeExceeded,
+		Fields:  map[string]string{"action": string(action), "retryAfter": seconds},
 	}})
 }
+
+// CodeExceeded is ErrorDetail.code on every quota refusal over the API.
+const CodeExceeded = "quota_exceeded"
 
 func retrySeconds(decision Decision) int {
 	seconds := int(decision.RetryAfter.Round(time.Second) / time.Second)

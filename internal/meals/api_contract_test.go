@@ -86,6 +86,10 @@ func TestNutritionShapes(t *testing.T) {
 			Summary: "1897 kcal under your goal", Recommendation: "Your goal fits a maintenance phase.",
 		},
 	})
+
+	apitest.AssertGolden(t, "nutrition-log-meal-options.golden.json", LoggableMealList{Options: []LoggableMeal{
+		{ID: "66666666-aaaa-aaaa-aaaa-666666666666", Label: "Cut – Breakfast · Option 2"},
+	}})
 }
 
 // A slot's options project under its default, not as meals of their own, and
