@@ -13,13 +13,15 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q      *integrationsdb.Queries
 	sealer *secret.Sealer
 }
 
-func NewRepository(pool *pgxpool.Pool, sealer *secret.Sealer) *Repository {
-	return &Repository{q: integrationsdb.New(pool), sealer: sealer}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool, sealer *secret.Sealer) *PostgresRepository {
+	return &PostgresRepository{q: integrationsdb.New(pool), sealer: sealer}
 }
 
 // Upsert stores or replaces a connection, sealing the token.
@@ -28,7 +30,7 @@ func NewRepository(pool *pgxpool.Pool, sealer *secret.Sealer) *Repository {
 // table is new, so refusing to write without a key is free, and it means a
 // deployment that forgot ENCRYPTION_KEY fails loudly at connect time rather
 // than quietly storing credentials in the clear.
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, provider, endpoint, token string) (Connection, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, provider, endpoint, token string) (Connection, error) {
 	sealed, err := r.seal(userID, token)
 	if err != nil {
 		return Connection{}, err
@@ -46,7 +48,7 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, provider, end
 	return fromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, userID uuid.UUID, provider string) (Connection, error) {
+func (r *PostgresRepository) Get(ctx context.Context, userID uuid.UUID, provider string) (Connection, error) {
 	row, err := r.q.GetIntegrationConnection(ctx, integrationsdb.GetIntegrationConnectionParams{
 		UserID:   userID,
 		Provider: provider,
@@ -65,7 +67,7 @@ func (r *Repository) Get(ctx context.Context, userID uuid.UUID, provider string)
 // Separate from Get so that every caller which only needs to know whether a
 // connection exists — the settings page, the status card — cannot accidentally
 // hold the secret.
-func (r *Repository) Token(ctx context.Context, userID uuid.UUID, provider string) (string, error) {
+func (r *PostgresRepository) Token(ctx context.Context, userID uuid.UUID, provider string) (string, error) {
 	row, err := r.q.GetIntegrationConnection(ctx, integrationsdb.GetIntegrationConnectionParams{
 		UserID:   userID,
 		Provider: provider,
@@ -79,7 +81,7 @@ func (r *Repository) Token(ctx context.Context, userID uuid.UUID, provider strin
 	return r.open(userID, row.TokenSealed)
 }
 
-func (r *Repository) Delete(ctx context.Context, userID uuid.UUID, provider string) error {
+func (r *PostgresRepository) Delete(ctx context.Context, userID uuid.UUID, provider string) error {
 	return apperr.Wrap(r.q.DeleteIntegrationConnection(ctx, integrationsdb.DeleteIntegrationConnectionParams{
 		UserID:   userID,
 		Provider: provider,
@@ -87,7 +89,7 @@ func (r *Repository) Delete(ctx context.Context, userID uuid.UUID, provider stri
 }
 
 // MarkChecked records the outcome of the last attempt to reach the server.
-func (r *Repository) MarkChecked(ctx context.Context, userID uuid.UUID, provider, status, reason string) error {
+func (r *PostgresRepository) MarkChecked(ctx context.Context, userID uuid.UUID, provider, status, reason string) error {
 	return apperr.Wrap(r.q.MarkIntegrationChecked(ctx, integrationsdb.MarkIntegrationCheckedParams{
 		UserID:    userID,
 		Provider:  provider,
@@ -98,7 +100,7 @@ func (r *Repository) MarkChecked(ctx context.Context, userID uuid.UUID, provider
 
 // seal encrypts the token with the user id as additional data, so a row copied
 // to another account fails to open rather than handing over their calendar.
-func (r *Repository) seal(userID uuid.UUID, token string) ([]byte, error) {
+func (r *PostgresRepository) seal(userID uuid.UUID, token string) ([]byte, error) {
 	if token == "" {
 		return nil, nil
 	}
@@ -114,7 +116,7 @@ func (r *Repository) seal(userID uuid.UUID, token string) ([]byte, error) {
 	return sealed, nil
 }
 
-func (r *Repository) open(userID uuid.UUID, sealed []byte) (string, error) {
+func (r *PostgresRepository) open(userID uuid.UUID, sealed []byte) (string, error) {
 	if len(sealed) == 0 {
 		return "", nil // a server that needs no auth
 	}

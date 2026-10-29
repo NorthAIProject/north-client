@@ -6,12 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/exercises"
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -30,32 +31,32 @@ type API struct {
 	loads  Loads
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API {
 	return &API{svc: svc}
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/training/plans", a.listPlans)
-	r.Post("/training/plans", a.createPlan)
-	r.Get("/training/intake", a.latestIntake)
-	r.Get("/training/overview", a.overview)
-	r.Get("/training/plans/{planID}", a.showPlan)
-	r.Post("/training/plans/{planID}/activate", a.activatePlan)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/training/plans", a.listPlans)
+	g.POST("/training/plans", a.createPlan)
+	g.GET("/training/intake", a.latestIntake)
+	g.GET("/training/overview", a.overview)
+	g.GET("/training/plans/:planID", a.showPlan)
+	g.POST("/training/plans/:planID/activate", a.activatePlan)
 
-	r.Get("/training/week", a.showWeek)
-	r.Put("/training/week", a.setWeek)
-	r.Delete("/training/week", a.resetWeek)
-	r.Post("/training/week/suggestion", a.suggestWeek)
+	g.GET("/training/week", a.showWeek)
+	g.PUT("/training/week", a.setWeek)
+	g.DELETE("/training/week", a.resetWeek)
+	g.POST("/training/week/suggestion", a.suggestWeek)
 
-	r.Put("/training/plans/{planID}/days/{day}/start-time", a.setStartTime)
-	r.Get("/training/plans/{planID}/days/{day}/suggestions", a.suggestForDay)
-	r.Post("/training/plans/{planID}/days/{day}/exercises", a.addExercise)
-	r.Put("/training/plans/{planID}/days/{day}/exercises/{index}", a.swapExercise)
-	r.Delete("/training/plans/{planID}/days/{day}/exercises/{index}", a.removeExercise)
-	r.Post("/training/plans/{planID}/days/{day}/exercises/{index}/move", a.moveExercise)
-	r.Put("/training/plans/{planID}/days/{day}/exercises/{index}/prescription", a.setPrescription)
-	r.Get("/training/plans/{planID}/days/{day}/exercises/{index}/replacements", a.suggestReplacements)
+	g.PUT("/training/plans/:planID/days/:day/start-time", a.setStartTime)
+	g.GET("/training/plans/:planID/days/:day/suggestions", a.suggestForDay)
+	g.POST("/training/plans/:planID/days/:day/exercises", a.addExercise)
+	g.PUT("/training/plans/:planID/days/:day/exercises/:index", a.swapExercise)
+	g.DELETE("/training/plans/:planID/days/:day/exercises/:index", a.removeExercise)
+	g.POST("/training/plans/:planID/days/:day/exercises/:index/move", a.moveExercise)
+	g.PUT("/training/plans/:planID/days/:day/exercises/:index/prescription", a.setPrescription)
+	g.GET("/training/plans/:planID/days/:day/exercises/:index/replacements", a.suggestReplacements)
 }
 
 // MARK: Shapes
@@ -180,11 +181,11 @@ type PrescriptionRequest struct {
 
 // MARK: Plans
 
-func (a *API) listPlans(w http.ResponseWriter, r *http.Request) {
-	plans, err := a.svc.ListCurrentPlans(r.Context(), auth.MustUser(r.Context()).ID, 20)
+func (a *API) listPlans(c *echo.Context) error {
+	ctx := c.Request().Context()
+	plans, err := a.svc.ListCurrentPlans(ctx, auth.MustUser(ctx).ID, 20)
 	if err != nil {
-		httpx.Error(w, err, "Your plans could not be loaded.")
-		return
+		return httpx.Fail(err, "Your plans could not be loaded.")
 	}
 	out := PlanList{Plans: make([]PlanSummary, 0, len(plans))}
 	for i, p := range plans {
@@ -193,116 +194,113 @@ func (a *API) listPlans(w http.ResponseWriter, r *http.Request) {
 		summary.Active = i == 0
 		out.Plans = append(out.Plans, summary)
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // createPlan asks the model for a plan. It can take a while; the web page
 // waits on the same call.
-func (a *API) createPlan(w http.ResponseWriter, r *http.Request) {
+func (a *API) createPlan(c *echo.Context) error {
 	var req IntakeRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must be a training intake.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 16 << 10}, "The request body must be a training intake."); err != nil {
+		return err
 	}
-	user := auth.MustUser(r.Context())
-	stored, err := a.svc.CreatePlan(r.Context(), user, Intake{
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	stored, err := a.svc.CreatePlan(ctx, user, Intake{
 		Goal: strings.TrimSpace(req.Goal), Experience: strings.TrimSpace(req.Experience),
 		DaysPerWeek: req.DaysPerWeek, SessionMinutes: req.SessionMinutes,
 		Equipment: req.Equipment, Limitations: strings.TrimSpace(req.Limitations),
 		Weekdays: req.Weekdays,
 	})
 	if err != nil {
-		httpx.Error(w, err, "A plan could not be made. Try again in a moment.")
-		return
+		return httpx.Fail(err, "A plan could not be made. Try again in a moment.")
 	}
-	a.writePlan(w, r, stored.ID, http.StatusCreated)
+	return a.writePlan(c, stored.ID, http.StatusCreated)
 }
 
-func (a *API) latestIntake(w http.ResponseWriter, r *http.Request) {
-	stored, err := a.svc.LatestIntake(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) latestIntake(c *echo.Context) error {
+	ctx := c.Request().Context()
+	stored, err := a.svc.LatestIntake(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "No intake yet.")
-		return
+		return httpx.Fail(err, "No intake yet.")
 	}
 	in := stored.Intake
-	httpx.WriteJSON(w, http.StatusOK, IntakeRequest{
+	return c.JSON(http.StatusOK, IntakeRequest{
 		Goal: in.Goal, Experience: in.Experience, DaysPerWeek: in.DaysPerWeek, SessionMinutes: in.SessionMinutes,
 		Equipment: nonNil(in.Equipment), Limitations: in.Limitations, Weekdays: in.Weekdays,
 	})
 }
 
-func (a *API) showPlan(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathUUID(w, r, "planID")
-	if !ok {
-		return
+func (a *API) showPlan(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "planID")
+	if err != nil {
+		return err
 	}
-	a.writePlan(w, r, id, http.StatusOK)
+	return a.writePlan(c, id, http.StatusOK)
 }
 
-func (a *API) writePlan(w http.ResponseWriter, r *http.Request, id uuid.UUID, status int) {
-	user := auth.MustUser(r.Context())
-	stored, problems, err := a.svc.PlanForDisplay(r.Context(), id, user.ID)
+func (a *API) writePlan(c *echo.Context, id uuid.UUID, status int) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	stored, problems, err := a.svc.PlanForDisplay(ctx, id, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "That plan was not found.")
-		return
+		return httpx.Fail(err, "That plan was not found.")
 	}
-	progress, err := a.svc.WeekProgress(r.Context(), user, time.Now())
+	progress, err := a.svc.WeekProgress(ctx, user, time.Now())
 	if err != nil {
-		httpx.Error(w, err, "That plan could not be loaded.")
-		return
+		return httpx.Fail(err, "That plan could not be loaded.")
 	}
-	active, err := a.svc.ActivePlan(r.Context(), user.ID)
+	active, err := a.svc.ActivePlan(ctx, user.ID)
 	if err != nil {
-		httpx.Error(w, err, "That plan could not be loaded.")
-		return
+		return httpx.Fail(err, "That plan could not be loaded.")
 	}
-	httpx.WriteJSON(w, status, projectDetail(stored, problems, progress, active.IntakeID))
+	return c.JSON(status, projectDetail(stored, problems, progress, active.IntakeID))
 }
 
 // MARK: Edits
 
-func (a *API) setStartTime(w http.ResponseWriter, r *http.Request) {
+func (a *API) setStartTime(c *echo.Context) error {
 	var req StartTimeRequest
-	a.edit(w, r, false, &req, func(user editUser, t target) (StoredPlan, error) {
-		return a.svc.SetStartTime(r.Context(), user, t.plan, t.day, req.StartTime)
+	return a.edit(c, false, &req, func(user editUser, t target) (StoredPlan, error) {
+		return a.svc.SetStartTime(c.Request().Context(), user, t.plan, t.day, req.StartTime)
 	})
 }
 
-func (a *API) addExercise(w http.ResponseWriter, r *http.Request) {
+func (a *API) addExercise(c *echo.Context) error {
 	var req CatalogChoice
-	a.edit(w, r, false, &req, func(user editUser, t target) (StoredPlan, error) {
-		return a.svc.AddExercise(r.Context(), user, t.plan, t.day, req.CatalogSlug)
+	return a.edit(c, false, &req, func(user editUser, t target) (StoredPlan, error) {
+		return a.svc.AddExercise(c.Request().Context(), user, t.plan, t.day, req.CatalogSlug)
 	})
 }
 
-func (a *API) swapExercise(w http.ResponseWriter, r *http.Request) {
+func (a *API) swapExercise(c *echo.Context) error {
 	var req CatalogChoice
-	a.edit(w, r, true, &req, func(user editUser, t target) (StoredPlan, error) {
-		return a.svc.SwapExercise(r.Context(), user, t.plan, t.day, t.index, req.CatalogSlug)
+	return a.edit(c, true, &req, func(user editUser, t target) (StoredPlan, error) {
+		return a.svc.SwapExercise(c.Request().Context(), user, t.plan, t.day, t.index, req.CatalogSlug)
 	})
 }
 
-func (a *API) removeExercise(w http.ResponseWriter, r *http.Request) {
-	a.edit(w, r, true, nil, func(user editUser, t target) (StoredPlan, error) {
-		return a.svc.RemoveExercise(r.Context(), user, t.plan, t.day, t.index)
+func (a *API) removeExercise(c *echo.Context) error {
+	return a.edit(c, true, nil, func(user editUser, t target) (StoredPlan, error) {
+		return a.svc.RemoveExercise(c.Request().Context(), user, t.plan, t.day, t.index)
 	})
 }
 
-func (a *API) moveExercise(w http.ResponseWriter, r *http.Request) {
+func (a *API) moveExercise(c *echo.Context) error {
 	var req MoveRequest
-	a.edit(w, r, true, &req, func(user editUser, t target) (StoredPlan, error) {
+	return a.edit(c, true, &req, func(user editUser, t target) (StoredPlan, error) {
 		to := t.index - 1
 		if req.Direction == "down" {
 			to = t.index + 1
 		}
-		return a.svc.MoveExercise(r.Context(), user, t.plan, t.day, t.index, to)
+		return a.svc.MoveExercise(c.Request().Context(), user, t.plan, t.day, t.index, to)
 	})
 }
 
-func (a *API) setPrescription(w http.ResponseWriter, r *http.Request) {
+func (a *API) setPrescription(c *echo.Context) error {
 	var req PrescriptionRequest
-	a.edit(w, r, true, &req, func(user editUser, t target) (StoredPlan, error) {
-		return a.svc.SetPrescription(r.Context(), user, t.plan, t.day, t.index, req.Sets, req.Reps, req.RestSeconds)
+	return a.edit(c, true, &req, func(user editUser, t target) (StoredPlan, error) {
+		return a.svc.SetPrescription(c.Request().Context(), user, t.plan, t.day, t.index, req.Sets, req.Reps, req.RestSeconds)
 	})
 }
 
@@ -316,52 +314,48 @@ type (
 
 // edit parses the path and body, runs one edit, and answers with the plan
 // version it produced, or with the reason it was refused.
-func (a *API) edit(w http.ResponseWriter, r *http.Request, withIndex bool, body any, run func(editUser, target) (StoredPlan, error)) {
-	t, ok := parseAPITarget(w, r, withIndex)
-	if !ok {
-		return
+func (a *API) edit(c *echo.Context, withIndex bool, body any, run func(editUser, target) (StoredPlan, error)) error {
+	t, err := parseAPITarget(c, withIndex)
+	if err != nil {
+		return err
 	}
 	if body != nil {
-		if err := httpx.ReadJSON(w, r, body, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-			httpx.Error(w, err, "The request body could not be read.")
-			return
+		if err = echox.BindJSON(c, body, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+			return err
 		}
 	}
-	user := auth.MustUser(r.Context())
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	edited, err := run(user, t)
 	switch {
 	case err == nil:
-		a.writePlan(w, r, edited.ID, http.StatusOK)
+		return a.writePlan(c, edited.ID, http.StatusOK)
 	case apperr.Is(err, ErrPlanSuperseded):
 		// Answer with the newest version, so the client can show what is
 		// actually there before trying again.
-		current, latestErr := a.svc.CurrentVersionOf(r.Context(), user, t.plan)
+		current, latestErr := a.svc.CurrentVersionOf(ctx, user, t.plan)
 		if latestErr != nil {
-			httpx.Error(w, latestErr, "That plan was not found.")
-			return
+			return httpx.Fail(latestErr, "That plan was not found.")
 		}
-		stored, problems, detailErr := a.svc.PlanForDisplay(r.Context(), current.ID, user.ID)
+		stored, problems, detailErr := a.svc.PlanForDisplay(ctx, current.ID, user.ID)
 		if detailErr != nil {
-			httpx.Error(w, detailErr, "That plan was not found.")
-			return
+			return httpx.Fail(detailErr, "That plan was not found.")
 		}
-		progress, progressErr := a.svc.WeekProgress(r.Context(), user, time.Now())
+		progress, progressErr := a.svc.WeekProgress(ctx, user, time.Now())
 		if progressErr != nil {
-			httpx.Error(w, progressErr, "That plan could not be loaded.")
-			return
+			return httpx.Fail(progressErr, "That plan could not be loaded.")
 		}
-		active, activeErr := a.svc.ActivePlan(r.Context(), user.ID)
+		active, activeErr := a.svc.ActivePlan(ctx, user.ID)
 		if activeErr != nil {
-			httpx.Error(w, activeErr, "That plan could not be loaded.")
-			return
+			return httpx.Fail(activeErr, "That plan could not be loaded.")
 		}
-		httpx.WriteJSON(w, http.StatusConflict, projectDetail(stored, problems, progress, active.IntakeID))
+		return c.JSON(http.StatusConflict, projectDetail(stored, problems, progress, active.IntakeID))
 	case apperr.Is(err, apperr.ErrValidation):
 		// The plan package's own words: "an exercise needs at least one set".
 		message := strings.TrimSuffix(err.Error(), ": "+apperr.ErrValidation.Error())
-		httpx.Error(w, apperr.FieldErrors{}.Add("plan", message), message)
+		return httpx.Fail(apperr.FieldErrors{}.Add("plan", message), message)
 	default:
-		httpx.Error(w, err, "That change could not be saved.")
+		return httpx.Fail(err, "That change could not be saved.")
 	}
 }
 
@@ -371,42 +365,41 @@ func (a *API) edit(w http.ResponseWriter, r *http.Request, withIndex bool, body 
 // the equipment the person has, as the web picker does; an empty one answers
 // with the ranked suggestions.
 
-func (a *API) suggestForDay(w http.ResponseWriter, r *http.Request) {
-	t, ok := parseAPITarget(w, r, false)
-	if !ok {
-		return
-	}
-	user := auth.MustUser(r.Context())
-	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
-		found, err := a.svc.SearchCatalog(r.Context(), user, q)
-		writeExercises(w, found, err)
-		return
-	}
-	found, err := a.svc.SuggestForDay(r.Context(), user, t.plan, t.day)
-	writeExercises(w, found, err)
-}
-
-func (a *API) suggestReplacements(w http.ResponseWriter, r *http.Request) {
-	t, ok := parseAPITarget(w, r, true)
-	if !ok {
-		return
-	}
-	user := auth.MustUser(r.Context())
-	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
-		found, err := a.svc.SearchCatalog(r.Context(), user, q)
-		writeExercises(w, found, err)
-		return
-	}
-	found, err := a.svc.SuggestReplacements(r.Context(), user, t.plan, t.day, t.index)
-	writeExercises(w, found, err)
-}
-
-func writeExercises(w http.ResponseWriter, found []exercise.Exercise, err error) {
+func (a *API) suggestForDay(c *echo.Context) error {
+	t, err := parseAPITarget(c, false)
 	if err != nil {
-		httpx.Error(w, err, "Suggestions could not be loaded.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, exercises.ProjectList(found))
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	if q := strings.TrimSpace(c.QueryParam("q")); q != "" {
+		found, searchErr := a.svc.SearchCatalog(ctx, user, q)
+		return writeExercises(c, found, searchErr)
+	}
+	found, err := a.svc.SuggestForDay(ctx, user, t.plan, t.day)
+	return writeExercises(c, found, err)
+}
+
+func (a *API) suggestReplacements(c *echo.Context) error {
+	t, err := parseAPITarget(c, true)
+	if err != nil {
+		return err
+	}
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	if q := strings.TrimSpace(c.QueryParam("q")); q != "" {
+		found, searchErr := a.svc.SearchCatalog(ctx, user, q)
+		return writeExercises(c, found, searchErr)
+	}
+	found, err := a.svc.SuggestReplacements(ctx, user, t.plan, t.day, t.index)
+	return writeExercises(c, found, err)
+}
+
+func writeExercises(c *echo.Context, found []exercise.Exercise, err error) error {
+	if err != nil {
+		return httpx.Fail(err, "Suggestions could not be loaded.")
+	}
+	return c.JSON(http.StatusOK, exercises.ProjectList(found))
 }
 
 // MARK: Projection
@@ -470,35 +463,24 @@ func sourceOf(p StoredPlan) string {
 	return p.Source
 }
 
-func parseAPITarget(w http.ResponseWriter, r *http.Request, withIndex bool) (target, bool) {
-	id, ok := pathUUID(w, r, "planID")
-	if !ok {
-		return target{}, false
+func parseAPITarget(c *echo.Context, withIndex bool) (target, error) {
+	id, err := echox.UUIDParam(c, "planID")
+	if err != nil {
+		return target{}, err
 	}
-	day, err := strconv.Atoi(chi.URLParam(r, "day"))
+	day, err := strconv.Atoi(c.Param("day"))
 	if err != nil || day < 0 {
-		httpx.Error(w, apperr.ErrNotFound, "No such day.")
-		return target{}, false
+		return target{}, httpx.Fail(apperr.ErrNotFound, "No such day.")
 	}
 	t := target{plan: id, day: day, index: -1}
 	if withIndex {
-		index, err := strconv.Atoi(chi.URLParam(r, "index"))
+		index, err := strconv.Atoi(c.Param("index"))
 		if err != nil || index < 0 {
-			httpx.Error(w, apperr.ErrNotFound, "No such exercise.")
-			return target{}, false
+			return target{}, httpx.Fail(apperr.ErrNotFound, "No such exercise.")
 		}
 		t.index = index
 	}
-	return t, true
-}
-
-func pathUUID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, name))
-	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return uuid.Nil, false
-	}
-	return id, true
+	return t, nil
 }
 
 func nonNil(s []string) []string {

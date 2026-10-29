@@ -26,7 +26,7 @@ func TestSetFocusChecksGoalsBadgesOnlyOnSuccess(t *testing.T) {
 	ctx := context.Background()
 	pool, user, goalSvc := setup(t)
 	rec := &checked{}
-	svc := weekly.NewService(pool, goalSvc, &fakeReports{}).WithAwards(rec).WithClock(func() time.Time { return sunday })
+	svc := weekly.NewService(weekly.NewRepository(pool), goalSvc, &fakeReports{}).WithAwards(rec).WithClock(func() time.Time { return sunday })
 	if _, err := svc.SetFocus(ctx, user, weekly.Input{Volume: "max"}); !apperr.Is(err, apperr.ErrValidation) {
 		t.Fatalf("err = %v, want validation", err)
 	}

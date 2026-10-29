@@ -12,17 +12,19 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *liftsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: liftsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: liftsdb.New(pool)}
 }
 
 // Create logs a set. A clientID this account already logged a set under
 // returns that set instead of logging another; nil always logs a new one.
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, s Set, clientID *uuid.UUID) (Set, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, s Set, clientID *uuid.UUID) (Set, error) {
 	row, err := r.q.CreateSetLog(ctx, liftsdb.CreateSetLogParams{
 		UserID:            userID,
 		ActivitySessionID: s.ActivitySessionID,
@@ -43,7 +45,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, s Set, client
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	n, err := r.q.DeleteSetLog(ctx, liftsdb.DeleteSetLogParams{ID: id, UserID: userID})
 	if err != nil {
 		return apperr.Wrap(err, "delete set log")
@@ -54,7 +56,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return nil
 }
 
-func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Set, error) {
+func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Set, error) {
 	rows, err := r.q.ListSetsBetween(ctx, liftsdb.ListSetsBetweenParams{UserID: userID, PerformedAt: since, PerformedAt_2: until})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list sets")
@@ -62,7 +64,7 @@ func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, u
 	return fromRows(rows), nil
 }
 
-func (r *Repository) ListForExercises(ctx context.Context, userID uuid.UUID, keys []string, since time.Time) ([]Set, error) {
+func (r *PostgresRepository) ListForExercises(ctx context.Context, userID uuid.UUID, keys []string, since time.Time) ([]Set, error) {
 	rows, err := r.q.ListSetsForExercises(ctx, liftsdb.ListSetsForExercisesParams{UserID: userID, Since: since, Keys: keys})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list sets for exercises")
@@ -71,7 +73,7 @@ func (r *Repository) ListForExercises(ctx context.Context, userID uuid.UUID, key
 }
 
 // ListForSession is one timed workout's sets, in the order they were done.
-func (r *Repository) ListForSession(ctx context.Context, userID, sessionID uuid.UUID) ([]Set, error) {
+func (r *PostgresRepository) ListForSession(ctx context.Context, userID, sessionID uuid.UUID) ([]Set, error) {
 	rows, err := r.q.ListSetsForSession(ctx, liftsdb.ListSetsForSessionParams{UserID: userID, ActivitySessionID: &sessionID})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list sets for session")
@@ -81,7 +83,7 @@ func (r *Repository) ListForSession(ctx context.Context, userID, sessionID uuid.
 
 // ListForExercisesBefore is the history of these exercises in [since, before),
 // newest first.
-func (r *Repository) ListForExercisesBefore(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error) {
+func (r *PostgresRepository) ListForExercisesBefore(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error) {
 	rows, err := r.q.ListSetsForExercisesBefore(ctx, liftsdb.ListSetsForExercisesBeforeParams{UserID: userID, Since: since, Before: before, Keys: keys})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list earlier sets for exercises")
@@ -91,7 +93,7 @@ func (r *Repository) ListForExercisesBefore(ctx context.Context, userID uuid.UUI
 
 // ListForSessions is every set logged against these workouts, in the order
 // they were done. It is not owner-scoped: the caller authorizes.
-func (r *Repository) ListForSessions(ctx context.Context, sessionIDs []uuid.UUID) ([]Set, error) {
+func (r *PostgresRepository) ListForSessions(ctx context.Context, sessionIDs []uuid.UUID) ([]Set, error) {
 	rows, err := r.q.ListSetsForSessions(ctx, sessionIDs)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list sets for sessions")
@@ -102,7 +104,7 @@ func (r *Repository) ListForSessions(ctx context.Context, sessionIDs []uuid.UUID
 // ListForExercisesBetween is the whole history of these exercises in
 // [since, before), oldest first. Unlike ListForExercisesBefore it has no row
 // limit, because personal records need every set in the window.
-func (r *Repository) ListForExercisesBetween(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error) {
+func (r *PostgresRepository) ListForExercisesBetween(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error) {
 	rows, err := r.q.ListSetsForExercisesBetween(ctx, liftsdb.ListSetsForExercisesBetweenParams{UserID: userID, Since: since, Before: before, Keys: keys})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list sets for exercises between")

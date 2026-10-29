@@ -3,7 +3,7 @@ package insights
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -66,61 +66,60 @@ type InsightsPatterns struct {
 	Findings []InsightsPattern `json:"findings"`
 }
 
-func (a *API) statsRoutes(r chi.Router) {
-	r.Get("/insights/sleep", a.sleepPage)
-	r.Get("/insights/cardio", a.cardioPage)
-	r.Get("/insights/patterns", a.patternsPage)
+func (a *API) registerStats(g *echo.Group) {
+	g.GET("/insights/sleep", a.sleepPage)
+	g.GET("/insights/cardio", a.cardioPage)
+	g.GET("/insights/patterns", a.patternsPage)
 }
 
-// statsContext is the reader, their window, and the stats reader; false when
-// stats are not wired, which the web answered with a 404 too.
-func (a *API) statsContext(w http.ResponseWriter, r *http.Request) (StatsReader, timerange.Range, bool) {
-	user := auth.MustUser(r.Context())
-	rg := timerange.Parse(r.URL.Query().Get("range"), user.Location())
+// statsContext is the reader, their window, and the stats reader; an error
+// when stats are not wired, which the web answered with a 404 too.
+func (a *API) statsContext(c *echo.Context) (StatsReader, timerange.Range, error) {
+	user := auth.MustUser(c.Request().Context())
+	rg := timerange.Parse(c.QueryParam("range"), user.Location())
 	if a.svc.stats == nil {
-		httpx.Error(w, apperr.ErrNotFound, domainError)
-		return nil, rg, false
+		return nil, rg, httpx.Fail(apperr.ErrNotFound, domainError)
 	}
-	return a.svc.stats, rg, true
+	return a.svc.stats, rg, nil
 }
 
-func (a *API) sleepPage(w http.ResponseWriter, r *http.Request) {
-	stats, rg, ok := a.statsContext(w, r)
-	if !ok {
-		return
-	}
-	st, err := stats.Sleep(r.Context(), auth.MustUser(r.Context()), rg)
+func (a *API) sleepPage(c *echo.Context) error {
+	stats, rg, err := a.statsContext(c)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectSleep(buildSleepView(r.Context(), rg, st)))
+	ctx := c.Request().Context()
+	st, err := stats.Sleep(ctx, auth.MustUser(ctx), rg)
+	if err != nil {
+		return httpx.Fail(err, domainError)
+	}
+	return c.JSON(http.StatusOK, projectSleep(buildSleepView(ctx, rg, st)))
 }
 
-func (a *API) cardioPage(w http.ResponseWriter, r *http.Request) {
-	stats, rg, ok := a.statsContext(w, r)
-	if !ok {
-		return
-	}
-	st, err := stats.Cardio(r.Context(), auth.MustUser(r.Context()), rg)
+func (a *API) cardioPage(c *echo.Context) error {
+	stats, rg, err := a.statsContext(c)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectCardio(buildCardioView(r.Context(), rg, st)))
+	ctx := c.Request().Context()
+	st, err := stats.Cardio(ctx, auth.MustUser(ctx), rg)
+	if err != nil {
+		return httpx.Fail(err, domainError)
+	}
+	return c.JSON(http.StatusOK, projectCardio(buildCardioView(ctx, rg, st)))
 }
 
-func (a *API) patternsPage(w http.ResponseWriter, r *http.Request) {
-	stats, rg, ok := a.statsContext(w, r)
-	if !ok {
-		return
-	}
-	found, days, err := stats.Patterns(r.Context(), auth.MustUser(r.Context()), rg)
+func (a *API) patternsPage(c *echo.Context) error {
+	stats, rg, err := a.statsContext(c)
 	if err != nil {
-		httpx.Error(w, err, domainError)
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectPatterns(buildPatternsView(r.Context(), rg, days, found)))
+	ctx := c.Request().Context()
+	found, days, err := stats.Patterns(ctx, auth.MustUser(ctx), rg)
+	if err != nil {
+		return httpx.Fail(err, domainError)
+	}
+	return c.JSON(http.StatusOK, projectPatterns(buildPatternsView(ctx, rg, days, found)))
 }
 
 func projectSleep(v insightpages.SleepView) InsightsSleep {

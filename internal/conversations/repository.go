@@ -18,15 +18,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *conversationsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: conversationsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: conversationsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, title, kind string) (Conversation, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, title, kind string) (Conversation, error) {
 	row, err := r.q.CreateConversation(ctx, conversationsdb.CreateConversationParams{
 		UserID: userID,
 		Title:  nilIfEmpty(title),
@@ -42,7 +44,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, title, kind s
 //
 // Ownership is part of the query rather than a check the caller performs, so
 // there is no path that returns another user's thread.
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Conversation, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Conversation, error) {
 	row, err := r.q.GetConversation(ctx, conversationsdb.GetConversationParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -53,7 +55,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Conversatio
 	return conversationFromDB(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]Conversation, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]Conversation, error) {
 	rows, err := r.q.ListConversations(ctx, conversationsdb.ListConversationsParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -70,7 +72,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit, offset i
 	return out, nil
 }
 
-func (r *Repository) SetSummary(ctx context.Context, id uuid.UUID, summary string) error {
+func (r *PostgresRepository) SetSummary(ctx context.Context, id uuid.UUID, summary string) error {
 	return apperr.Wrap(r.q.SetConversationSummary(ctx, conversationsdb.SetConversationSummaryParams{
 		ID:      id,
 		Summary: summary,
@@ -78,7 +80,7 @@ func (r *Repository) SetSummary(ctx context.Context, id uuid.UUID, summary strin
 }
 
 // SetContextSummary stores the rolling compaction and how far it reaches.
-func (r *Repository) SetContextSummary(ctx context.Context, id uuid.UUID, summary string, through time.Time) error {
+func (r *PostgresRepository) SetContextSummary(ctx context.Context, id uuid.UUID, summary string, through time.Time) error {
 	return apperr.Wrap(r.q.SetConversationContextSummary(ctx, conversationsdb.SetConversationContextSummaryParams{
 		ID:                    id,
 		ContextSummary:        summary,
@@ -88,7 +90,7 @@ func (r *Repository) SetContextSummary(ctx context.Context, id uuid.UUID, summar
 
 // MessagesBetween returns the turns written after a watermark and no later than
 // through, oldest first. A zero after means from the beginning of the thread.
-func (r *Repository) MessagesBetween(ctx context.Context, id uuid.UUID, after, through time.Time, limit int) ([]Message, error) {
+func (r *PostgresRepository) MessagesBetween(ctx context.Context, id uuid.UUID, after, through time.Time, limit int) ([]Message, error) {
 	rows, err := r.q.MessagesBetween(ctx, conversationsdb.MessagesBetweenParams{
 		ConversationID: id,
 		After:          after,
@@ -103,7 +105,7 @@ func (r *Repository) MessagesBetween(ctx context.Context, id uuid.UUID, after, t
 
 // AwaitingSummary lists threads with more than keepRecent turns beyond their
 // summary watermark — the ones losing history off the end of the window.
-func (r *Repository) AwaitingSummary(ctx context.Context, keepRecent, limit int) ([]Pending, error) {
+func (r *PostgresRepository) AwaitingSummary(ctx context.Context, keepRecent, limit int) ([]Pending, error) {
 	rows, err := r.q.ConversationsAwaitingSummary(ctx, conversationsdb.ConversationsAwaitingSummaryParams{
 		KeepRecent:  int64(keepRecent),
 		ResultLimit: int32(limit),
@@ -120,7 +122,7 @@ func (r *Repository) AwaitingSummary(ctx context.Context, keepRecent, limit int)
 }
 
 // Owner returns the account a thread belongs to.
-func (r *Repository) Owner(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+func (r *PostgresRepository) Owner(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	owner, err := r.q.ConversationOwner(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -131,7 +133,7 @@ func (r *Repository) Owner(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	return owner, nil
 }
 
-func (r *Repository) SetTitle(ctx context.Context, id uuid.UUID, title string) error {
+func (r *PostgresRepository) SetTitle(ctx context.Context, id uuid.UUID, title string) error {
 	err := r.q.SetConversationTitle(ctx, conversationsdb.SetConversationTitleParams{
 		ID:    id,
 		Title: nilIfEmpty(title),
@@ -139,11 +141,11 @@ func (r *Repository) SetTitle(ctx context.Context, id uuid.UUID, title string) e
 	return apperr.Wrap(err, "set conversation title")
 }
 
-func (r *Repository) Touch(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) Touch(ctx context.Context, id uuid.UUID) error {
 	return apperr.Wrap(r.q.TouchConversation(ctx, id), "touch conversation")
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	err := r.q.DeleteConversation(ctx, conversationsdb.DeleteConversationParams{ID: id, UserID: userID})
 	return apperr.Wrap(err, "delete conversation")
 }
@@ -175,7 +177,7 @@ type NewMessage struct {
 	Provenance Provenance
 }
 
-func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error) {
+func (r *PostgresRepository) Append(ctx context.Context, msg NewMessage) (Message, error) {
 	parts, err := json.Marshal(orEmpty(msg.Parts))
 	if err != nil {
 		return Message{}, apperr.Wrap(err, "encode message parts")
@@ -230,7 +232,7 @@ func (r *Repository) Append(ctx context.Context, msg NewMessage) (Message, error
 }
 
 // Messages returns a conversation's history in reading order.
-func (r *Repository) Messages(ctx context.Context, conversationID uuid.UUID, limit int) ([]Message, error) {
+func (r *PostgresRepository) Messages(ctx context.Context, conversationID uuid.UUID, limit int) ([]Message, error) {
 	rows, err := r.q.ListMessages(ctx, conversationsdb.ListMessagesParams{
 		ConversationID: conversationID,
 		Limit:          int32(limit),
@@ -246,7 +248,7 @@ func (r *Repository) Messages(ctx context.Context, conversationID uuid.UUID, lim
 // The query selects newest-first so the limit keeps the end of the conversation;
 // the result is reversed here into reading order. Selecting oldest-first with a
 // limit would return the beginning, which is the opposite of what context needs.
-func (r *Repository) Recent(ctx context.Context, conversationID uuid.UUID, limit int) ([]Message, error) {
+func (r *PostgresRepository) Recent(ctx context.Context, conversationID uuid.UUID, limit int) ([]Message, error) {
 	rows, err := r.q.RecentMessages(ctx, conversationsdb.RecentMessagesParams{
 		ConversationID: conversationID,
 		Limit:          int32(limit),
@@ -261,7 +263,7 @@ func (r *Repository) Recent(ctx context.Context, conversationID uuid.UUID, limit
 
 // RecentUserMessages returns what the user has said lately across every
 // conversation, so a brand new thread still has continuity.
-func (r *Repository) RecentUserMessages(ctx context.Context, userID uuid.UUID, limit int) ([]Message, error) {
+func (r *PostgresRepository) RecentUserMessages(ctx context.Context, userID uuid.UUID, limit int) ([]Message, error) {
 	rows, err := r.q.RecentUserMessages(ctx, conversationsdb.RecentUserMessagesParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -274,13 +276,13 @@ func (r *Repository) RecentUserMessages(ctx context.Context, userID uuid.UUID, l
 	return messagesFromDB(rows), nil
 }
 
-func (r *Repository) CountMessages(ctx context.Context, conversationID uuid.UUID) (int, error) {
+func (r *PostgresRepository) CountMessages(ctx context.Context, conversationID uuid.UUID) (int, error) {
 	n, err := r.q.CountMessages(ctx, conversationID)
 	return int(n), apperr.Wrap(err, "count messages")
 }
 
 // AwaitingExtraction lists quiet threads the extractor has not read yet.
-func (r *Repository) AwaitingExtraction(ctx context.Context, idleBefore time.Time, minMessages, limit int) ([]Pending, error) {
+func (r *PostgresRepository) AwaitingExtraction(ctx context.Context, idleBefore time.Time, minMessages, limit int) ([]Pending, error) {
 	rows, err := r.q.ConversationsAwaitingExtraction(ctx, conversationsdb.ConversationsAwaitingExtractionParams{
 		IdleBefore:  idleBefore,
 		MinMessages: int64(minMessages),
@@ -298,7 +300,7 @@ func (r *Repository) AwaitingExtraction(ctx context.Context, idleBefore time.Tim
 }
 
 // MarkExtracted records that extraction ran over this thread.
-func (r *Repository) MarkExtracted(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresRepository) MarkExtracted(ctx context.Context, id uuid.UUID) error {
 	return apperr.Wrap(r.q.MarkConversationExtracted(ctx, id), "mark conversation extracted")
 }
 
@@ -336,7 +338,7 @@ func messagesFromDB(rows []conversationsdb.Message) []Message {
 // it is the person's own turn rather than the coach's. The caller turns that
 // into a not-found; distinguishing them for the client would confirm that a
 // message id exists in an account the caller cannot see.
-func (r *Repository) SetMessageHelpful(ctx context.Context, messageID, userID uuid.UUID, helpful *bool) (Message, bool, error) {
+func (r *PostgresRepository) SetMessageHelpful(ctx context.Context, messageID, userID uuid.UUID, helpful *bool) (Message, bool, error) {
 	row, err := r.q.SetMessageHelpful(ctx, conversationsdb.SetMessageHelpfulParams{
 		MessageID: messageID,
 		UserID:    userID,
@@ -449,7 +451,7 @@ func (m MessageStat) IsModel() bool { return m.Role == ai.RoleModel }
 
 // UserMessagesBetween returns the turns this person exchanged in a window,
 // oldest first, capped at limit.
-func (r *Repository) UserMessagesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time, limit int) ([]MessageStat, error) {
+func (r *PostgresRepository) UserMessagesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time, limit int) ([]MessageStat, error) {
 	rows, err := r.q.UserMessagesBetween(ctx, conversationsdb.UserMessagesBetweenParams{
 		UserID:      userID,
 		FromTime:    since,

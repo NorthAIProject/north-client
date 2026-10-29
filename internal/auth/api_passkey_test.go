@@ -6,10 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 )
 
 // A server without passkeys configured answers every ceremony route with a
@@ -17,8 +16,8 @@ import (
 func TestPasskeyRoutesWithoutPasskeysAreJSON404(t *testing.T) {
 	t.Parallel()
 
-	r := chi.NewRouter()
-	auth.NewAPI(fakeSessionResolver{}).WithAuthService(&auth.Service{}, &auth.Middleware{}).PublicRoutes(r)
+	e := echox.New(echox.Config{})
+	auth.NewAPI(fakeSessionResolver{}).WithAuthService(&auth.Service{}, &auth.Middleware{}).RegisterPublic(e.Group(""))
 
 	for _, path := range []string{
 		"/auth/passkey/register/begin",
@@ -28,7 +27,7 @@ func TestPasskeyRoutesWithoutPasskeysAreJSON404(t *testing.T) {
 	} {
 		t.Run(path, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`)))
+			e.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`)))
 
 			if rec.Code != http.StatusNotFound {
 				t.Fatalf("status = %d, want 404", rec.Code)

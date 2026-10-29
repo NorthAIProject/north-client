@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
@@ -20,19 +20,19 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/memories", a.list)
-	r.Get("/memories/for/{conversationID}", a.forConversation)
-	r.Post("/memories", a.create)
-	r.Put("/memories/{memoryID}", a.update)
-	r.Post("/memories/{memoryID}/approve", a.approve)
-	r.Post("/memories/{memoryID}/reject", a.reject)
-	r.Put("/memories/{memoryID}/pinned", a.pin)
-	r.Put("/memories/{memoryID}/excluded", a.exclude)
-	r.Delete("/memories/{memoryID}", a.destroy)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/memories", a.list)
+	g.GET("/memories/for/:conversationID", a.forConversation)
+	g.POST("/memories", a.create)
+	g.PUT("/memories/:memoryID", a.update)
+	g.POST("/memories/:memoryID/approve", a.approve)
+	g.POST("/memories/:memoryID/reject", a.reject)
+	g.PUT("/memories/:memoryID/pinned", a.pin)
+	g.PUT("/memories/:memoryID/excluded", a.exclude)
+	g.DELETE("/memories/:memoryID", a.destroy)
 }
 
 type MemoryView struct {
@@ -80,104 +80,103 @@ type ToggleRequest struct {
 	Value bool `json:"value"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	userID := auth.MustUser(r.Context()).ID
-	pending, err := a.svc.ListPending(r.Context(), userID)
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
+	userID := auth.MustUser(ctx).ID
+	pending, err := a.svc.ListPending(ctx, userID)
 	if err != nil {
-		httpx.Error(w, err, "Memories could not be loaded.")
-		return
+		return httpx.Fail(err, "Memories could not be loaded.")
 	}
-	approved, err := a.svc.ListApproved(r.Context(), userID)
+	approved, err := a.svc.ListApproved(ctx, userID)
 	if err != nil {
-		httpx.Error(w, err, "Memories could not be loaded.")
-		return
+		return httpx.Fail(err, "Memories could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, MemoryList{Pending: project(pending), Approved: project(approved), Categories: Categories})
+	return c.JSON(http.StatusOK, MemoryList{Pending: project(pending), Approved: project(approved), Categories: Categories})
 }
 
-func (a *API) forConversation(w http.ResponseWriter, r *http.Request) {
-	conversationID, err := uuid.Parse(chi.URLParam(r, "conversationID"))
+func (a *API) forConversation(c *echo.Context) error {
+	conversationID, err := echox.UUIDParam(c, "conversationID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	pending, err := a.svc.ListPendingForConversation(r.Context(), auth.MustUser(r.Context()).ID, conversationID)
+	ctx := c.Request().Context()
+	pending, err := a.svc.ListPendingForConversation(ctx, auth.MustUser(ctx).ID, conversationID)
 	if err != nil {
-		httpx.Error(w, err, "Memories could not be loaded.")
-		return
+		return httpx.Fail(err, "Memories could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, ConversationMemories{Pending: project(pending)})
+	return c.JSON(http.StatusOK, ConversationMemories{Pending: project(pending)})
 }
 
-func (a *API) create(w http.ResponseWriter, r *http.Request) {
+func (a *API) create(c *echo.Context) error {
 	var req MemoryRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	m, err := a.svc.Create(r.Context(), auth.MustUser(r.Context()).ID, Input(req))
-	a.respond(w, http.StatusCreated, m, err)
+	ctx := c.Request().Context()
+	m, err := a.svc.Create(ctx, auth.MustUser(ctx).ID, Input(req))
+	return respond(c, http.StatusCreated, m, err)
 }
 
-func (a *API) update(w http.ResponseWriter, r *http.Request) {
+func (a *API) update(c *echo.Context) error {
 	var req MemoryRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	a.change(w, r, func(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
+	return a.change(c, func(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
 		return a.svc.Update(ctx, id, userID, Input(req))
 	})
 }
 
-func (a *API) approve(w http.ResponseWriter, r *http.Request) { a.change(w, r, a.svc.Approve) }
-func (a *API) reject(w http.ResponseWriter, r *http.Request)  { a.change(w, r, a.svc.Reject) }
+func (a *API) approve(c *echo.Context) error { return a.change(c, a.svc.Approve) }
+func (a *API) reject(c *echo.Context) error  { return a.change(c, a.svc.Reject) }
 
-func (a *API) pin(w http.ResponseWriter, r *http.Request) {
+func (a *API) pin(c *echo.Context) error {
 	var req ToggleRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	a.change(w, r, func(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
+	return a.change(c, func(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
 		return a.svc.SetPinned(ctx, id, userID, req.Value)
 	})
 }
 
-func (a *API) exclude(w http.ResponseWriter, r *http.Request) {
+func (a *API) exclude(c *echo.Context) error {
 	var req ToggleRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	a.change(w, r, func(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
+	return a.change(c, func(ctx context.Context, id, userID uuid.UUID) (Memory, error) {
 		return a.svc.SetExcluded(ctx, id, userID, req.Value)
 	})
 }
 
-func (a *API) destroy(w http.ResponseWriter, r *http.Request) {
-	id, ok := memoryID(w, r)
-	if !ok {
-		return
-	}
-	if err := a.svc.Delete(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The memory could not be deleted.")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *API) change(w http.ResponseWriter, r *http.Request, op func(context.Context, uuid.UUID, uuid.UUID) (Memory, error)) {
-	id, ok := memoryID(w, r)
-	if !ok {
-		return
-	}
-	m, err := op(r.Context(), id, auth.MustUser(r.Context()).ID)
-	a.respond(w, http.StatusOK, m, err)
-}
-
-func (a *API) respond(w http.ResponseWriter, status int, m Memory, err error) {
+func (a *API) destroy(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "memoryID")
 	if err != nil {
-		httpx.Error(w, err, "The memory could not be saved.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, status, projectOne(m))
+	ctx := c.Request().Context()
+	if err := a.svc.Delete(ctx, id, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The memory could not be deleted.")
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (a *API) change(c *echo.Context, op func(context.Context, uuid.UUID, uuid.UUID) (Memory, error)) error {
+	id, err := echox.UUIDParam(c, "memoryID")
+	if err != nil {
+		return err
+	}
+	ctx := c.Request().Context()
+	m, err := op(ctx, id, auth.MustUser(ctx).ID)
+	return respond(c, http.StatusOK, m, err)
+}
+
+func respond(c *echo.Context, status int, m Memory, err error) error {
+	if err != nil {
+		return httpx.Fail(err, "The memory could not be saved.")
+	}
+	return c.JSON(status, projectOne(m))
 }
 
 func project(list []Memory) []MemoryView {
@@ -197,19 +196,6 @@ func projectOne(m Memory) MemoryView {
 	}
 }
 
-func memoryID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, "memoryID"))
-	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
-func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
-	}
-	return true
+func readJSON(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 16 << 10}, "The request body could not be read.")
 }

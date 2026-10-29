@@ -78,7 +78,7 @@ func TestSetFocusClosesTheLoop(t *testing.T) {
 	deck, _ := goalSvc.Create(ctx, user.ID, goals.Input{Title: "Ship the deck", Category: "work"})
 	rep := &fakeReports{}
 	ach := &recorded{}
-	svc := weekly.NewService(pool, goalSvc, rep).WithAchievements(ach).WithClock(func() time.Time { return sunday })
+	svc := weekly.NewService(weekly.NewRepository(pool), goalSvc, rep).WithAchievements(ach).WithClock(func() time.Time { return sunday })
 
 	rv, err := svc.Review(ctx, user)
 	if err != nil {
@@ -125,7 +125,7 @@ func TestSetFocusClosesTheLoop(t *testing.T) {
 func TestSetFocusRejects(t *testing.T) {
 	ctx := context.Background()
 	pool, user, goalSvc := setup(t)
-	svc := weekly.NewService(pool, goalSvc, &fakeReports{}).WithClock(func() time.Time { return sunday })
+	svc := weekly.NewService(weekly.NewRepository(pool), goalSvc, &fakeReports{}).WithClock(func() time.Time { return sunday })
 
 	cases := map[string]weekly.Input{
 		"four priorities":     {Priorities: []string{"a", "b", "c", "d"}},

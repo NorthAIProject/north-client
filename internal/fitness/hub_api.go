@@ -8,9 +8,11 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -151,19 +153,18 @@ type FitnessHub struct {
 	DeviceReadings []string `json:"deviceReadings"`
 }
 
-func (a *API) hubView(w http.ResponseWriter, r *http.Request) {
+func (a *API) hubView(c *echo.Context) error {
 	if a.hub == nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return httpx.Fail(apperr.ErrNotFound, "Not found.")
 	}
-	user := auth.MustUser(r.Context())
-	snap, err := a.hub.Load(r.Context(), user)
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	snap, err := a.hub.Load(ctx, user)
 	if err != nil {
-		httpx.Error(w, err, "The fitness hub could not be loaded.")
-		return
+		return httpx.Fail(err, "The fitness hub could not be loaded.")
 	}
 	loc := user.Location()
-	httpx.WriteJSON(w, http.StatusOK, projectHub(snap, buildHubData(snap, loc, time.Now(), ""), loc))
+	return c.JSON(http.StatusOK, projectHub(snap, buildHubData(snap, loc, time.Now(), ""), loc))
 }
 
 func projectHub(snap Snapshot, data fitnesspages.HubData, loc *time.Location) FitnessHub {
@@ -326,9 +327,9 @@ type FitnessActivities struct {
 
 // activities mirrors Handler.activities: a read failure marks the status
 // unavailable rather than failing the page.
-func (a *API) activities(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	ctx := r.Context()
+func (a *API) activities(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	log := middleware.FromContext(ctx)
 
 	status, err := a.strava.Status(ctx, user.ID)
@@ -347,7 +348,7 @@ func (a *API) activities(w http.ResponseWriter, r *http.Request) {
 			view := trainingTrendView(trend)
 			out.Trend = &view
 		}
-		page, err := a.strava.Sessions(ctx, user.ID, user.Location(), sessionPageParam(r), 0)
+		page, err := a.strava.Sessions(ctx, user.ID, user.Location(), sessionPageParam(c.Request()), 0)
 		if err != nil {
 			log.Error("read activity sessions", slog.Any("error", err))
 			status.Unavailable = true
@@ -360,20 +361,20 @@ func (a *API) activities(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out.Strava = statusView(status)
-	w.Header().Set("Cache-Control", "private, no-store")
-	httpx.WriteJSON(w, http.StatusOK, out)
+	c.Response().Header().Set("Cache-Control", "private, no-store")
+	return c.JSON(http.StatusOK, out)
 }
 
 // activitySessions is one page of the list, for the pager.
-func (a *API) activitySessions(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	page, err := a.strava.Sessions(r.Context(), user.ID, user.Location(), sessionPageParam(r), 0)
+func (a *API) activitySessions(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	page, err := a.strava.Sessions(ctx, user.ID, user.Location(), sessionPageParam(c.Request()), 0)
 	if err != nil {
-		httpx.Error(w, err, "Your activities could not be read just now.")
-		return
+		return httpx.Fail(err, "Your activities could not be read just now.")
 	}
-	w.Header().Set("Cache-Control", "private, no-store")
-	httpx.WriteJSON(w, http.StatusOK, sessionPageView(page))
+	c.Response().Header().Set("Cache-Control", "private, no-store")
+	return c.JSON(http.StatusOK, sessionPageView(page))
 }
 
 func trainingTrendView(t strava.Trend) TrainingTrend {
@@ -475,33 +476,31 @@ type StravaConnectResult struct {
 	Result string `json:"result"`
 }
 
-func (a *API) connectWeb(w http.ResponseWriter, r *http.Request) {
+func (a *API) connectWeb(c *echo.Context) error {
 	var req StravaWebConnectRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
 	if !validWebCallback(req.CallbackURL) {
 		msg := "The callback must be the web app's " + strava.WebCallbackPath + "."
-		httpx.Error(w, apperr.FieldErrors{}.Add("callbackUrl", msg), msg)
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("callbackUrl", msg), msg)
 	}
-	consent, err := a.strava.BeginWebConnect(r.Context(), auth.MustUser(r.Context()).ID, req.CallbackURL)
+	ctx := c.Request().Context()
+	consent, err := a.strava.BeginWebConnect(ctx, auth.MustUser(ctx).ID, req.CallbackURL)
 	if err != nil {
-		httpx.Error(w, err, "Strava is not available right now.")
-		return
+		return httpx.Fail(err, "Strava is not available right now.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, StravaConnect{AuthorizeURL: consent})
+	return c.JSON(http.StatusOK, StravaConnect{AuthorizeURL: consent})
 }
 
-func (a *API) finishWeb(w http.ResponseWriter, r *http.Request) {
+func (a *API) finishWeb(c *echo.Context) error {
 	var req StravaWebFinishRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
+	ctx := c.Request().Context()
 	result := "connected"
-	err := a.strava.FinishWebConnect(r.Context(), auth.MustUser(r.Context()).ID, req.State, req.Code)
+	err := a.strava.FinishWebConnect(ctx, auth.MustUser(ctx).ID, req.State, req.Code)
 	switch {
 	case err == nil:
 	case apperr.Is(err, apperr.ErrNotFound):
@@ -509,10 +508,10 @@ func (a *API) finishWeb(w http.ResponseWriter, r *http.Request) {
 	case apperr.Is(err, apperr.ErrForbidden):
 		result = "unverified"
 	default:
-		middleware.FromContext(r.Context()).Error("web strava connect failed", slog.Any("error", err))
+		middleware.FromContext(ctx).Error("web strava connect failed", slog.Any("error", err))
 		result = "failed"
 	}
-	httpx.WriteJSON(w, http.StatusOK, StravaConnectResult{Result: result})
+	return c.JSON(http.StatusOK, StravaConnectResult{Result: result})
 }
 
 // validWebCallback accepts only an absolute http(s) URL whose path is the web

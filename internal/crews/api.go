@@ -5,16 +5,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/crews/live"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
-// API is crews for native clients. Mount behind auth.RequireBearer.
+// API is crews for native clients. Register behind auth.Bearer.
 type API struct {
 	svc       *Service
 	siteURL   string
@@ -36,23 +36,24 @@ func (a *API) WithLive(chat *Chat, hub *live.Hub) *API {
 // WithHeartbeat changes how often a quiet stream pings, for tests.
 func (a *API) WithHeartbeat(d time.Duration) *API { a.heartbeat = d; return a }
 
-// PublicRoutes need no bearer: the crew behind a join link, which the
-// signed-out landing page at /i/c/{code} shows (the Go page shows it too).
-func (a *API) PublicRoutes(r chi.Router) {
-	r.Get("/crews/join/{code}", a.preview)
+// RegisterPublic registers the routes that need no bearer: the crew behind a
+// join link, which the signed-out landing page at /i/c/{code} shows (the Go
+// page shows it too).
+func (a *API) RegisterPublic(g *echo.Group) {
+	g.GET("/crews/join/:code", a.preview)
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/crews/{crewID}/live", a.live)
-	a.chatRoutes(r)
-	r.Get("/crews", a.list)
-	r.Post("/crews", a.create)
-	r.Post("/crews/join/{code}", a.join)
-	r.Get("/crews/{crewID}", a.board)
-	r.Delete("/crews/{crewID}/members/{userID}", a.remove)
-	r.Put("/crews/{crewID}/members/{userID}/role", a.setRole)
-	r.Put("/crews/{crewID}/challenge", a.setChallenge)
-	r.Delete("/crews/{crewID}/challenge", a.clearChallenge)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/crews/:crewID/live", a.live)
+	a.registerChat(g)
+	g.GET("/crews", a.list)
+	g.POST("/crews", a.create)
+	g.POST("/crews/join/:code", a.join)
+	g.GET("/crews/:crewID", a.board)
+	g.DELETE("/crews/:crewID/members/:userID", a.remove)
+	g.PUT("/crews/:crewID/members/:userID/role", a.setRole)
+	g.PUT("/crews/:crewID/challenge", a.setChallenge)
+	g.DELETE("/crews/:crewID/challenge", a.clearChallenge)
 }
 
 // JoinURL is the link that brings somebody into a crew.
@@ -112,141 +113,130 @@ type CreateRequest struct {
 	Name string `json:"name"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	list, err := a.svc.Mine(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
+	list, err := a.svc.Mine(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Crews could not be loaded.")
-		return
+		return httpx.Fail(err, "Crews could not be loaded.")
 	}
-	unread, err := a.unreadByCrew(r)
+	unread, err := a.unreadByCrew(ctx)
 	if err != nil {
-		httpx.Error(w, err, "Crews could not be loaded.")
-		return
+		return httpx.Fail(err, "Crews could not be loaded.")
 	}
 	out := CrewList{Crews: make([]CrewView, 0, len(list))}
-	for _, c := range list {
-		v := a.projectCrew(c)
-		v.Unread, v.Mentions = unread[c.ID].Unread, unread[c.ID].Mentions
+	for _, cr := range list {
+		v := a.projectCrew(cr)
+		v.Unread, v.Mentions = unread[cr.ID].Unread, unread[cr.ID].Mentions
 		out.Crews = append(out.Crews, v)
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) create(w http.ResponseWriter, r *http.Request) {
+func (a *API) create(c *echo.Context) error {
 	var req CreateRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	c, err := a.svc.Create(r.Context(), auth.MustUser(r.Context()).ID, req.Name)
+	ctx := c.Request().Context()
+	cr, err := a.svc.Create(ctx, auth.MustUser(ctx).ID, req.Name)
 	if err != nil {
-		httpx.Error(w, err, "The crew could not be made.")
-		return
+		return httpx.Fail(err, "The crew could not be made.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, a.projectCrew(c))
+	return c.JSON(http.StatusCreated, a.projectCrew(cr))
 }
 
-func (a *API) preview(w http.ResponseWriter, r *http.Request) {
-	c, err := a.svc.Preview(r.Context(), chi.URLParam(r, "code"))
+func (a *API) preview(c *echo.Context) error {
+	cr, err := a.svc.Preview(c.Request().Context(), c.Param("code"))
 	if err != nil {
-		httpx.Error(w, err, "That crew link does not work.")
-		return
+		return httpx.Fail(err, "That crew link does not work.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, a.projectCrew(c))
+	return c.JSON(http.StatusOK, a.projectCrew(cr))
 }
 
-func (a *API) join(w http.ResponseWriter, r *http.Request) {
-	c, err := a.svc.Join(r.Context(), auth.MustUser(r.Context()).ID, chi.URLParam(r, "code"))
+func (a *API) join(c *echo.Context) error {
+	ctx := c.Request().Context()
+	cr, err := a.svc.Join(ctx, auth.MustUser(ctx).ID, c.Param("code"))
 	if err != nil {
-		httpx.Error(w, err, "You could not join that crew.")
-		return
+		return httpx.Fail(err, "You could not join that crew.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, a.projectCrew(c))
+	return c.JSON(http.StatusOK, a.projectCrew(cr))
 }
 
-func (a *API) board(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "crewID")
-	if !ok {
-		return
-	}
-	b, err := a.svc.Board(r.Context(), id, auth.MustUser(r.Context()).ID)
+func (a *API) board(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "crewID")
 	if err != nil {
-		httpx.Error(w, err, "The crew could not be loaded.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, a.projectBoard(b))
+	ctx := c.Request().Context()
+	b, err := a.svc.Board(ctx, id, auth.MustUser(ctx).ID)
+	if err != nil {
+		return httpx.Fail(err, "The crew could not be loaded.")
+	}
+	return c.JSON(http.StatusOK, a.projectBoard(b))
 }
 
 // remove takes a member out; taking yourself out is leaving.
-func (a *API) remove(w http.ResponseWriter, r *http.Request) {
-	crewID, ok := pathID(w, r, "crewID")
-	if !ok {
-		return
+func (a *API) remove(c *echo.Context) error {
+	crewID, memberID, err := twoIDs(c, "userID")
+	if err != nil {
+		return err
 	}
-	memberID, ok := pathID(w, r, "userID")
-	if !ok {
-		return
-	}
-	me := auth.MustUser(r.Context()).ID
-	var err error
+	ctx := c.Request().Context()
+	me := auth.MustUser(ctx).ID
 	if memberID == me {
-		err = a.svc.Leave(r.Context(), crewID, me)
+		err = a.svc.Leave(ctx, crewID, me)
 	} else {
-		err = a.svc.Remove(r.Context(), crewID, me, memberID)
+		err = a.svc.Remove(ctx, crewID, me, memberID)
 	}
 	if err != nil {
-		httpx.Error(w, err, "That could not be done.")
-		return
+		return httpx.Fail(err, "That could not be done.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // setRole makes a member an admin or a member again; owner only.
-func (a *API) setRole(w http.ResponseWriter, r *http.Request) {
-	crewID, ok := pathID(w, r, "crewID")
-	if !ok {
-		return
-	}
-	memberID, ok := pathID(w, r, "userID")
-	if !ok {
-		return
+func (a *API) setRole(c *echo.Context) error {
+	crewID, memberID, err := twoIDs(c, "userID")
+	if err != nil {
+		return err
 	}
 	var req RoleRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if err := a.svc.SetRole(r.Context(), crewID, auth.MustUser(r.Context()).ID, memberID, Role(req.Role)); err != nil {
-		httpx.Error(w, err, "The role could not be changed.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.SetRole(ctx, crewID, auth.MustUser(ctx).ID, memberID, Role(req.Role)); err != nil {
+		return httpx.Fail(err, "The role could not be changed.")
 	}
-	a.board(w, r)
+	return a.board(c)
 }
 
-func (a *API) setChallenge(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "crewID")
-	if !ok {
-		return
+func (a *API) setChallenge(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "crewID")
+	if err != nil {
+		return err
 	}
 	var req ChallengeView
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if err := a.svc.SetChallenge(r.Context(), id, auth.MustUser(r.Context()).ID, &Challenge{Kind: req.Kind, Target: req.Target}); err != nil {
-		httpx.Error(w, err, "The challenge could not be set.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.SetChallenge(ctx, id, auth.MustUser(ctx).ID, &Challenge{Kind: req.Kind, Target: req.Target}); err != nil {
+		return httpx.Fail(err, "The challenge could not be set.")
 	}
-	a.board(w, r)
+	return a.board(c)
 }
 
-func (a *API) clearChallenge(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, "crewID")
-	if !ok {
-		return
+func (a *API) clearChallenge(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "crewID")
+	if err != nil {
+		return err
 	}
-	if err := a.svc.SetChallenge(r.Context(), id, auth.MustUser(r.Context()).ID, nil); err != nil {
-		httpx.Error(w, err, "The challenge could not be cleared.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.SetChallenge(ctx, id, auth.MustUser(ctx).ID, nil); err != nil {
+		return httpx.Fail(err, "The challenge could not be cleared.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (a *API) projectCrew(c Crew) CrewView {
@@ -267,33 +257,23 @@ func (a *API) projectBoard(b Board) BoardView {
 	return out
 }
 
-func pathID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, name))
+func readJSON(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read.")
+}
+
+// live streams the crew's events to a member, as JSON. Once the stream has
+// started nothing is returned: serveLive writes and flushes through
+// c.Response() until the client leaves.
+func (a *API) live(c *echo.Context) error {
+	crewID, err := echox.UUIDParam(c, "crewID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return uuid.Nil, false
+		return err
 	}
-	return id, true
-}
-
-func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
+	ctx := c.Request().Context()
+	viewer := auth.MustUser(ctx).ID
+	if _, _, err := a.chat.member(ctx, crewID, viewer); err != nil {
+		return httpx.Fail(err, "The crew could not be loaded.")
 	}
-	return true
-}
-
-// live streams the crew's events to a member, as JSON.
-func (a *API) live(w http.ResponseWriter, r *http.Request) {
-	crewID, ok := pathID(w, r, "crewID")
-	if !ok {
-		return
-	}
-	viewer := auth.MustUser(r.Context()).ID
-	if _, _, err := a.chat.member(r.Context(), crewID, viewer); err != nil {
-		httpx.Error(w, err, "The crew could not be loaded.")
-		return
-	}
-	serveLive(w, r, a.hub, crewID, a.chat.viewerGate(viewer, apiFrame), a.heartbeat)
+	serveLive(c.Response(), c.Request(), a.hub, crewID, a.chat.viewerGate(viewer, apiFrame), a.heartbeat)
+	return nil
 }

@@ -12,15 +12,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *caffeinedb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: caffeinedb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: caffeinedb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, date time.Time, mg int, label string, at time.Time) (Entry, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, date time.Time, mg int, label string, at time.Time) (Entry, error) {
 	row, err := r.q.CreateCaffeineEntry(ctx, caffeinedb.CreateCaffeineEntryParams{
 		UserID: userID, LogDate: pgtype.Date{Time: date, Valid: true}, Mg: int32(mg), Label: label, LoggedAt: at,
 	})
@@ -30,7 +32,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, date time.Tim
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	n, err := r.q.DeleteCaffeineEntry(ctx, caffeinedb.DeleteCaffeineEntryParams{ID: id, UserID: userID})
 	if err != nil {
 		return apperr.Wrap(err, "delete caffeine entry")
@@ -41,7 +43,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return nil
 }
 
-func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error) {
+func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error) {
 	rows, err := r.q.ListCaffeineBetween(ctx, caffeinedb.ListCaffeineBetweenParams{UserID: userID, LoggedAt: since, LoggedAt_2: until})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list caffeine")

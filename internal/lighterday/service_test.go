@@ -70,7 +70,7 @@ func user(t *testing.T) (users.User, func(h readings, s lighterday.SessionReader
 		t.Fatal(err)
 	}
 	return u, func(h readings, s lighterday.SessionReader) *lighterday.Service {
-		return lighterday.NewService(pool, h.recovery(), s).WithClock(func() time.Time { return morning })
+		return lighterday.NewService(lighterday.NewRepository(pool), h.recovery(), s).WithClock(func() time.Time { return morning })
 	}
 }
 

@@ -27,7 +27,7 @@ const adherenceWindow = 7
 const statsLookback = 400
 
 type Service struct {
-	repo   *Repository
+	repo   Repository
 	awards Awards
 }
 
@@ -41,7 +41,23 @@ func (s *Service) WithAwards(a Awards) *Service {
 	return s
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps habits and their completions.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, name, domain string, days []time.Weekday) (Habit, error)
+	Update(ctx context.Context, id, userID uuid.UUID, name, domain string, days []time.Weekday, active bool) (Habit, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Habit, error)
+	List(ctx context.Context, userID uuid.UUID, activeOnly bool) ([]Habit, error)
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+	Complete(ctx context.Context, habitID, userID uuid.UUID, date time.Time) error
+	Uncomplete(ctx context.Context, habitID, userID uuid.UUID, date time.Time) error
+	CompletionsSince(ctx context.Context, userID uuid.UUID, since time.Time) (map[uuid.UUID][]time.Time, error)
+	CompletionsBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Completion, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

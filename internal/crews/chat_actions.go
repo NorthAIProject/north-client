@@ -5,11 +5,8 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
-	crewsdb "github.com/NorthAIProject/north-client/internal/crews/db"
-	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
@@ -37,14 +34,11 @@ func (c *Chat) Edit(ctx context.Context, crewID, messageID, actorID uuid.UUID, b
 	handles, _ := parseMentions(body)
 	mentions := []uuid.UUID{}
 	if len(handles) > 0 {
-		if mentions, err = c.q.MemberIDsByHandle(ctx, crewsdb.MemberIDsByHandleParams{CrewID: crewID, Handles: handles}); err != nil {
-			return Message{}, apperr.Wrap(err, "resolve mentions")
+		if mentions, err = c.repo.MemberIDsByHandle(ctx, crewID, handles); err != nil {
+			return Message{}, err
 		}
 	}
-	err = c.update(ctx, meta, func(q *crewsdb.Queries) error {
-		return q.EditMessage(ctx, crewsdb.EditMessageParams{ID: messageID, Body: body, Mentions: mentions})
-	})
-	if err != nil {
+	if err = c.repo.EditMessage(ctx, meta, body, mentions); err != nil {
 		return Message{}, err
 	}
 	return c.Get(ctx, crewID, messageID, actorID)
@@ -61,12 +55,7 @@ func (c *Chat) Delete(ctx context.Context, crewID, messageID, actorID uuid.UUID)
 	if !own && !role.CanManage() {
 		return apperr.ErrNotFound
 	}
-	return c.update(ctx, meta, func(q *crewsdb.Queries) error {
-		if err := q.DeleteMessage(ctx, crewsdb.DeleteMessageParams{ID: messageID, DeletedBy: &actorID}); err != nil {
-			return err
-		}
-		return q.ClearReactions(ctx, messageID)
-	})
+	return c.repo.DeleteMessage(ctx, meta, actorID)
 }
 
 // React adds (on) or takes back one of the crew emoji. Doing either twice
@@ -82,12 +71,7 @@ func (c *Chat) React(ctx context.Context, crewID, messageID, userID uuid.UUID, e
 	if meta.DeletedAt != nil {
 		return apperr.ErrNotFound
 	}
-	return c.update(ctx, meta, func(q *crewsdb.Queries) error {
-		if on {
-			return q.AddReaction(ctx, crewsdb.AddReactionParams{MessageID: messageID, UserID: userID, Emoji: emoji})
-		}
-		return q.RemoveReaction(ctx, crewsdb.RemoveReactionParams{MessageID: messageID, UserID: userID, Emoji: emoji})
-	})
+	return c.repo.SetReaction(ctx, meta, userID, emoji, on)
 }
 
 // Pin pins (on) or unpins a message; whoever runs the crew may.
@@ -100,17 +84,15 @@ func (c *Chat) Pin(ctx context.Context, crewID, messageID, actorID uuid.UUID, on
 		return apperr.ErrNotFound
 	}
 	if on && meta.PinnedAt == nil {
-		n, cErr := c.q.CountPins(ctx, meta.ChannelID)
+		n, cErr := c.repo.CountPins(ctx, meta.ChannelID)
 		if cErr != nil {
-			return apperr.Wrap(cErr, "count pins")
+			return cErr
 		}
 		if n >= crew.MaxPins {
 			return apperr.FieldErrors{}.Add("pin", i18n.T(ctx, "crews.err.pins"))
 		}
 	}
-	return c.update(ctx, meta, func(q *crewsdb.Queries) error {
-		return q.SetPin(ctx, crewsdb.SetPinParams{ID: messageID, Pin: on, PinnedBy: &actorID})
-	})
+	return c.repo.SetPin(ctx, meta, actorID, on)
 }
 
 // Pins are a channel's pinned messages as viewerID sees them, newest pin
@@ -122,9 +104,9 @@ func (c *Chat) Pins(ctx context.Context, crewID, channelID, viewerID uuid.UUID) 
 	if err := c.textChannel(ctx, crewID, channelID); err != nil {
 		return nil, err
 	}
-	ids, err := c.q.PinnedIDs(ctx, channelID)
+	ids, err := c.repo.PinnedIDs(ctx, channelID)
 	if err != nil {
-		return nil, apperr.Wrap(err, "pinned ids")
+		return nil, err
 	}
 	out := make([]Message, 0, len(ids))
 	for _, id := range ids {
@@ -149,59 +131,31 @@ func (c *Chat) MarkRead(ctx context.Context, crewID, channelID, userID uuid.UUID
 	if err := c.textChannel(ctx, crewID, channelID); err != nil {
 		return err
 	}
-	if err := c.q.MarkRead(ctx, crewsdb.MarkReadParams{ChannelID: channelID, UserID: userID, LastReadSeq: seq}); err != nil {
-		return apperr.Wrap(err, "mark read")
-	}
-	return nil
+	return c.repo.MarkRead(ctx, channelID, userID, seq)
 }
 
 // Unread is, for every text channel with something new for userID, how
 // much and how much of it is for them.
 func (c *Chat) Unread(ctx context.Context, userID uuid.UUID) ([]Unread, error) {
-	rows, err := c.q.Unread(ctx, userID)
-	if err != nil {
-		return nil, apperr.Wrap(err, "unread")
-	}
-	out := make([]Unread, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, Unread{CrewID: r.CrewID, ChannelID: r.ChannelID, Count: int(r.Unread), Mentions: int(r.Mentions)})
-	}
-	return out, nil
+	return c.repo.Unread(ctx, userID)
 }
 
 // visibleMeta is a message's facts and the actor's role, when the actor is a
 // member who can see the message.
-func (c *Chat) visibleMeta(ctx context.Context, crewID, messageID, actorID uuid.UUID) (crewsdb.MessageMetaRow, Role, error) {
+func (c *Chat) visibleMeta(ctx context.Context, crewID, messageID, actorID uuid.UUID) (messageMeta, Role, error) {
 	_, role, err := c.member(ctx, crewID, actorID)
 	if err != nil {
-		return crewsdb.MessageMetaRow{}, "", err
+		return messageMeta{}, "", err
 	}
-	if _, err = c.q.MessageForViewer(ctx, crewsdb.MessageForViewerParams{Viewer: actorID, ID: messageID, CrewID: crewID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return crewsdb.MessageMetaRow{}, "", apperr.ErrNotFound
+	if _, err = c.repo.VisibleMessage(ctx, actorID, messageID, crewID); err != nil {
+		if errors.Is(err, apperr.ErrNotFound) {
+			return messageMeta{}, "", err
 		}
-		return crewsdb.MessageMetaRow{}, "", apperr.Wrap(err, "message for viewer")
+		return messageMeta{}, "", apperr.Wrap(err, "message for viewer")
 	}
-	meta, err := c.q.MessageMeta(ctx, crewsdb.MessageMetaParams{ID: messageID, CrewID: crewID})
+	meta, err := c.repo.MessageMeta(ctx, crewID, messageID)
 	if err != nil {
-		return crewsdb.MessageMetaRow{}, "", apperr.Wrap(err, "message meta")
+		return messageMeta{}, "", err
 	}
 	return meta, role, nil
-}
-
-// update runs write and tells watchers the message changed, in one
-// transaction.
-func (c *Chat) update(ctx context.Context, meta crewsdb.MessageMetaRow, write func(*crewsdb.Queries) error) error {
-	tx, err := c.pool.Begin(ctx)
-	if err != nil {
-		return apperr.Wrap(err, "begin message update")
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err = write(c.q.WithTx(tx)); err != nil {
-		return apperr.Wrap(err, "update message")
-	}
-	if err = live.Notify(ctx, tx, live.Event{Type: live.EventUpdate, CrewID: meta.CrewID, ChannelID: meta.ChannelID, MessageID: meta.ID}); err != nil {
-		return err
-	}
-	return apperr.Wrap(tx.Commit(ctx), "commit message update")
 }

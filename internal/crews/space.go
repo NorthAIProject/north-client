@@ -7,8 +7,6 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
-	crewsdb "github.com/NorthAIProject/north-client/internal/crews/db"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
 // Space is the crew as its chat shows it to viewerID, a member.
@@ -21,20 +19,18 @@ func (s *Service) Space(ctx context.Context, crewID, viewerID uuid.UUID) (Space,
 	if out.MyRole, err = s.role(ctx, c, viewerID); err != nil {
 		return Space{}, err
 	}
-	settings, err := s.q.MemberSettings(ctx, crewsdb.MemberSettingsParams{CrewID: crewID, UserID: viewerID})
-	if err != nil {
-		return Space{}, apperr.Wrap(err, "member settings")
+	if out.Notify, out.MutedUntil, err = s.repo.MemberSettings(ctx, crewID, viewerID); err != nil {
+		return Space{}, err
 	}
-	out.Notify, out.MutedUntil = settings.Notify, settings.MutedUntil
 
-	members, err := s.q.Members(ctx, crewID)
+	members, err := s.repo.Members(ctx, crewID)
 	if err != nil {
-		return Space{}, apperr.Wrap(err, "list members")
+		return Space{}, err
 	}
 	out.Crew = Crew{ID: c.ID, Name: c.Name, OwnerID: c.OwnerID, Code: c.Code, Members: len(members)}
 	out.Members = make([]SpaceMember, 0, len(members))
 	for _, m := range members {
-		role := Role(m.Role)
+		role := m.Role
 		if m.ID == c.OwnerID {
 			role = crew.RoleOwner
 		}
@@ -45,16 +41,16 @@ func (s *Service) Space(ctx context.Context, crewID, viewerID uuid.UUID) (Space,
 	if err != nil {
 		return Space{}, err
 	}
-	unread, err := s.q.Unread(ctx, viewerID)
+	unread, err := s.repo.Unread(ctx, viewerID)
 	if err != nil {
-		return Space{}, apperr.Wrap(err, "unread")
+		return Space{}, err
 	}
 	out.Channels = make([]SpaceChannel, 0, len(channels))
 	for _, ch := range channels {
 		sc := SpaceChannel{Channel: ch}
 		for _, u := range unread {
 			if u.ChannelID == ch.ID {
-				sc.Unread, sc.Mentions = int(u.Unread), int(u.Mentions)
+				sc.Unread, sc.Mentions = u.Count, u.Mentions
 			}
 		}
 		out.Channels = append(out.Channels, sc)

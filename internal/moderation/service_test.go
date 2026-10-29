@@ -79,7 +79,7 @@ func fieldError(err error, field string) string {
 func setup(t *testing.T) (*pgxpool.Pool, *moderation.Service, *hider) {
 	t.Helper()
 	pool := testdb.New(t)
-	svc := moderation.NewService(pool)
+	svc := moderation.NewService(moderation.NewRepository(pool))
 	h := &hider{threshold: 3}
 	svc.Register("crew_message", h)
 	return pool, svc, h
@@ -191,7 +191,7 @@ func TestCanPost(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
-	svc := moderation.NewService(pool).WithClock(func() time.Time { return now })
+	svc := moderation.NewService(moderation.NewRepository(pool)).WithClock(func() time.Time { return now })
 	ana := person(t, pool, "Ana")
 	op := person(t, pool, "Operator")
 
@@ -268,7 +268,7 @@ func TestDecide(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	op := person(t, pool, "Operator")
-	svc := moderation.NewService(pool).WithOperators([]uuid.UUID{op}, nil)
+	svc := moderation.NewService(moderation.NewRepository(pool)).WithOperators([]uuid.UUID{op}, nil)
 	h := &hider{threshold: 3}
 	svc.Register("crew_message", h)
 	author := person(t, pool, "Author")
@@ -317,7 +317,7 @@ func TestOperatorPushedOnReport(t *testing.T) {
 	ctx := context.Background()
 	ops := []uuid.UUID{person(t, pool, "Op1"), person(t, pool, "Op2")}
 	p := &pusher{}
-	svc := moderation.NewService(pool).WithOperators(ops, p)
+	svc := moderation.NewService(moderation.NewRepository(pool)).WithOperators(ops, p)
 	svc.Register("crew_message", &hider{threshold: 3})
 	sub := moderation.Subject{Kind: "crew_message", ID: uuid.New(), AuthorID: person(t, pool, "Author")}
 	reporter := person(t, pool, "Reporter")

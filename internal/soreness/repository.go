@@ -12,17 +12,19 @@ import (
 	sorenessdb "github.com/NorthAIProject/north-client/internal/soreness/db"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *sorenessdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: sorenessdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: sorenessdb.New(pool)}
 }
 
 func date(t time.Time) pgtype.Date { return pgtype.Date{Time: t, Valid: true} }
 
-func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, day time.Time, region string, severity int, note string) (Entry, error) {
+func (r *PostgresRepository) Upsert(ctx context.Context, userID uuid.UUID, day time.Time, region string, severity int, note string) (Entry, error) {
 	row, err := r.q.UpsertSoreness(ctx, sorenessdb.UpsertSorenessParams{
 		UserID: userID, LogDate: date(day), Region: region, Severity: int16(severity), Note: note,
 	})
@@ -32,14 +34,14 @@ func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, day time.Time
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, userID uuid.UUID, day time.Time, region string) error {
+func (r *PostgresRepository) Delete(ctx context.Context, userID uuid.UUID, day time.Time, region string) error {
 	if err := r.q.DeleteSoreness(ctx, sorenessdb.DeleteSorenessParams{UserID: userID, LogDate: date(day), Region: region}); err != nil {
 		return apperr.Wrap(err, "delete soreness")
 	}
 	return nil
 }
 
-func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error) {
+func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error) {
 	rows, err := r.q.ListSorenessBetween(ctx, sorenessdb.ListSorenessBetweenParams{UserID: userID, LogDate: date(since), LogDate_2: date(until)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list soreness")

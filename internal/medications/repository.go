@@ -15,15 +15,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *medicationsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: medicationsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: medicationsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, in Input) (Medication, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, in Input) (Medication, error) {
 	row, err := r.q.CreateMedication(ctx, medicationsdb.CreateMedicationParams{
 		UserID: userID, Name: in.Name, Dose: in.Dose, TimesOfDay: nonNil(in.Times),
 		DaysOfWeek: toInt16(in.Days), Remind: in.Remind, Notes: in.Notes,
@@ -34,7 +36,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, in Input) (Me
 	return fromDB(row), nil
 }
 
-func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, in Input) (Medication, error) {
+func (r *PostgresRepository) Update(ctx context.Context, id, userID uuid.UUID, in Input) (Medication, error) {
 	row, err := r.q.UpdateMedication(ctx, medicationsdb.UpdateMedicationParams{
 		ID: id, UserID: userID, Name: in.Name, Dose: in.Dose, TimesOfDay: nonNil(in.Times),
 		DaysOfWeek: toInt16(in.Days), Remind: in.Remind, Notes: in.Notes,
@@ -48,7 +50,7 @@ func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, in Input)
 	return fromDB(row), nil
 }
 
-func (r *Repository) Stop(ctx context.Context, id, userID uuid.UUID, at time.Time) (Medication, error) {
+func (r *PostgresRepository) Stop(ctx context.Context, id, userID uuid.UUID, at time.Time) (Medication, error) {
 	row, err := r.q.StopMedication(ctx, medicationsdb.StopMedicationParams{ID: id, UserID: userID, StoppedAt: &at})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Medication{}, apperr.ErrNotFound
@@ -59,7 +61,7 @@ func (r *Repository) Stop(ctx context.Context, id, userID uuid.UUID, at time.Tim
 	return fromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Medication, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Medication, error) {
 	row, err := r.q.GetMedication(ctx, medicationsdb.GetMedicationParams{ID: id, UserID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Medication{}, apperr.ErrNotFound
@@ -70,7 +72,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Medication,
 	return fromDB(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, activeOnly bool) ([]Medication, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, activeOnly bool) ([]Medication, error) {
 	var (
 		rows []medicationsdb.Medication
 		err  error
@@ -92,7 +94,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, activeOnly bool
 
 // LogDose records a dose. A scheduled slot logged again keeps the newer
 // status; an unscheduled dose (nil slot) is always a new row.
-func (r *Repository) LogDose(ctx context.Context, userID, medID uuid.UUID, date time.Time, slot *string, status string, at time.Time) (Dose, error) {
+func (r *PostgresRepository) LogDose(ctx context.Context, userID, medID uuid.UUID, date time.Time, slot *string, status string, at time.Time) (Dose, error) {
 	row, err := r.q.UpsertMedicationLog(ctx, medicationsdb.UpsertMedicationLogParams{
 		UserID: userID, MedicationID: medID, LogDate: pgtype.Date{Time: date, Valid: true},
 		Slot: slot, Status: status, LoggedAt: at,
@@ -106,7 +108,7 @@ func (r *Repository) LogDose(ctx context.Context, userID, medID uuid.UUID, date 
 	}, nil
 }
 
-func (r *Repository) DeleteDose(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) DeleteDose(ctx context.Context, id, userID uuid.UUID) error {
 	n, err := r.q.DeleteMedicationLog(ctx, medicationsdb.DeleteMedicationLogParams{ID: id, UserID: userID})
 	if err != nil {
 		return apperr.Wrap(err, "delete medication dose")
@@ -118,7 +120,7 @@ func (r *Repository) DeleteDose(ctx context.Context, id, userID uuid.UUID) error
 }
 
 // DosesOn is every dose logged on a local date, newest first.
-func (r *Repository) DosesOn(ctx context.Context, userID uuid.UUID, date time.Time) ([]Dose, error) {
+func (r *PostgresRepository) DosesOn(ctx context.Context, userID uuid.UUID, date time.Time) ([]Dose, error) {
 	rows, err := r.q.ListMedicationLogsOn(ctx, medicationsdb.ListMedicationLogsOnParams{
 		UserID: userID, LogDate: pgtype.Date{Time: date, Valid: true},
 	})
@@ -136,7 +138,7 @@ func (r *Repository) DosesOn(ctx context.Context, userID uuid.UUID, date time.Ti
 }
 
 // AllDoses is every dose ever logged, newest day first.
-func (r *Repository) AllDoses(ctx context.Context, userID uuid.UUID) ([]Dose, error) {
+func (r *PostgresRepository) AllDoses(ctx context.Context, userID uuid.UUID) ([]Dose, error) {
 	rows, err := r.q.ListAllMedicationLogs(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list medication history")

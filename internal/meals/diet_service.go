@@ -7,10 +7,10 @@ import (
 )
 
 type DietPreferenceService struct {
-	repo *Repository
+	repo Repository
 }
 
-func NewDietPreferenceService(repo *Repository) *DietPreferenceService {
+func NewDietPreferenceService(repo Repository) *DietPreferenceService {
 	return &DietPreferenceService{repo: repo}
 }
 

@@ -12,15 +12,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *exercisesdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: exercisesdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: exercisesdb.New(pool)}
 }
 
-func (r *Repository) Get(ctx context.Context, id uuid.UUID) (Exercise, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id uuid.UUID) (Exercise, error) {
 	row, err := r.q.GetExercise(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -31,7 +33,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (Exercise, error) {
 	return fromDB(row), nil
 }
 
-func (r *Repository) GetBySlug(ctx context.Context, slug string) (Exercise, error) {
+func (r *PostgresRepository) GetBySlug(ctx context.Context, slug string) (Exercise, error) {
 	row, err := r.q.GetExerciseBySlug(ctx, slug)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -47,7 +49,7 @@ func (r *Repository) GetBySlug(ctx context.Context, slug string) (Exercise, erro
 // A map rather than a slice because the caller resolving a generated plan
 // looks up one name at a time, and missing slugs are expected: the model is
 // allowed to improvise past the catalog.
-func (r *Repository) BySlugs(ctx context.Context, slugs []string) (map[string]Exercise, error) {
+func (r *PostgresRepository) BySlugs(ctx context.Context, slugs []string) (map[string]Exercise, error) {
 	if len(slugs) == 0 {
 		return map[string]Exercise{}, nil
 	}
@@ -64,7 +66,7 @@ func (r *Repository) BySlugs(ctx context.Context, slugs []string) (map[string]Ex
 	return found, nil
 }
 
-func (r *Repository) Search(ctx context.Context, f Filter) ([]Exercise, error) {
+func (r *PostgresRepository) Search(ctx context.Context, f Filter) ([]Exercise, error) {
 	rows, err := r.q.SearchExercises(ctx, exercisesdb.SearchExercisesParams{
 		Query:        f.Query,
 		Muscle:       f.Muscle,
@@ -79,7 +81,7 @@ func (r *Repository) Search(ctx context.Context, f Filter) ([]Exercise, error) {
 	return fromDBRows(rows), nil
 }
 
-func (r *Repository) Count(ctx context.Context, f Filter) (int, error) {
+func (r *PostgresRepository) Count(ctx context.Context, f Filter) (int, error) {
 	total, err := r.q.CountExercises(ctx, exercisesdb.CountExercisesParams{
 		Query:     f.Query,
 		Muscle:    f.Muscle,
@@ -92,7 +94,7 @@ func (r *Repository) Count(ctx context.Context, f Filter) (int, error) {
 	return int(total), nil
 }
 
-func (r *Repository) ForEquipment(ctx context.Context, equipment []string, limit int) ([]Exercise, error) {
+func (r *PostgresRepository) ForEquipment(ctx context.Context, equipment []string, limit int) ([]Exercise, error) {
 	if len(equipment) == 0 {
 		return nil, nil
 	}
@@ -133,7 +135,7 @@ func fromDB(row exercisesdb.Exercise) Exercise {
 }
 
 // SlugForIllustration is the catalogue exercise drawn by one artwork directory.
-func (r *Repository) SlugForIllustration(ctx context.Context, illustration string) (string, error) {
+func (r *PostgresRepository) SlugForIllustration(ctx context.Context, illustration string) (string, error) {
 	slug, err := r.q.SlugForIllustration(ctx, illustration)
 	if err != nil {
 		return "", apperr.Wrap(err, "exercise for illustration %q", illustration)
@@ -142,7 +144,7 @@ func (r *Repository) SlugForIllustration(ctx context.Context, illustration strin
 }
 
 // SlugForVideo is the catalogue exercise a demonstration video belongs to.
-func (r *Repository) SlugForVideo(ctx context.Context, videoURL string) (string, error) {
+func (r *PostgresRepository) SlugForVideo(ctx context.Context, videoURL string) (string, error) {
 	slug, err := r.q.SlugForVideo(ctx, videoURL)
 	if err != nil {
 		return "", apperr.Wrap(err, "exercise for video")

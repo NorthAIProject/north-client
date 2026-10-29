@@ -9,15 +9,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 )
 
 func publicRouter(api *auth.API) http.Handler {
-	r := chi.NewRouter()
-	api.PublicRoutes(r)
-	return r
+	e := echox.New(echox.Config{})
+	api.RegisterPublic(e.Group(""))
+	return e
 }
 
 func postJSON(t *testing.T, h http.Handler, path, body string) *httptest.ResponseRecorder {

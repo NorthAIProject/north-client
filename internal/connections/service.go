@@ -43,7 +43,7 @@ type UserLoader interface {
 }
 
 type Service struct {
-	repo  *Repository
+	repo  Repository
 	users UserLoader
 
 	// baseURL is the address an outside agent reaches North on, from
@@ -53,7 +53,22 @@ type Service struct {
 	baseURL string
 }
 
-func NewService(repo *Repository, users UserLoader, baseURL string) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps connections and their tokens.
+type Repository interface {
+	Insert(ctx context.Context, userID uuid.UUID, name string, kind ClientKind, tokenHash []byte, prefix string) (Connection, error)
+	InsertGrant(ctx context.Context, in GrantRow) (Connection, error)
+	RotateToken(ctx context.Context, id uuid.UUID, tokenHash []byte, expiresAt time.Time) error
+	List(ctx context.Context, userID uuid.UUID) ([]Connection, error)
+	ByTokenHash(ctx context.Context, tokenHash []byte) (Connection, error)
+	Touch(ctx context.Context, id uuid.UUID) error
+	RevokeGrant(ctx context.Context, id uuid.UUID) error
+	Revoke(ctx context.Context, id, userID uuid.UUID) error
+}
+
+func NewService(repo Repository, users UserLoader, baseURL string) *Service {
 	return &Service{repo: repo, users: users, baseURL: strings.TrimRight(baseURL, "/")}
 }
 

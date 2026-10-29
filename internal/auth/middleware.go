@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/labstack/echo/v5"
+
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -25,7 +27,7 @@ type userContextKey struct{}
 type Middleware struct {
 	sessions *SessionStore
 	secure   bool
-	trusted  middleware.TrustedProxies
+	clientIP echo.IPExtractor
 }
 
 // NewMiddleware builds the auth middleware. secure should be true in
@@ -35,7 +37,7 @@ type Middleware struct {
 // trusted decides whether X-Forwarded-For may be believed when recording where
 // a session was created from. Empty means record the peer address.
 func NewMiddleware(sessions *SessionStore, secure bool, trusted middleware.TrustedProxies) *Middleware {
-	return &Middleware{sessions: sessions, secure: secure, trusted: trusted}
+	return &Middleware{sessions: sessions, secure: secure, clientIP: trusted.IPExtractor()}
 }
 
 // LoadUser attaches the signed-in user to the request context when there is a
@@ -161,8 +163,15 @@ func (m *Middleware) ClearCookie(w http.ResponseWriter) {
 //
 // A method rather than a function because the address is only meaningful
 // against the trusted-proxy list: see clientIP.
+//
+// A Middleware built without NewMiddleware trusts no proxy and records the
+// peer address, as an empty TrustedProxies would.
 func (m *Middleware) RequestMetadata(r *http.Request) Metadata {
-	return Metadata{UserAgent: r.UserAgent(), IP: middleware.ClientIP(r, m.trusted)}
+	clientIP := m.clientIP
+	if clientIP == nil {
+		clientIP = echo.ExtractIPDirect()
+	}
+	return Metadata{UserAgent: r.UserAgent(), IP: clientIP(r)}
 }
 
 // loginRedirect sends the user to the login page, remembering where they were
@@ -206,5 +215,5 @@ func SafeRedirect(next string) bool {
 // whatever arrived. So the IP recorded against every session was chosen by
 // whoever created it, and a person reviewing where their account had been
 // signed in from was reading a value an attacker supplied. Sessions now record
-// middleware.ClientIP, which consults the header only when the peer is a
+// TrustedProxies.IPExtractor, which consults the header only when the peer is a
 // trusted proxy and reads the hops from the right.

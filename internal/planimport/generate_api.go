@@ -4,9 +4,12 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/labstack/echo/v5"
+
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -31,18 +34,16 @@ type MealIntakeResponse struct {
 	HasTarget bool               `json:"hasTarget"`
 }
 
-func (a *API) mealIntake(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+func (a *API) mealIntake(c *echo.Context) error {
+	ctx := c.Request().Context()
 	user := auth.MustUser(ctx)
 	active, err := a.svc.mealPlans.ActiveTarget(ctx, user.ID)
 	if err != nil {
-		httpx.Error(w, err, i18n.T(ctx, "planimport.api.read"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "planimport.api.read"))
 	}
 	last, err := a.svc.MealIntakeFor(ctx, user.ID)
 	if err != nil {
-		httpx.Error(w, err, i18n.T(ctx, "planimport.api.read"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "planimport.api.read"))
 	}
 	out := MealIntakeResponse{HasTarget: active != nil}
 	if last != nil {
@@ -51,17 +52,16 @@ func (a *API) mealIntake(w http.ResponseWriter, r *http.Request) {
 			PlanType: string(last.PlanType), Exclusions: last.Exclusions, Notes: last.Notes,
 		}
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // generateMeal answers with a draft in the shape an import's parse returns,
 // so the client reviews and saves it through the same preview and commit.
-func (a *API) generateMeal(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+func (a *API) generateMeal(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req MealIntakeRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{}); err != nil {
-		httpx.Error(w, err, i18n.T(ctx, "planimport.api.read"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{}, i18n.T(ctx, "planimport.api.read")); err != nil {
+		return err
 	}
 	draft, err := a.svc.GenerateMeal(ctx, auth.MustUser(ctx), meals.MealPlanIntake{
 		Objective:   req.Objective,
@@ -73,11 +73,9 @@ func (a *API) generateMeal(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if apperr.Is(err, apperr.ErrUnavailable) {
-			httpx.Error(w, err, i18n.T(ctx, "planimport.generate.failed"))
-			return
+			return httpx.Fail(err, i18n.T(ctx, "planimport.generate.failed"))
 		}
-		writeError(w, r, err, i18n.T(ctx, "planimport.generate.failed"))
-		return
+		return failWith(c, err, i18n.T(ctx, "planimport.generate.failed"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, draft)
+	return c.JSON(http.StatusOK, draft)
 }

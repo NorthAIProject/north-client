@@ -10,7 +10,6 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
-	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/sweep"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -76,9 +75,9 @@ func (s *ChallengeSweeper) sweepOne(ctx context.Context, now time.Time, user use
 	to := weekStart(local)
 	from := to.AddDate(0, 0, -7)
 
-	rows, err := s.svc.q.ChallengesOf(ctx, user.ID)
+	rows, err := s.svc.repo.ChallengesOf(ctx, user.ID)
 	if err != nil {
-		return false, apperr.Wrap(err, "crew challenges")
+		return false, err
 	}
 	recorded := false
 	for _, r := range rows {
@@ -91,8 +90,8 @@ func (s *ChallengeSweeper) sweepOne(ctx context.Context, now time.Time, user use
 		if err != nil {
 			return recorded, err
 		}
-		if done >= int(r.Target) {
-			s.achievements.CrewChallengeMet(ctx, user.ID, r.ID, r.Name, r.Kind, int(r.Target), from, now)
+		if done >= r.Target {
+			s.achievements.CrewChallengeMet(ctx, user.ID, r.CrewID, r.CrewName, r.Kind, r.Target, from, now)
 			recorded = true
 			if s.awards != nil {
 				s.awards.Check(ctx, user.ID, now, award.Social)

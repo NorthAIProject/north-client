@@ -23,7 +23,7 @@ import (
 // reindexing a person's whole library is not, and neither belongs in the time a
 // user spends looking at a spinner.
 type Indexer struct {
-	repo    *Repository
+	repo    Repository
 	storage Storage
 	opts    Options
 
@@ -34,7 +34,7 @@ type Indexer struct {
 	queue *jobs.Queue
 }
 
-func NewIndexer(repo *Repository, storage Storage) *Indexer {
+func NewIndexer(repo Repository, storage Storage) *Indexer {
 	return &Indexer{repo: repo, storage: storage}
 }
 

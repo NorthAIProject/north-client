@@ -11,12 +11,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
-	crewsdb "github.com/NorthAIProject/north-client/internal/crews/db"
-	"github.com/NorthAIProject/north-client/internal/crews/live"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	"github.com/NorthAIProject/north-client/internal/moderation"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -48,22 +44,53 @@ type SendInput struct {
 // Chat is the crew's conversation: messages in text channels, as each member
 // is allowed to see them.
 type Chat struct {
-	pool   *pgxpool.Pool
-	q      *crewsdb.Queries
+	repo   ChatRepository
 	mod    *moderation.Service
 	filter *moderation.Filter
 	queue  *jobs.Queue
 	// sends bounds how fast one person can post. In memory, because the web
 	// runs one replica; a second replica would double the allowance.
-	sends   *ratelimit.Limiters
+	sends   *ratelimit.Store
 	pushers []ThreadSender
 	log     *slog.Logger
 	now     func() time.Time
 }
 
-func NewChat(pool *pgxpool.Pool, mod *moderation.Service, filter *moderation.Filter, queue *jobs.Queue) *Chat {
+// ChatRepository is the persistence Chat depends on: crews and channels as
+// a member reaches them, messages with their reactions and pins, read marks,
+// and what pushes and moderation read. Every write that watchers should see
+// tells them in the same transaction. NewRepository is what the process
+// wires, and a test can hand Chat anything that keeps messages.
+type ChatRepository interface {
+	GetCrew(ctx context.Context, crewID uuid.UUID) (Crew, error)
+	MemberRole(ctx context.Context, crewID, userID uuid.UUID) (Role, error)
+	ChannelInCrew(ctx context.Context, crewID, channelID uuid.UUID) (Channel, error)
+	Unread(ctx context.Context, userID uuid.UUID) ([]Unread, error)
+	MemberIDsByHandle(ctx context.Context, crewID uuid.UUID, handles []string) ([]uuid.UUID, error)
+	VisibleMessage(ctx context.Context, viewerID, messageID, crewID uuid.UUID) (Message, error)
+	MessagesAfter(ctx context.Context, viewerID, channelID uuid.UUID, after int64, limit int) ([]Message, error)
+	MessagesBefore(ctx context.Context, viewerID, channelID uuid.UUID, before int64, limit int) ([]Message, error)
+	Reactions(ctx context.Context, viewerID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]Reaction, error)
+	InsertMessage(ctx context.Context, m newMessage, queue *jobs.Queue) (uuid.UUID, error)
+	MessageMeta(ctx context.Context, crewID, messageID uuid.UUID) (messageMeta, error)
+	EditMessage(ctx context.Context, meta messageMeta, body string, mentions []uuid.UUID) error
+	DeleteMessage(ctx context.Context, meta messageMeta, actorID uuid.UUID) error
+	SetReaction(ctx context.Context, meta messageMeta, userID uuid.UUID, emoji string, on bool) error
+	SetPin(ctx context.Context, meta messageMeta, actorID uuid.UUID, on bool) error
+	CountPins(ctx context.Context, channelID uuid.UUID) (int, error)
+	PinnedIDs(ctx context.Context, channelID uuid.UUID) ([]uuid.UUID, error)
+	MarkRead(ctx context.Context, channelID, userID uuid.UUID, seq int64) error
+	SetHidden(ctx context.Context, messageID uuid.UUID, hide bool) error
+	MessageCrewSize(ctx context.Context, messageID uuid.UUID) (int, error)
+	MessageBody(ctx context.Context, messageID uuid.UUID) (string, error)
+	PushMessage(ctx context.Context, messageID uuid.UUID) (pushMessage, error)
+	PushRecipients(ctx context.Context, messageID uuid.UUID) ([]uuid.UUID, error)
+	AuthorBlockedFor(ctx context.Context, viewerID, messageID uuid.UUID) (bool, error)
+}
+
+func NewChat(repo ChatRepository, mod *moderation.Service, filter *moderation.Filter, queue *jobs.Queue) *Chat {
 	return &Chat{
-		pool: pool, q: crewsdb.New(pool), mod: mod, filter: filter, queue: queue,
+		repo: repo, mod: mod, filter: filter, queue: queue,
 		sends: ratelimit.New(crew.SendsPerMinute), log: slog.Default(), now: time.Now,
 	}
 }
@@ -84,60 +111,34 @@ func (c *Chat) Send(ctx context.Context, crewID, channelID, authorID uuid.UUID, 
 	if err = c.mod.CanPost(ctx, authorID); err != nil {
 		return Message{}, err
 	}
-	if !c.sends.Allow(authorID.String()) {
+	if ok, _ := c.sends.Allow(authorID.String()); !ok {
 		return Message{}, apperr.FieldErrors{}.Add("body", i18n.T(ctx, "crews.err.slow"))
 	}
 	if in.ReplyToID != nil {
-		target, tErr := c.q.MessageForViewer(ctx, crewsdb.MessageForViewerParams{Viewer: authorID, ID: *in.ReplyToID, CrewID: crewID})
-		if tErr != nil && !errors.Is(tErr, pgx.ErrNoRows) {
+		target, tErr := c.repo.VisibleMessage(ctx, authorID, *in.ReplyToID, crewID)
+		if tErr != nil && !errors.Is(tErr, apperr.ErrNotFound) {
 			return Message{}, apperr.Wrap(tErr, "reply target")
 		}
-		if tErr != nil || target.ChannelID != channelID || target.DeletedAt != nil {
+		if tErr != nil || target.ChannelID != channelID || target.Deleted {
 			return Message{}, apperr.FieldErrors{}.Add("reply", i18n.T(ctx, "crews.err.reply"))
 		}
 	}
 	handles, all := parseMentions(body)
 	mentions := []uuid.UUID{}
 	if len(handles) > 0 {
-		if mentions, err = c.q.MemberIDsByHandle(ctx, crewsdb.MemberIDsByHandleParams{CrewID: crewID, Handles: handles}); err != nil {
-			return Message{}, apperr.Wrap(err, "resolve mentions")
+		if mentions, err = c.repo.MemberIDsByHandle(ctx, crewID, handles); err != nil {
+			return Message{}, err
 		}
 	}
 
-	tx, err := c.pool.Begin(ctx)
-	if err != nil {
-		return Message{}, apperr.Wrap(err, "begin send")
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := c.q.WithTx(tx)
-	if err = q.LockChannelForWrite(ctx, channelID); err != nil {
-		return Message{}, apperr.Wrap(err, "lock channel")
-	}
-	row, err := q.InsertMessage(ctx, crewsdb.InsertMessageParams{
-		CrewID: crewID, ChannelID: channelID, AuthorID: &authorID, Body: body,
+	id, err := c.repo.InsertMessage(ctx, newMessage{
+		CrewID: crewID, ChannelID: channelID, AuthorID: authorID, Body: body,
 		ReplyToID: in.ReplyToID, Mentions: mentions, MentionAll: all && role.CanManage(), ClientID: in.ClientID,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		// Sent before: hand back the first one.
-		id, idErr := q.MessageByClientID(ctx, crewsdb.MessageByClientIDParams{AuthorID: &authorID, ClientID: in.ClientID})
-		if idErr != nil {
-			return Message{}, apperr.Wrap(idErr, "resent message")
-		}
-		return c.Get(ctx, crewID, id, authorID)
-	}
+	}, c.queue)
 	if err != nil {
-		return Message{}, apperr.Wrap(err, "insert message")
-	}
-	if err = live.Notify(ctx, tx, live.Event{Type: live.EventMessage, CrewID: crewID, ChannelID: channelID, MessageID: row.ID, Seq: row.Seq}); err != nil {
 		return Message{}, err
 	}
-	if _, err = c.queue.EnqueueTx(ctx, tx, jobs.KindCrewMessagePush, jobs.CrewMessagePushPayload{UserID: authorID, MessageID: row.ID}); err != nil {
-		return Message{}, err
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return Message{}, apperr.Wrap(err, "commit send")
-	}
-	return c.Get(ctx, crewID, row.ID, authorID)
+	return c.Get(ctx, crewID, id, authorID)
 }
 
 // List is a page of a text channel as viewerID sees it, oldest first.
@@ -156,28 +157,28 @@ func (c *Chat) List(ctx context.Context, crewID, channelID, viewerID uuid.UUID, 
 	}
 	limit = min(limit, crew.MaxPage)
 
-	var rows []crewsdb.MessagesAfterRow
+	var rows []Message
 	var page Page
 	if after > 0 {
-		got, err := c.q.MessagesAfter(ctx, crewsdb.MessagesAfterParams{Viewer: viewerID, ChannelID: channelID, After: after, Lim: int32(limit)})
+		got, err := c.repo.MessagesAfter(ctx, viewerID, channelID, after, limit)
 		if err != nil {
-			return Page{}, apperr.Wrap(err, "messages after")
+			return Page{}, err
 		}
 		rows = got
 	} else {
 		if before <= 0 {
 			before = math.MaxInt64
 		}
-		got, err := c.q.MessagesBefore(ctx, crewsdb.MessagesBeforeParams{Viewer: viewerID, ChannelID: channelID, Before: before, Lim: int32(limit + 1)})
+		got, err := c.repo.MessagesBefore(ctx, viewerID, channelID, before, limit+1)
 		if err != nil {
-			return Page{}, apperr.Wrap(err, "messages before")
+			return Page{}, err
 		}
 		if len(got) > limit {
 			page.HasMore = true
 			got = got[:limit]
 		}
 		for i := len(got) - 1; i >= 0; i-- {
-			rows = append(rows, crewsdb.MessagesAfterRow(got[i]))
+			rows = append(rows, got[i])
 		}
 	}
 	msgs, err := c.messages(ctx, viewerID, rows)
@@ -193,64 +194,41 @@ func (c *Chat) Get(ctx context.Context, crewID, messageID, viewerID uuid.UUID) (
 	if _, _, err := c.member(ctx, crewID, viewerID); err != nil {
 		return Message{}, err
 	}
-	row, err := c.q.MessageForViewer(ctx, crewsdb.MessageForViewerParams{Viewer: viewerID, ID: messageID, CrewID: crewID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Message{}, apperr.ErrNotFound
+	m, err := c.repo.VisibleMessage(ctx, viewerID, messageID, crewID)
+	if errors.Is(err, apperr.ErrNotFound) {
+		return Message{}, err
 	}
 	if err != nil {
 		return Message{}, apperr.Wrap(err, "get message")
 	}
-	msgs, err := c.messages(ctx, viewerID, []crewsdb.MessagesAfterRow{crewsdb.MessagesAfterRow(row)})
+	msgs, err := c.messages(ctx, viewerID, []Message{m})
 	if err != nil {
 		return Message{}, err
 	}
 	return msgs[0], nil
 }
 
-// messages turns rows into messages with their reactions, as viewerID sees
-// them.
-func (c *Chat) messages(ctx context.Context, viewerID uuid.UUID, rows []crewsdb.MessagesAfterRow) ([]Message, error) {
-	ids := make([]uuid.UUID, 0, len(rows))
-	for _, r := range rows {
-		ids = append(ids, r.ID)
+// messages adds their reactions to messages, as viewerID sees them.
+func (c *Chat) messages(ctx context.Context, viewerID uuid.UUID, msgs []Message) ([]Message, error) {
+	ids := make([]uuid.UUID, 0, len(msgs))
+	for _, m := range msgs {
+		ids = append(ids, m.ID)
 	}
 	reactions := map[uuid.UUID][]Reaction{}
 	if len(ids) > 0 {
-		got, err := c.q.ReactionsFor(ctx, crewsdb.ReactionsForParams{Viewer: viewerID, Ids: ids})
+		got, err := c.repo.Reactions(ctx, viewerID, ids)
 		if err != nil {
-			return nil, apperr.Wrap(err, "reactions")
+			return nil, err
 		}
-		for _, r := range got {
-			reactions[r.MessageID] = append(reactions[r.MessageID], Reaction{Emoji: r.Emoji, Count: int(r.N), Mine: r.Mine})
-		}
+		reactions = got
 	}
-	out := make([]Message, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, toMessage(r, viewerID, reactions[r.ID]))
+	out := make([]Message, 0, len(msgs))
+	for _, m := range msgs {
+		m.Reactions = reactions[m.ID]
+		slices.SortFunc(m.Reactions, func(a, b Reaction) int { return emojiOrder(a.Emoji) - emojiOrder(b.Emoji) })
+		out = append(out, m)
 	}
 	return out, nil
-}
-
-func toMessage(r crewsdb.MessagesAfterRow, viewerID uuid.UUID, reactions []Reaction) Message {
-	slices.SortFunc(reactions, func(a, b Reaction) int { return emojiOrder(a.Emoji) - emojiOrder(b.Emoji) })
-	m := Message{
-		ID: r.ID, Seq: r.Seq, ChannelID: r.ChannelID, Kind: r.Kind, Body: r.Body,
-		Mentions: r.Mentions, MentionsMe: r.MentionAll || slices.Contains(r.Mentions, viewerID),
-		Reactions: reactions, Pinned: r.PinnedAt != nil, Edited: r.EditedAt != nil,
-		Deleted: r.DeletedAt != nil, CreatedAt: r.CreatedAt,
-	}
-	if r.AuthorID != nil {
-		m.Author = &Person{ID: *r.AuthorID, Name: deref(r.AuthorName), Handle: deref(r.AuthorHandle)}
-	}
-	if r.ReplyID != nil {
-		q := &Quote{ID: *r.ReplyID, Unavailable: r.ReplyUnavailable}
-		if !q.Unavailable {
-			q.AuthorName = deref(r.ReplyAuthorName)
-			q.Excerpt = excerpt(deref(r.ReplyBody), 120)
-		}
-		m.ReplyTo = q
-	}
-	return m
 }
 
 func emojiOrder(key string) int {
@@ -264,44 +242,28 @@ func excerpt(s string, n int) string {
 	return string([]rune(s)[:n-1]) + "…"
 }
 
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
 // member is the crew and what userID is in it; not found when they are not
 // in it.
-func (c *Chat) member(ctx context.Context, crewID, userID uuid.UUID) (crewsdb.Crew, Role, error) {
-	cr, err := c.q.GetCrew(ctx, crewID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return crewsdb.Crew{}, "", apperr.ErrNotFound
-	}
+func (c *Chat) member(ctx context.Context, crewID, userID uuid.UUID) (Crew, Role, error) {
+	cr, err := c.repo.GetCrew(ctx, crewID)
 	if err != nil {
-		return crewsdb.Crew{}, "", apperr.Wrap(err, "get crew")
+		return Crew{}, "", err
 	}
 	if cr.OwnerID == userID {
 		return cr, crew.RoleOwner, nil
 	}
-	r, err := c.q.MemberRole(ctx, crewsdb.MemberRoleParams{CrewID: crewID, UserID: userID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return crewsdb.Crew{}, "", apperr.ErrNotFound
-	}
+	r, err := c.repo.MemberRole(ctx, crewID, userID)
 	if err != nil {
-		return crewsdb.Crew{}, "", apperr.Wrap(err, "member role")
+		return Crew{}, "", err
 	}
-	return cr, Role(r), nil
+	return cr, r, nil
 }
 
 // textChannel is nil when channelID is a text channel of crewID.
 func (c *Chat) textChannel(ctx context.Context, crewID, channelID uuid.UUID) error {
-	ch, err := c.q.ChannelInCrew(ctx, crewsdb.ChannelInCrewParams{ID: channelID, CrewID: crewID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return apperr.ErrNotFound
-	}
+	ch, err := c.repo.ChannelInCrew(ctx, crewID, channelID)
 	if err != nil {
-		return apperr.Wrap(err, "channel")
+		return err
 	}
 	if ch.Kind != crew.ChannelText {
 		return apperr.ErrNotFound

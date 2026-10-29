@@ -12,10 +12,21 @@ import (
 )
 
 type Service struct {
-	repo *Repository
+	repo Repository
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps preferences.
+type Repository interface {
+	Get(ctx context.Context, userID uuid.UUID) (Preferences, error)
+	Upsert(ctx context.Context, userID uuid.UUID, in Input) (Preferences, error)
+	SetNewsTickerEnabled(ctx context.Context, userID uuid.UUID, enabled bool) (Preferences, error)
+	SetTargetWeight(ctx context.Context, userID uuid.UUID, kg *float64) (Preferences, error)
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

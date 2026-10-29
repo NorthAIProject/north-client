@@ -30,7 +30,7 @@ func seedUser(t *testing.T, pool *pgxpool.Pool, email string) users.User {
 
 // fixture builds a service with no storage and no queue: notes need neither,
 // and indexing is driven directly so the test does not depend on a worker.
-func fixture(t *testing.T, email string) (*documents.Service, *documents.Indexer, *documents.Repository, users.User, context.Context) {
+func fixture(t *testing.T, email string) (*documents.Service, *documents.Indexer, documents.Repository, users.User, context.Context) {
 	t.Helper()
 	pool := testdb.New(t)
 	repo := documents.NewRepository(pool)

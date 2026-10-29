@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/checkins/checkin"
 	"github.com/NorthAIProject/north-client/internal/moments"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -24,7 +25,7 @@ type API struct {
 	funnel *analytics.Funnel
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
 // WithFunnel reports the moments the app is sent.
@@ -33,11 +34,11 @@ func (a *API) WithFunnel(f *analytics.Funnel) *API {
 	return a
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/check-ins", a.list)
-	r.Put("/check-ins/today", a.upsertToday)
-	r.Put("/check-ins/{checkInID}", a.update)
-	r.Delete("/check-ins/{checkInID}", a.destroy)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/check-ins", a.list)
+	g.PUT("/check-ins/today", a.upsertToday)
+	g.PUT("/check-ins/:checkInID", a.update)
+	g.DELETE("/check-ins/:checkInID", a.destroy)
 }
 
 type CheckInView struct {
@@ -187,86 +188,82 @@ func (req CheckInRequest) input() Input {
 	}
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	out := CheckInList{Recent: []CheckInView{}}
 
-	today, err := a.svc.Today(r.Context(), user)
+	today, err := a.svc.Today(ctx, user)
 	switch {
 	case err == nil:
 		out.Today = util.Ptr(project(today))
 	case !apperr.Is(err, apperr.ErrNotFound):
-		httpx.Error(w, err, "Check-ins could not be loaded.")
-		return
+		return httpx.Fail(err, "Check-ins could not be loaded.")
 	}
 
-	recent, err := a.svc.List(r.Context(), user.ID, 30)
+	recent, err := a.svc.List(ctx, user.ID, 30)
 	if err != nil {
-		httpx.Error(w, err, "Check-ins could not be loaded.")
-		return
+		return httpx.Fail(err, "Check-ins could not be loaded.")
 	}
-	for _, c := range recent {
-		out.Recent = append(out.Recent, project(c))
+	for _, ci := range recent {
+		out.Recent = append(out.Recent, project(ci))
 	}
-	run, err := a.svc.Run(r.Context(), user)
+	run, err := a.svc.Run(ctx, user)
 	if err != nil {
-		httpx.Error(w, err, "Check-ins could not be loaded.")
-		return
+		return httpx.Fail(err, "Check-ins could not be loaded.")
 	}
 	out.setRun(run)
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
 // upsertToday is the one check-in a day: filing it again replaces its content,
 // as the web form does, and keeps the source it was first created from.
-func (a *API) upsertToday(w http.ResponseWriter, r *http.Request) {
+func (a *API) upsertToday(c *echo.Context) error {
 	var req CheckInRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	user := auth.MustUser(r.Context())
-	saved, err := a.svc.UpsertToday(r.Context(), user, req.input())
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	saved, err := a.svc.UpsertToday(ctx, user, req.input())
 	if err != nil {
-		httpx.Error(w, err, "The check-in could not be saved.")
-		return
+		return httpx.Fail(err, "The check-in could not be saved.")
 	}
 	var moment *moments.Moment
-	if m, ok := moments.ForCheckIn(r.Context(), saved.Run, saved.Created); ok {
-		a.funnel.MomentShown(r.Context(), user.ID, m.Kind)
+	if m, ok := moments.ForCheckIn(ctx, saved.Run, saved.Created); ok {
+		a.funnel.MomentShown(ctx, user.ID, m.Kind)
 		moment = &m
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectSaved(saved, moment))
+	return c.JSON(http.StatusOK, projectSaved(saved, moment))
 }
 
-func (a *API) update(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "checkInID"))
+func (a *API) update(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "checkInID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
 	var req CheckInRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err = readJSON(c, &req); err != nil {
+		return err
 	}
-	saved, err := a.svc.Update(r.Context(), id, auth.MustUser(r.Context()).ID, req.input())
+	ctx := c.Request().Context()
+	saved, err := a.svc.Update(ctx, id, auth.MustUser(ctx).ID, req.input())
 	if err != nil {
-		httpx.Error(w, err, "The check-in could not be saved.")
-		return
+		return httpx.Fail(err, "The check-in could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, project(saved))
+	return c.JSON(http.StatusOK, project(saved))
 }
 
-func (a *API) destroy(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "checkInID"))
+func (a *API) destroy(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "checkInID")
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, "Not found.")
-		return
+		return err
 	}
-	if err := a.svc.Delete(r.Context(), id, auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "The check-in could not be deleted.")
-		return
+	ctx := c.Request().Context()
+	if err := a.svc.Delete(ctx, id, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "The check-in could not be deleted.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 func project(c CheckIn) CheckInView {
@@ -286,10 +283,6 @@ func sourceLabel(s checkin.Source) string {
 	return string(s)
 }
 
-func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
-	}
-	return true
+func readJSON(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 16 << 10}, "The request body could not be read.")
 }

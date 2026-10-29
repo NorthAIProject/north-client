@@ -4,6 +4,9 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labstack/echo/v5"
+
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -51,91 +54,85 @@ type ResetPasswordRequest struct {
 	PasswordConfirmation string `json:"passwordConfirmation"`
 }
 
-func (a *API) options(w http.ResponseWriter, _ *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, AuthOptionsResponse{
+func (a *API) options(c *echo.Context) error {
+	return c.JSON(http.StatusOK, AuthOptionsResponse{
 		Google:        a.service.GoogleEnabled(),
 		Passkey:       a.service.PasskeyEnabled(),
 		PasswordReset: a.service.PasswordResetEnabled(),
 	})
 }
 
-func (a *API) googleStart(w http.ResponseWriter, r *http.Request) {
+func (a *API) googleStart(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	if !a.service.GoogleEnabled() {
-		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "auth.err.google.unavailable"))
-		return
+		return httpx.Fail(apperr.ErrNotFound, i18n.T(ctx, "auth.err.google.unavailable"))
 	}
 	var req GoogleStartRequest
 	if r.ContentLength != 0 {
-		if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-			httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.google"))
-			return
+		if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, i18n.T(ctx, "auth.api.body.google")); err != nil {
+			return err
 		}
 	}
 	state, err := NewGoogleState()
 	if err != nil {
-		middleware.FromContext(r.Context()).Error("google oauth state", slog.Any("error", err))
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.err.google.start"))
-		return
+		middleware.FromContext(ctx).Error("google oauth state", slog.Any("error", err))
+		return httpx.Fail(err, i18n.T(ctx, "auth.err.google.start"))
 	}
 	url, err := a.service.GoogleAuthCodeURLFor(state, req.RedirectURI)
 	if err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.err.google.start"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "auth.err.google.start"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, GoogleStartResponse{URL: url, State: state})
+	return c.JSON(http.StatusOK, GoogleStartResponse{URL: url, State: state})
 }
 
-func (a *API) googleCode(w http.ResponseWriter, r *http.Request) {
+func (a *API) googleCode(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	if !a.service.GoogleEnabled() {
-		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "auth.err.google.unavailable"))
-		return
+		return httpx.Fail(apperr.ErrNotFound, i18n.T(ctx, "auth.err.google.unavailable"))
 	}
 	var req GoogleCodeRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.google"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 16 << 10}, i18n.T(ctx, "auth.api.body.google")); err != nil {
+		return err
 	}
-	user, token, expiresAt, err := a.service.CompleteGoogleOAuthFor(r.Context(), req.Code, req.RedirectURI, a.mw.RequestMetadata(r))
+	user, token, expiresAt, err := a.service.CompleteGoogleOAuthFor(ctx, req.Code, req.RedirectURI, a.mw.RequestMetadata(r))
 	if err != nil {
 		var fields apperr.FieldErrors
 		if apperr.As(err, &fields) {
-			httpx.Error(w, err, i18n.T(r.Context(), "auth.api.fields"))
-			return
+			return httpx.Fail(err, i18n.T(ctx, "auth.api.fields"))
 		}
 		// A refused exchange is Google saying no, not this server failing:
 		// 401, the way the Go page answered with its "could not sign in" card.
-		middleware.FromContext(r.Context()).Error("google oauth failed", slog.Any("error", err))
-		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: i18n.T(r.Context(), "auth.err.google.failed")}})
-		return
+		middleware.FromContext(ctx).Error("google oauth failed", slog.Any("error", err))
+		return c.JSON(http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: i18n.T(ctx, "auth.err.google.failed")}})
 	}
-	middleware.FromContext(r.Context()).Info("signed in with google", slog.String("user_id", user.ID.String()))
-	httpx.WriteJSON(w, http.StatusOK, AuthResponse{Token: token, ExpiresAt: expiresAt, User: ProjectUser(user)})
+	middleware.FromContext(ctx).Info("signed in with google", slog.String("user_id", user.ID.String()))
+	return c.JSON(http.StatusOK, AuthResponse{Token: token, ExpiresAt: expiresAt, User: ProjectUser(user)})
 }
 
-func (a *API) resetPassword(w http.ResponseWriter, r *http.Request) {
+func (a *API) resetPassword(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	// The same switch the reset page obeys: with no mailer that can deliver,
 	// no link was ever sent, and a reset route would only be an oracle.
 	if !a.service.PasswordResetEnabled() {
-		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "auth.err.reset.invalid"))
-		return
+		return httpx.Fail(apperr.ErrNotFound, i18n.T(ctx, "auth.err.reset.invalid"))
 	}
 	var req ResetPasswordRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.err.form"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 16 << 10}, i18n.T(ctx, "auth.err.form")); err != nil {
+		return err
 	}
-	user, token, err := a.service.ResetPassword(r.Context(), ResetPasswordInput(req), a.mw.RequestMetadata(r))
+	user, token, err := a.service.ResetPassword(ctx, ResetPasswordInput(req), a.mw.RequestMetadata(r))
 	if err != nil {
 		if apperr.Is(err, ErrInvalidResetToken) {
-			httpx.WriteJSON(w, http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{
-				Message: i18n.T(r.Context(), "auth.err.reset.invalid"),
+			return c.JSON(http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{
+				Message: i18n.T(ctx, "auth.err.reset.invalid"),
 				Code:    "invalid_reset_token",
 			}})
-			return
 		}
-		a.writeAuthError(w, err, i18n.T(r.Context(), "auth.err.reset.failed"))
-		return
+		return authError(c, err, i18n.T(ctx, "auth.err.reset.failed"))
 	}
-	middleware.FromContext(r.Context()).Info("password reset", slog.String("user_id", user.ID.String()))
-	a.writeSession(w, r, http.StatusOK, user.ID.String(), token)
+	middleware.FromContext(ctx).Info("password reset", slog.String("user_id", user.ID.String()))
+	return a.writeSession(c, http.StatusOK, user.ID.String(), token)
 }

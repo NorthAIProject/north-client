@@ -20,7 +20,7 @@ func TestOpsQueueOperatorsOnly(t *testing.T) {
 	pool := testdb.New(t)
 	op := person(t, pool, "Operator")
 	someone := person(t, pool, "Someone")
-	svc := moderation.NewService(pool).WithOperators([]uuid.UUID{op}, nil)
+	svc := moderation.NewService(moderation.NewRepository(pool)).WithOperators([]uuid.UUID{op}, nil)
 	r := chi.NewRouter()
 	moderation.NewHandler(svc).Routes(r)
 
@@ -43,7 +43,7 @@ func TestOpsQueueOperatorsOnly(t *testing.T) {
 func TestAcceptTermsRedirectsLocally(t *testing.T) {
 	pool := testdb.New(t)
 	ana := person(t, pool, "Ana")
-	svc := moderation.NewService(pool)
+	svc := moderation.NewService(moderation.NewRepository(pool))
 	r := chi.NewRouter()
 	moderation.NewHandler(svc).Routes(r)
 

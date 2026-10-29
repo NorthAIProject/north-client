@@ -29,15 +29,27 @@ type Enqueuer interface {
 }
 
 type Service struct {
-	repo  *Repository
+	repo  Repository
 	docs  Documents
 	queue Enqueuer
 }
 
 type Options struct {
-	Repository *Repository
+	Repository Repository
 	Documents  Documents
 	Queue      Enqueuer
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps vault connections.
+type Repository interface {
+	Get(ctx context.Context, userID uuid.UUID) (Connection, error)
+	Upsert(ctx context.Context, userID uuid.UUID, rootPath string) (Connection, error)
+	Delete(ctx context.Context, userID uuid.UUID) error
+	MarkSynced(ctx context.Context, userID uuid.UUID) error
+	MarkFailed(ctx context.Context, userID uuid.UUID, reason string) error
 }
 
 func NewService(opts Options) *Service {

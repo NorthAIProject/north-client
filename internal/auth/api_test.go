@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -32,12 +32,9 @@ func (f fakeSessionResolver) Resolve(_ context.Context, token string) (auth.Sess
 }
 
 func testRouter(resolver auth.SessionResolver) http.Handler {
-	r := chi.NewRouter()
-	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireBearer(resolver))
-		auth.NewAPI(resolver).Routes(r)
-	})
-	return r
+	e := echox.New(echox.Config{})
+	auth.NewAPI(resolver).Register(e.Group("", auth.Bearer(resolver)))
+	return e
 }
 
 func TestMeRejectsMissingBearerTokenAsJSON(t *testing.T) {

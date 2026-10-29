@@ -12,13 +12,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -52,14 +53,16 @@ func (s *stubChatMedia) LoadChatAttachment(context.Context, uuid.UUID, uuid.UUID
 // attachmentRouter mounts the upload route as cmd/web does, with the bearer
 // check replaced by a fixed signed-in user.
 func attachmentRouter(h harness, store *stubChatMedia, as users.User) http.Handler {
-	r := chi.NewRouter()
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			next.ServeHTTP(w, req.WithContext(auth.ContextWithUser(req.Context(), as)))
-		})
+	e := echox.New(echox.Config{})
+	g := e.Group("", func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			req := c.Request()
+			c.SetRequest(req.WithContext(auth.ContextWithUser(req.Context(), as)))
+			return next(c)
+		}
 	})
-	coach.NewAPI(h.coach, nil, store).UploadRoutes(r)
-	return r
+	coach.NewAPI(h.coach, nil, store).RegisterUploads(g)
+	return e
 }
 
 func postAttachment(t *testing.T, r http.Handler, conversationID uuid.UUID, filename string, data []byte) *httptest.ResponseRecorder {

@@ -64,7 +64,7 @@ type QueryEmbedder interface {
 
 // Service owns documents and the retrieval over them.
 type Service struct {
-	repo    *Repository
+	repo    Repository
 	storage Storage
 	queue   *jobs.Queue
 
@@ -88,7 +88,39 @@ func (s *Service) WithFunnel(f *analytics.Funnel) *Service {
 	return s
 }
 
-func NewService(repo *Repository, storage Storage, queue *jobs.Queue) *Service {
+// Repository is the persistence Service, Indexer, Embedder and EmbedSweeper
+// need. They name it rather than the Postgres type so the database stays a
+// detail of the composition root: NewRepository is what the process wires,
+// and a test can hand them anything that keeps documents, their chunks and
+// embeddings.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, d NewDocument) (Document, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Document, error)
+	List(ctx context.Context, userID uuid.UUID, limit int) ([]Document, error)
+	ForIndexing(ctx context.Context, userID uuid.UUID) ([]Document, error)
+	MarkIndexed(ctx context.Context, id uuid.UUID, sha, fingerprint string, lineCount int) error
+	MarkFailed(ctx context.Context, id uuid.UUID, reason string) error
+	SoftDelete(ctx context.Context, id, userID uuid.UUID) error
+	ReplaceChunks(ctx context.Context, doc Document, chunks []Chunk) (written, removed int, err error)
+	Chunk(ctx context.Context, chunkID string, userID uuid.UUID) (Hit, error)
+	ChunksByIDs(ctx context.Context, userID uuid.UUID, ids []string) ([]Hit, error)
+	Search(ctx context.Context, userID uuid.UUID, query string, limit int) ([]Hit, error)
+	Counts(ctx context.Context, userID uuid.UUID) (Counts, error)
+	StartRun(ctx context.Context, userID uuid.UUID, kind string) (IndexRun, error)
+	CompleteRun(ctx context.Context, run IndexRun) error
+	LatestRun(ctx context.Context, userID uuid.UUID) (IndexRun, error)
+	ChunksNeedingEmbedding(ctx context.Context, userID uuid.UUID, model string, limit int) ([]PendingChunk, error)
+	SaveEmbedding(ctx context.Context, chunkID string, userID uuid.UUID, provider, model string, vector []float32) error
+	SearchByVector(ctx context.Context, userID uuid.UUID, model string, vector []float32, limit int) ([]Hit, error)
+	CountEmbedded(ctx context.Context, userID uuid.UUID, model string) (int, error)
+	GetByExternalPath(ctx context.Context, userID uuid.UUID, path string) (Document, error)
+	CreateVault(ctx context.Context, userID uuid.UUID, title, key, mime string, size int64, path string, mtime time.Time) (Document, error)
+	UpdateVault(ctx context.Context, id uuid.UUID, title, mime string, size int64, mtime time.Time) error
+	ListVaultPaths(ctx context.Context, userID uuid.UUID) (map[string]uuid.UUID, error)
+	UsersWithEmbeddingGap(ctx context.Context, model string, limit int) ([]uuid.UUID, error)
+}
+
+func NewService(repo Repository, storage Storage, queue *jobs.Queue) *Service {
 	return &Service{repo: repo, storage: storage, queue: queue}
 }
 

@@ -11,18 +11,20 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	pool *pgxpool.Pool
 	q    *healthdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, q: healthdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool, q: healthdb.New(pool)}
 }
 
 // HasFromSource reports whether a provider has ever delivered a reading for
 // this person.
-func (r *Repository) HasFromSource(ctx context.Context, userID uuid.UUID, source string) (bool, error) {
+func (r *PostgresRepository) HasFromSource(ctx context.Context, userID uuid.UUID, source string) (bool, error) {
 	ok, err := r.q.HasHealthFromSource(ctx, healthdb.HasHealthFromSourceParams{UserID: userID, Source: source})
 	if err != nil {
 		return false, apperr.Wrap(err, "check health source")
@@ -36,7 +38,7 @@ func (r *Repository) HasFromSource(ctx context.Context, userID uuid.UUID, source
 // malformed batch before it gets here, but a connection lost halfway through
 // ten thousand readings would otherwise leave a gap that looks exactly like a
 // week when nothing was measured.
-func (r *Repository) Save(ctx context.Context, userID uuid.UUID, source string, readings []Reading) (int, error) {
+func (r *PostgresRepository) Save(ctx context.Context, userID uuid.UUID, source string, readings []Reading) (int, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return 0, apperr.Wrap(err, "begin health ingest")
@@ -65,7 +67,7 @@ func (r *Repository) Save(ctx context.Context, userID uuid.UUID, source string, 
 	return len(readings), nil
 }
 
-func (r *Repository) Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]Stored, error) {
+func (r *PostgresRepository) Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]Stored, error) {
 	rows, err := r.q.ListHealthMetricsBetween(ctx, healthdb.ListHealthMetricsBetweenParams{
 		UserID:      userID,
 		Metric:      metric,
@@ -92,7 +94,7 @@ type metricStats struct {
 	unit     string
 }
 
-func (r *Repository) Stats(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) (metricStats, error) {
+func (r *PostgresRepository) Stats(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) (metricStats, error) {
 	row, err := r.q.HealthMetricStats(ctx, healthdb.HealthMetricStatsParams{
 		UserID:      userID,
 		Metric:      metric,
@@ -111,7 +113,7 @@ func (r *Repository) Stats(ctx context.Context, userID uuid.UUID, metric string,
 	}, nil
 }
 
-func (r *Repository) DeleteBySource(ctx context.Context, userID uuid.UUID, source string) error {
+func (r *PostgresRepository) DeleteBySource(ctx context.Context, userID uuid.UUID, source string) error {
 	if err := r.q.DeleteHealthMetricsBySource(ctx, healthdb.DeleteHealthMetricsBySourceParams{
 		UserID: userID,
 		Source: source,

@@ -15,7 +15,7 @@ import (
 // Service holds account rules. It is the only place that decides what a valid
 // profile looks like, so the web form and a future MCP tool cannot drift apart.
 type Service struct {
-	repo *Repository
+	repo Repository
 
 	// appearance is told when somebody's appearance actually changes. Nil
 	// records nothing.
@@ -29,7 +29,24 @@ type AppearanceRecorder interface {
 	AppearanceChanged(ctx context.Context, userID uuid.UUID, appearance, surface string)
 }
 
-func NewService(repo *Repository) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps accounts.
+type Repository interface {
+	Create(ctx context.Context, rec NewRecord) (User, error)
+	ByID(ctx context.Context, id uuid.UUID) (User, error)
+	ByEmail(ctx context.Context, email string) (User, error)
+	CredentialsByEmail(ctx context.Context, email string) (User, string, error)
+	UpdateProfile(ctx context.Context, id uuid.UUID, p Profile) (User, error)
+	SetAppearance(ctx context.Context, id uuid.UUID, a theme.Appearance) (bool, error)
+	ListOnboarded(ctx context.Context, after uuid.UUID, limit int) ([]User, error)
+	UpdateTier(ctx context.Context, id uuid.UUID, tier Tier) (User, error)
+	MarkOnboarded(ctx context.Context, id uuid.UUID) (User, error)
+	UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error
+}
+
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

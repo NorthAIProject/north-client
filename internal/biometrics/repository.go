@@ -14,18 +14,20 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q    *biometricsdb.Queries
 	pool *pgxpool.Pool
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: biometricsdb.New(pool), pool: pool}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: biometricsdb.New(pool), pool: pool}
 }
 
 // RecordCurrent retires the previous current row and inserts a new one, in a
 // single transaction so a reader never sees zero or two current rows.
-func (r *Repository) RecordCurrent(ctx context.Context, userID uuid.UUID, in Input) (Biometric, error) {
+func (r *PostgresRepository) RecordCurrent(ctx context.Context, userID uuid.UUID, in Input) (Biometric, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return Biometric{}, apperr.Wrap(err, "begin biometrics transaction")
@@ -56,7 +58,7 @@ func (r *Repository) RecordCurrent(ctx context.Context, userID uuid.UUID, in Inp
 	return fromDB(row), nil
 }
 
-func (r *Repository) Current(ctx context.Context, userID uuid.UUID) (Biometric, error) {
+func (r *PostgresRepository) Current(ctx context.Context, userID uuid.UUID) (Biometric, error) {
 	row, err := r.q.CurrentBiometric(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -67,7 +69,7 @@ func (r *Repository) Current(ctx context.Context, userID uuid.UUID) (Biometric, 
 	return fromDB(row), nil
 }
 
-func (r *Repository) History(ctx context.Context, userID uuid.UUID, limit int) ([]Biometric, error) {
+func (r *PostgresRepository) History(ctx context.Context, userID uuid.UUID, limit int) ([]Biometric, error) {
 	rows, err := r.q.ListBiometrics(ctx, biometricsdb.ListBiometricsParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list biometrics")

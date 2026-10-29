@@ -12,6 +12,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -39,7 +40,7 @@ func profileAPI(t *testing.T) (*API, *users.Service, *appearanceSpy, users.User)
 
 func call(t *testing.T, a *API, svc *users.Service, userID uuid.UUID, method, body string) (*httptest.ResponseRecorder, map[string]any) {
 	t.Helper()
-	// Re-read so the context carries the stored row, as RequireBearer's would.
+	// Re-read so the context carries the stored row, as auth.Bearer's would.
 	user, err := svc.ByID(context.Background(), userID)
 	if err != nil {
 		t.Fatalf("read user: %v", err)
@@ -48,11 +49,9 @@ func call(t *testing.T, a *API, svc *users.Service, userID uuid.UUID, method, bo
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(auth.ContextWithUser(req.Context(), user))
 	rec := httptest.NewRecorder()
-	if method == http.MethodGet {
-		a.getProfile(rec, req)
-	} else {
-		a.putProfile(rec, req)
-	}
+	e := echox.New(echox.Config{})
+	a.Register(e.Group(""))
+	e.ServeHTTP(rec, req)
 	var out map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
 	return rec, out

@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -37,15 +37,15 @@ func TestARetriedSetWithTheSameClientIDIsLoggedOnce(t *testing.T) {
 	me := register("retries@example.com")
 	other := register("retries-other@example.com")
 
-	router := chi.NewRouter()
-	lifts.NewAPI(lifts.NewService(lifts.NewRepository(pool), nil)).Routes(router)
+	e := echox.New(echox.Config{})
+	lifts.NewAPI(lifts.NewService(lifts.NewRepository(pool), nil)).Register(e.Group(""))
 	post := func(user users.User, body string) (int, lifts.LiftSetView) {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodPost, "/lifts/sets", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req = req.WithContext(auth.ContextWithUser(req.Context(), user))
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
+		e.ServeHTTP(rec, req)
 		var view lifts.LiftSetView
 		if rec.Code < 300 {
 			if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {

@@ -9,7 +9,6 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
@@ -25,12 +24,22 @@ type StreakReader interface {
 }
 
 type Service struct {
-	q       *xpdb.Queries
+	repo    Repository
 	streaks StreakReader
 }
 
-func NewService(pool *pgxpool.Pool, streaks StreakReader) *Service {
-	return &Service{q: xpdb.New(pool), streaks: streaks}
+// Repository is the persistence Service depends on: the verified actions
+// that pay XP and the people on a board. NewRepository is what the process
+// wires, and a test can hand Service anything that counts them.
+type Repository interface {
+	Earned(ctx context.Context, ids []uuid.UUID, w window) (map[uuid.UUID]map[string]int, error)
+	Participants(ctx context.Context, viewer uuid.UUID, category string) ([]xpdb.ParticipantsRow, error)
+	Shares(ctx context.Context, userID uuid.UUID, category string) (bool, error)
+	WorkoutsFinished(ctx context.Context, ids []uuid.UUID, fromAt, toAt time.Time) (map[uuid.UUID]int, error)
+}
+
+func NewService(repo Repository, streaks StreakReader) *Service {
+	return &Service{repo: repo, streaks: streaks}
 }
 
 // beginning is the start of "all time": before anything was ever recorded.
@@ -60,22 +69,7 @@ func allTime(loc *time.Location, now time.Time) window {
 
 // earned counts each person's verified actions in a window, by kind.
 func (s *Service) earned(ctx context.Context, ids []uuid.UUID, w window) (map[uuid.UUID]map[string]int, error) {
-	rows, err := s.q.Earned(ctx, xpdb.EarnedParams{
-		UserIds: ids, FromDay: w.fromDay, ToDay: w.toDay, FromAt: w.fromAt, ToAt: w.toAt,
-		StreakFrom: StreakDayFrom, WorkoutMinSeconds: WorkoutMinMinutes * 60, WorkoutsPerDay: WorkoutsPaidPerDay,
-		StreakMarks: streakMarks(), ChallengeMetKind: achievement.KindCrewChallengeMet,
-	})
-	if err != nil {
-		return nil, apperr.Wrap(err, "earned")
-	}
-	out := make(map[uuid.UUID]map[string]int, len(ids))
-	for _, r := range rows {
-		if out[r.UserID] == nil {
-			out[r.UserID] = map[string]int{}
-		}
-		out[r.UserID][r.Kind] = int(r.N)
-	}
-	return out, nil
+	return s.repo.Earned(ctx, ids, w)
 }
 
 // streakMarks are the streak lengths that pay a bonus: the same ones the
@@ -193,13 +187,13 @@ func (s *Service) Board(ctx context.Context, viewer users.User, metric, period s
 		return Board{}, apperr.FieldErrors{}.Add("period", "Use week or all.")
 	}
 
-	people, err := s.q.Participants(ctx, xpdb.ParticipantsParams{Viewer: viewer.ID, Category: category})
+	people, err := s.repo.Participants(ctx, viewer.ID, category)
 	if err != nil {
-		return Board{}, apperr.Wrap(err, "participants")
+		return Board{}, err
 	}
-	sharing, err := s.q.Shares(ctx, xpdb.SharesParams{UserID: viewer.ID, Category: category})
+	sharing, err := s.repo.Shares(ctx, viewer.ID, category)
 	if err != nil {
-		return Board{}, apperr.Wrap(err, "sharing")
+		return Board{}, err
 	}
 
 	values, err := s.values(ctx, viewer, people, metric, period, now)
@@ -248,12 +242,12 @@ func (s *Service) values(ctx context.Context, viewer users.User, people []xpdb.P
 		}
 	case MetricWorkouts:
 		w := weekOf(loc, now)
-		rows, err := s.q.WorkoutsFinished(ctx, xpdb.WorkoutsFinishedParams{UserIds: ids, FromAt: w.fromAt, ToAt: w.toAt})
+		counts, err := s.repo.WorkoutsFinished(ctx, ids, w.fromAt, w.toAt)
 		if err != nil {
-			return nil, apperr.Wrap(err, "workouts")
+			return nil, err
 		}
-		for _, r := range rows {
-			out[r.UserID] = score{value: int(r.N)}
+		for id, n := range counts {
+			out[id] = score{value: n}
 		}
 	case MetricStreak:
 		for _, p := range people {

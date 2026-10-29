@@ -8,23 +8,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/onboarding"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 func apiAs(user users.User) http.Handler {
-	r := chi.NewRouter()
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			next.ServeHTTP(w, req.WithContext(auth.ContextWithUser(req.Context(), user)))
-		})
+	e := echox.New(echox.Config{})
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			c.SetRequest(c.Request().WithContext(auth.ContextWithUser(c.Request().Context(), user)))
+			return next(c)
+		}
 	})
-	onboarding.NewAPI(onboarding.NewService(nil, nil, nil)).Routes(r)
-	return r
+	onboarding.NewAPI(onboarding.NewService(nil, nil, nil)).Register(e.Group(""))
+	return e
 }
 
 // The form offers exactly what ValidateAnswers accepts, and no first-week

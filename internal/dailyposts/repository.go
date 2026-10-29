@@ -15,12 +15,14 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *dailypostsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: dailypostsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: dailypostsdb.New(pool)}
 }
 
 // Draft is a post ready to publish.
@@ -35,7 +37,7 @@ type Draft struct {
 
 // Insert publishes the day's post. inserted is false when that day already
 // has one: the once-a-day limit.
-func (r *Repository) Insert(ctx context.Context, d Draft) (bool, error) {
+func (r *PostgresRepository) Insert(ctx context.Context, d Draft) (bool, error) {
 	_, err := r.q.InsertPost(ctx, dailypostsdb.InsertPostParams{
 		PostDate: date(d.Date), Theme: d.Theme, Title: d.Title, Body: d.Body,
 		AiGenerated: true, Model: d.Model, PromptVersion: d.PromptVersion,
@@ -49,7 +51,7 @@ func (r *Repository) Insert(ctx context.Context, d Draft) (bool, error) {
 	return true, nil
 }
 
-func (r *Repository) Exists(ctx context.Context, day time.Time) (bool, error) {
+func (r *PostgresRepository) Exists(ctx context.Context, day time.Time) (bool, error) {
 	ok, err := r.q.PostExists(ctx, date(day))
 	if err != nil {
 		return false, apperr.Wrap(err, "check daily post")
@@ -58,7 +60,7 @@ func (r *Repository) Exists(ctx context.Context, day time.Time) (bool, error) {
 }
 
 // Recent is up to limit posts on or before day, newest first.
-func (r *Repository) Recent(ctx context.Context, viewer uuid.UUID, day time.Time, limit int32) ([]post.Post, error) {
+func (r *PostgresRepository) Recent(ctx context.Context, viewer uuid.UUID, day time.Time, limit int32) ([]post.Post, error) {
 	rows, err := r.q.RecentPosts(ctx, dailypostsdb.RecentPostsParams{
 		Viewer: viewer, OnOrBefore: date(day), Lim: limit,
 	})
@@ -81,7 +83,7 @@ type Earlier struct {
 	Title string
 }
 
-func (r *Repository) EarlierThemes(ctx context.Context, day time.Time, limit int32) ([]Earlier, error) {
+func (r *PostgresRepository) EarlierThemes(ctx context.Context, day time.Time, limit int32) ([]Earlier, error) {
 	rows, err := r.q.RecentPostThemes(ctx, dailypostsdb.RecentPostThemesParams{
 		Before: date(day), Lim: limit,
 	})
@@ -95,7 +97,7 @@ func (r *Repository) EarlierThemes(ctx context.Context, day time.Time, limit int
 	return out, nil
 }
 
-func (r *Repository) GiveKudos(ctx context.Context, postID, userID uuid.UUID) error {
+func (r *PostgresRepository) GiveKudos(ctx context.Context, postID, userID uuid.UUID) error {
 	ok, err := r.q.PostIDExists(ctx, postID)
 	if err != nil {
 		return apperr.Wrap(err, "find daily post")
@@ -109,7 +111,7 @@ func (r *Repository) GiveKudos(ctx context.Context, postID, userID uuid.UUID) er
 	return nil
 }
 
-func (r *Repository) TakeKudos(ctx context.Context, postID, userID uuid.UUID) error {
+func (r *PostgresRepository) TakeKudos(ctx context.Context, postID, userID uuid.UUID) error {
 	if err := r.q.TakeKudos(ctx, dailypostsdb.TakeKudosParams{PostID: postID, UserID: userID}); err != nil {
 		return apperr.Wrap(err, "take kudos")
 	}
@@ -117,7 +119,7 @@ func (r *Repository) TakeKudos(ctx context.Context, postID, userID uuid.UUID) er
 }
 
 // Week is everyone's logs over a window, as counts and averages.
-func (r *Repository) Week(ctx context.Context, since, until time.Time) (Aggregate, error) {
+func (r *PostgresRepository) Week(ctx context.Context, since, until time.Time) (Aggregate, error) {
 	ci, err := r.q.WeekCheckIns(ctx, dailypostsdb.WeekCheckInsParams{Since: date(since), Until: date(until)})
 	if err != nil {
 		return Aggregate{}, apperr.Wrap(err, "aggregate check-ins")

@@ -75,7 +75,7 @@ func (s *scripted) client() *fake.Client {
 }
 
 type fixture struct {
-	repo *dailyposts.Repository
+	repo dailyposts.Repository
 	svc  *dailyposts.Service
 	user users.User
 	ctx  context.Context

@@ -14,15 +14,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *decisionsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: decisionsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: decisionsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, title, options, rationale, outcome string) (Decision, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, title, options, rationale, outcome string) (Decision, error) {
 	row, err := r.q.CreateDecision(ctx, decisionsdb.CreateDecisionParams{
 		UserID:    userID,
 		Title:     title,
@@ -36,7 +38,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, title, option
 	return fromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Decision, error) {
+func (r *PostgresRepository) Get(ctx context.Context, id, userID uuid.UUID) (Decision, error) {
 	row, err := r.q.GetDecision(ctx, decisionsdb.GetDecisionParams{ID: id, UserID: userID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -47,7 +49,7 @@ func (r *Repository) Get(ctx context.Context, id, userID uuid.UUID) (Decision, e
 	return fromDB(row), nil
 }
 
-func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Decision, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID uuid.UUID, limit int) ([]Decision, error) {
 	rows, err := r.q.ListDecisions(ctx, decisionsdb.ListDecisionsParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -58,7 +60,7 @@ func (r *Repository) List(ctx context.Context, userID uuid.UUID, limit int) ([]D
 	return fromDBList(rows), nil
 }
 
-func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, title, options, rationale, outcome, held string) (Decision, error) {
+func (r *PostgresRepository) Update(ctx context.Context, id, userID uuid.UUID, title, options, rationale, outcome, held string) (Decision, error) {
 	row, err := r.q.UpdateDecision(ctx, decisionsdb.UpdateDecisionParams{
 		ID:        id,
 		UserID:    userID,
@@ -77,7 +79,7 @@ func (r *Repository) Update(ctx context.Context, id, userID uuid.UUID, title, op
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	n, err := r.q.DeleteDecision(ctx, decisionsdb.DeleteDecisionParams{ID: id, UserID: userID})
 	if err != nil {
 		return apperr.Wrap(err, "delete decision")
@@ -89,7 +91,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 }
 
 // DueRevisit is the oldest revisit due at now whose mark is after since.
-func (r *Repository) DueRevisit(ctx context.Context, userID uuid.UUID, now, since time.Time) (Revisit, bool, error) {
+func (r *PostgresRepository) DueRevisit(ctx context.Context, userID uuid.UUID, now, since time.Time) (Revisit, bool, error) {
 	row, err := r.q.DueRevisit(ctx, decisionsdb.DueRevisitParams{UserID: userID, Now: now, Since: since})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Revisit{}, false, nil
@@ -100,7 +102,7 @@ func (r *Repository) DueRevisit(ctx context.Context, userID uuid.UUID, now, sinc
 	return Revisit{ID: row.ID, Title: row.Title, Mark: int(row.Mark)}, true, nil
 }
 
-func (r *Repository) Calibration(ctx context.Context, userID uuid.UUID) (Calibration, error) {
+func (r *PostgresRepository) Calibration(ctx context.Context, userID uuid.UUID) (Calibration, error) {
 	row, err := r.q.Calibration(ctx, userID)
 	if err != nil {
 		return Calibration{}, apperr.Wrap(err, "decision calibration")

@@ -62,13 +62,22 @@ type Quota interface {
 
 type Service struct {
 	checkins CheckIns
-	repo     *Repository
+	repo     Repository
 	writer   Writer
 	quota    Quota
 	timeout  time.Duration
 }
 
-func NewService(checkins CheckIns, repo *Repository, writer Writer) *Service {
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps check-in replies.
+type Repository interface {
+	Get(ctx context.Context, checkInID, userID uuid.UUID) (stored, bool, error)
+	Put(ctx context.Context, checkInID, userID uuid.UUID, hash string, reply Reply) error
+}
+
+func NewService(checkins CheckIns, repo Repository, writer Writer) *Service {
 	return &Service{checkins: checkins, repo: repo, writer: writer, timeout: defaultTimeout}
 }
 

@@ -62,7 +62,7 @@ func TestInboxLoop(t *testing.T) {
 	goalSvc := goals.NewService(goals.NewRepository(pool))
 	run, _ := goalSvc.Create(ctx, user.ID, goals.Input{Title: "Run a half marathon", Category: "fitness"})
 	q, n, j := &queued{}, &notes{}, &journal{}
-	svc := inbox.NewService(pool, inbox.Options{Queue: q, Suggester: pickGoal{}, Goals: goalSvc, Notes: n, Journal: j, Users: accounts{user}})
+	svc := inbox.NewService(inbox.NewRepository(pool), inbox.Options{Queue: q, Suggester: pickGoal{}, Goals: goalSvc, Notes: n, Journal: j, Users: accounts{user}})
 
 	ran, err := svc.Add(ctx, user.ID, item.SourceShare, "  Ran 12 km, the knee felt fine ")
 	if err != nil || ran.Text != "Ran 12 km, the knee felt fine" || ran.Suggestion != nil {
@@ -125,7 +125,7 @@ func TestInboxLoop(t *testing.T) {
 
 func TestAddRejects(t *testing.T) {
 	pool := testdb.New(t)
-	svc := inbox.NewService(pool, inbox.Options{})
+	svc := inbox.NewService(inbox.NewRepository(pool), inbox.Options{})
 	if _, err := svc.Add(context.Background(), uuid.New(), item.SourceApp, "   "); !apperr.Is(err, apperr.ErrValidation) {
 		t.Fatalf("empty: %v", err)
 	}

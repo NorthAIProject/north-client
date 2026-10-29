@@ -12,15 +12,17 @@ import (
 	supplementsdb "github.com/NorthAIProject/north-client/internal/supplements/db"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *supplementsdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: supplementsdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: supplementsdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, date time.Time, e Entry) (Entry, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, date time.Time, e Entry) (Entry, error) {
 	nutrients := e.Nutrients
 	if nutrients == nil {
 		nutrients = []string{}
@@ -35,7 +37,7 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, date time.Tim
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	n, err := r.q.DeleteSupplementEntry(ctx, supplementsdb.DeleteSupplementEntryParams{ID: id, UserID: userID})
 	if err != nil {
 		return apperr.Wrap(err, "delete supplement entry")
@@ -46,7 +48,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return nil
 }
 
-func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error) {
+func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error) {
 	rows, err := r.q.ListSupplementsBetween(ctx, supplementsdb.ListSupplementsBetweenParams{UserID: userID, LoggedAt: since, LoggedAt_2: until})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list supplements")

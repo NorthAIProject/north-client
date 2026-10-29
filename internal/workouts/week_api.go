@@ -5,8 +5,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
@@ -66,98 +68,97 @@ type WeekSuggestion struct {
 	MatchingPlans []PlanSummary `json:"matchingPlans"`
 }
 
-func (a *API) showWeek(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) showWeek(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	var (
 		progress WeekProgress
 		err      error
 	)
-	if wantsNextWeek(r) {
-		progress, err = a.svc.NextWeek(r.Context(), user, time.Now())
+	if wantsNextWeek(c.Request()) {
+		progress, err = a.svc.NextWeek(ctx, user, time.Now())
 	} else {
-		progress, err = a.svc.WeekProgress(r.Context(), user, time.Now())
+		progress, err = a.svc.WeekProgress(ctx, user, time.Now())
 	}
 	if err != nil {
-		httpx.Error(w, err, "This week could not be loaded.")
-		return
+		return httpx.Fail(err, "This week could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectWeek(progress))
+	return c.JSON(http.StatusOK, projectWeek(progress))
 }
 
-func (a *API) setWeek(w http.ResponseWriter, r *http.Request) {
-	change, ok := readWeekChange(w, r)
-	if !ok {
-		return
-	}
-	progress, err := a.svc.SetWeek(r.Context(), auth.MustUser(r.Context()), time.Now(), change)
+func (a *API) setWeek(c *echo.Context) error {
+	change, err := readWeekChange(c)
 	if err != nil {
-		httpx.Error(w, err, "That week could not be saved.")
-		return
+		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectWeek(progress))
+	ctx := c.Request().Context()
+	progress, err := a.svc.SetWeek(ctx, auth.MustUser(ctx), time.Now(), change)
+	if err != nil {
+		return httpx.Fail(err, "That week could not be saved.")
+	}
+	return c.JSON(http.StatusOK, projectWeek(progress))
 }
 
-func (a *API) suggestWeek(w http.ResponseWriter, r *http.Request) {
-	change, ok := readWeekChange(w, r)
-	if !ok {
-		return
-	}
-	user := auth.MustUser(r.Context())
-	progress, err := a.svc.SuggestWeek(r.Context(), user, time.Now(), change)
+func (a *API) suggestWeek(c *echo.Context) error {
+	change, err := readWeekChange(c)
 	if err != nil {
-		httpx.Error(w, err, "No week could be suggested.")
-		return
+		return err
 	}
-	matching, err := a.svc.PlansWithDays(r.Context(), user.ID, len(progress.Days))
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	progress, err := a.svc.SuggestWeek(ctx, user, time.Now(), change)
 	if err != nil {
-		httpx.Error(w, err, "No week could be suggested.")
-		return
+		return httpx.Fail(err, "No week could be suggested.")
+	}
+	matching, err := a.svc.PlansWithDays(ctx, user.ID, len(progress.Days))
+	if err != nil {
+		return httpx.Fail(err, "No week could be suggested.")
 	}
 	out := WeekSuggestion{Week: projectWeek(progress), MatchingPlans: make([]PlanSummary, 0, len(matching))}
 	for _, p := range matching {
 		out.MatchingPlans = append(out.MatchingPlans, projectSummary(p))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) resetWeek(w http.ResponseWriter, r *http.Request) {
-	progress, err := a.svc.ResetWeek(r.Context(), auth.MustUser(r.Context()), time.Now(), wantsNextWeek(r))
+func (a *API) resetWeek(c *echo.Context) error {
+	ctx := c.Request().Context()
+	progress, err := a.svc.ResetWeek(ctx, auth.MustUser(ctx), time.Now(), wantsNextWeek(c.Request()))
 	if err != nil {
-		httpx.Error(w, err, "That week could not be reset.")
-		return
+		return httpx.Fail(err, "That week could not be reset.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectWeek(progress))
+	return c.JSON(http.StatusOK, projectWeek(progress))
 }
 
-func (a *API) activatePlan(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathUUID(w, r, "planID")
-	if !ok {
-		return
-	}
-	active, err := a.svc.SetActivePlan(r.Context(), auth.MustUser(r.Context()), id)
+func (a *API) activatePlan(c *echo.Context) error {
+	id, err := echox.UUIDParam(c, "planID")
 	if err != nil {
-		httpx.Error(w, err, "That plan could not be followed.")
-		return
+		return err
 	}
-	a.writePlan(w, r, active.ID, http.StatusOK)
+	ctx := c.Request().Context()
+	active, err := a.svc.SetActivePlan(ctx, auth.MustUser(ctx), id)
+	if err != nil {
+		return httpx.Fail(err, "That plan could not be followed.")
+	}
+	return a.writePlan(c, active.ID, http.StatusOK)
 }
 
-func readWeekChange(w http.ResponseWriter, r *http.Request) (WeekChange, bool) {
+func readWeekChange(c *echo.Context) (WeekChange, error) {
 	var req WeekRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 8 << 10}); err != nil {
-		httpx.Error(w, err, "The request body must be a training week.")
-		return WeekChange{}, false
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 8 << 10}, "The request body must be a training week."); err != nil {
+		return WeekChange{}, err
 	}
-	change := WeekChange{Weekdays: req.Weekdays, Days: req.Days, PlanID: req.PlanID, NextWeek: wantsNextWeek(r)}
+	change := WeekChange{Weekdays: req.Weekdays, Days: req.Days, PlanID: req.PlanID, NextWeek: wantsNextWeek(c.Request())}
 	if len(req.Assignments) > 0 {
 		change.Assign = make(map[string]SessionRef, len(req.Assignments))
 		for _, a := range req.Assignments {
 			change.Assign[a.Weekday] = SessionRef{PlanID: a.PlanID, DayIndex: a.DayIndex}
 		}
 	}
-	return change, true
+	return change, nil
 }
 
+// wantsNextWeek is shared with the browser week page.
 func wantsNextWeek(r *http.Request) bool {
 	return r.URL.Query().Get("week") == "next"
 }

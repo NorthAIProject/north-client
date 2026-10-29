@@ -16,7 +16,7 @@ import (
 const DefaultTargetHours = 16
 
 type Service struct {
-	repo   *Repository
+	repo   Repository
 	now    func() time.Time
 	awards Awards
 }
@@ -31,7 +31,19 @@ func (s *Service) WithAwards(a Awards) *Service {
 	return s
 }
 
-func NewService(repo *Repository) *Service { return &Service{repo: repo, now: time.Now} }
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps fasting sessions.
+type Repository interface {
+	Start(ctx context.Context, userID uuid.UUID, at time.Time, targetHours int) (Session, error)
+	Stop(ctx context.Context, userID uuid.UUID, at time.Time) (Session, error)
+	Open(ctx context.Context, userID uuid.UUID) (Session, bool, error)
+	Overlapping(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Session, error)
+	Delete(ctx context.Context, id, userID uuid.UUID) error
+}
+
+func NewService(repo Repository) *Service { return &Service{repo: repo, now: time.Now} }
 
 // Start opens a fast now, or at a remembered time ("I stopped eating at 8").
 func (s *Service) Start(ctx context.Context, user users.User, targetHours int, at *time.Time) (Session, error) {

@@ -4,11 +4,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/calculator/macroplan"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
@@ -21,13 +22,13 @@ type API struct {
 	biometrics *biometrics.Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service, bio *biometrics.Service) *API { return &API{svc: svc, biometrics: bio} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/calculator", a.show)
-	r.Put("/calculator/biometrics", a.recordBiometrics)
-	r.Post("/calculator/plan", a.generate)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/calculator", a.show)
+	g.PUT("/calculator/biometrics", a.recordBiometrics)
+	g.POST("/calculator/plan", a.generate)
 }
 
 type BiometricsView struct {
@@ -89,47 +90,47 @@ type GoalRequest struct {
 	MacroSplit    string `json:"macroSplit"`
 }
 
-func (a *API) show(w http.ResponseWriter, r *http.Request) {
-	a.respond(w, r, http.StatusOK)
+func (a *API) show(c *echo.Context) error {
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) recordBiometrics(w http.ResponseWriter, r *http.Request) {
+func (a *API) recordBiometrics(c *echo.Context) error {
 	var req BiometricsRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
 	dob, err := time.Parse("2006-01-02", req.DateOfBirth)
 	if err != nil {
-		httpx.Error(w, apperr.FieldErrors{}.Add("dateOfBirth", "Use a date like 1990-05-01."), "Use a date like 1990-05-01.")
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("dateOfBirth", "Use a date like 1990-05-01."), "Use a date like 1990-05-01.")
 	}
-	if _, err := a.biometrics.Record(r.Context(), auth.MustUser(r.Context()).ID, biometrics.Input{
+	ctx := c.Request().Context()
+	if _, err := a.biometrics.Record(ctx, auth.MustUser(ctx).ID, biometrics.Input{
 		WeightKg: req.WeightKg, HeightCm: req.HeightCm, DateOfBirth: dob, Sex: req.Sex,
 	}); err != nil {
-		httpx.Error(w, err, "The measurements could not be saved.")
-		return
+		return httpx.Fail(err, "The measurements could not be saved.")
 	}
-	a.respond(w, r, http.StatusOK)
+	return a.respond(c, http.StatusOK)
 }
 
-func (a *API) generate(w http.ResponseWriter, r *http.Request) {
+func (a *API) generate(c *echo.Context) error {
 	var req GoalRequest
-	if !readJSON(w, r, &req) {
-		return
+	if err := readJSON(c, &req); err != nil {
+		return err
 	}
-	if _, err := a.svc.Generate(r.Context(), auth.MustUser(r.Context()).ID, Input(req)); err != nil {
-		httpx.Error(w, err, "The goal could not be worked out.")
-		return
+	ctx := c.Request().Context()
+	if _, err := a.svc.Generate(ctx, auth.MustUser(ctx).ID, Input(req)); err != nil {
+		return httpx.Fail(err, "The goal could not be worked out.")
 	}
-	a.respond(w, r, http.StatusCreated)
+	return a.respond(c, http.StatusCreated)
 }
 
-func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
-	userID := auth.MustUser(r.Context()).ID
+func (a *API) respond(c *echo.Context, status int) error {
+	ctx := c.Request().Context()
+	userID := auth.MustUser(ctx).ID
 	out := CalculatorView{Options: CalculatorOptions{
 		ActivityLevels: macroplan.ActivityLevels, Goals: macroplan.Goals, MacroSplits: macroplan.Splits,
 	}}
-	bio, err := a.biometrics.Current(r.Context(), userID)
+	bio, err := a.biometrics.Current(ctx, userID)
 	switch {
 	case err == nil:
 		out.Biometrics = &BiometricsView{
@@ -138,10 +139,9 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
 			AgeYears: bio.AgeYears(time.Now()),
 		}
 	case !apperr.Is(err, apperr.ErrNotFound):
-		httpx.Error(w, err, "The calculator could not be loaded.")
-		return
+		return httpx.Fail(err, "The calculator could not be loaded.")
 	}
-	plan, err := a.svc.Current(r.Context(), userID)
+	plan, err := a.svc.Current(ctx, userID)
 	switch {
 	case err == nil:
 		out.Goal = &MacroGoalView{
@@ -155,16 +155,11 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request, status int) {
 			out.Goal.Comparison = append(out.Goal.Comparison, GoalCalories{Goal: g, CalorieGoal: all[g]})
 		}
 	case !apperr.Is(err, apperr.ErrNotFound):
-		httpx.Error(w, err, "The calculator could not be loaded.")
-		return
+		return httpx.Fail(err, "The calculator could not be loaded.")
 	}
-	httpx.WriteJSON(w, status, out)
+	return c.JSON(status, out)
 }
 
-func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return false
-	}
-	return true
+func readJSON(c *echo.Context, dst any) error {
+	return echox.BindJSON(c, dst, httpx.ReadOptions{MaxBytes: 4 << 10}, "The request body could not be read.")
 }

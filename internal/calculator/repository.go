@@ -12,18 +12,20 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q    *calculatordb.Queries
 	pool *pgxpool.Pool
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: calculatordb.New(pool), pool: pool}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: calculatordb.New(pool), pool: pool}
 }
 
 // RecordCurrent retires the previous current plan and inserts the new one, in
 // a single transaction so a reader never sees zero or two current plans.
-func (r *Repository) RecordCurrent(ctx context.Context, userID uuid.UUID, plan MacroPlan) (MacroPlan, error) {
+func (r *PostgresRepository) RecordCurrent(ctx context.Context, userID uuid.UUID, plan MacroPlan) (MacroPlan, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return MacroPlan{}, apperr.Wrap(err, "begin macro plan transaction")
@@ -63,7 +65,7 @@ func (r *Repository) RecordCurrent(ctx context.Context, userID uuid.UUID, plan M
 	return fromDB(row), nil
 }
 
-func (r *Repository) Current(ctx context.Context, userID uuid.UUID) (MacroPlan, error) {
+func (r *PostgresRepository) Current(ctx context.Context, userID uuid.UUID) (MacroPlan, error) {
 	row, err := r.q.CurrentMacroPlan(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -74,7 +76,7 @@ func (r *Repository) Current(ctx context.Context, userID uuid.UUID) (MacroPlan, 
 	return fromDB(row), nil
 }
 
-func (r *Repository) History(ctx context.Context, userID uuid.UUID, limit int) ([]MacroPlan, error) {
+func (r *PostgresRepository) History(ctx context.Context, userID uuid.UUID, limit int) ([]MacroPlan, error) {
 	rows, err := r.q.ListMacroPlans(ctx, calculatordb.ListMacroPlansParams{UserID: userID, Limit: int32(limit)})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list macro plans")

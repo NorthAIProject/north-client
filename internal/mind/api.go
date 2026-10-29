@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
@@ -18,12 +19,12 @@ type API struct {
 	svc *Service
 }
 
-// NewAPI builds the routes; mount them behind auth.RequireBearer.
+// NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/mind/journal", a.list)
-	r.Post("/mind/journal", a.create)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/mind/journal", a.list)
+	g.POST("/mind/journal", a.create)
 }
 
 type JournalEntryView struct {
@@ -51,17 +52,16 @@ type JournalRequest struct {
 	Mood    *int   `json:"mood,omitempty"`
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	userID := auth.MustUser(r.Context()).ID
-	entries, err := a.svc.Recent(r.Context(), userID, 50)
+func (a *API) list(c *echo.Context) error {
+	ctx := c.Request().Context()
+	userID := auth.MustUser(ctx).ID
+	entries, err := a.svc.Recent(ctx, userID, 50)
 	if err != nil {
-		httpx.Error(w, err, "The journal could not be loaded.")
-		return
+		return httpx.Fail(err, "The journal could not be loaded.")
 	}
-	trend, err := a.svc.RecentMoodTrend(r.Context(), userID, 14)
+	trend, err := a.svc.RecentMoodTrend(ctx, userID, 14)
 	if err != nil {
-		httpx.Error(w, err, "The journal could not be loaded.")
-		return
+		return httpx.Fail(err, "The journal could not be loaded.")
 	}
 	out := Journal{
 		Entries: make([]JournalEntryView, 0, len(entries)),
@@ -70,21 +70,20 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 	for _, e := range entries {
 		out.Entries = append(out.Entries, project(e))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) create(w http.ResponseWriter, r *http.Request) {
+func (a *API) create(c *echo.Context) error {
 	var req JournalRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 64 << 10}); err != nil {
-		httpx.Error(w, err, "The request body could not be read.")
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 64 << 10}, "The request body could not be read."); err != nil {
+		return err
 	}
-	entry, err := a.svc.Create(r.Context(), auth.MustUser(r.Context()).ID, Input(req))
+	ctx := c.Request().Context()
+	entry, err := a.svc.Create(ctx, auth.MustUser(ctx).ID, Input(req))
 	if err != nil {
-		httpx.Error(w, err, "The entry could not be saved.")
-		return
+		return httpx.Fail(err, "The entry could not be saved.")
 	}
-	httpx.WriteJSON(w, http.StatusCreated, project(entry))
+	return c.JSON(http.StatusCreated, project(entry))
 }
 
 func project(e JournalEntry) JournalEntryView {

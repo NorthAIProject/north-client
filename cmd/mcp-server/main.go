@@ -27,7 +27,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -71,6 +70,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/reports"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/secret"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/soreness"
@@ -169,36 +169,12 @@ func run() error {
 		Version: mcpserver.Version,
 	})
 
-	srv := &http.Server{
-		Addr:              addr,
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-
-	errs := make(chan error, 1)
-	go func() {
-		log.Info("mcp server listening",
-			slog.String("addr", addr),
-			slog.String("user", userID.String()),
-			slog.String("ai_provider", registry.DefaultName()),
-		)
-		if serveErr := srv.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			errs <- serveErr
-		}
-	}()
-
-	select {
-	case serveErr := <-errs:
-		return serveErr
-	case <-ctx.Done():
-		log.Info("shutdown signal received")
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("graceful shutdown: %w", err)
+	log.Info("mcp server starting",
+		slog.String("user", userID.String()),
+		slog.String("ai_provider", registry.DefaultName()),
+	)
+	if err := echox.Serve(ctx, handler, echox.ServerConfig{Addr: addr, GracefulTimeout: shutdownTimeout, Logger: log}); err != nil {
+		return err
 	}
 
 	log.Info("mcp server stopped")
@@ -220,7 +196,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
 
 	// The tools below write for the person, so they check badges like the web does.
-	awardsSvc := awards.NewService(pool)
+	awardsSvc := awards.NewService(awards.NewRepository(pool))
 	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAwards(awardsSvc)
 	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAwards(awardsSvc)
 	memorySvc := memories.NewService(memories.NewRepository(pool))

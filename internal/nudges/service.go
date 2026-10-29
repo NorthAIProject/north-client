@@ -142,7 +142,7 @@ type mealSource interface {
 }
 
 type Service struct {
-	repo      *Repository
+	repo      Repository
 	accounts  accounts
 	checkins  checkinDays
 	goals     activeGoals
@@ -161,6 +161,20 @@ type Service struct {
 	progress  progressSource
 	firstWeek firstWeekSource
 	now       func() time.Time
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps nudges.
+type Repository interface {
+	Insert(ctx context.Context, userID uuid.UUID, d Draft) (Nudge, bool, error)
+	ListOpen(ctx context.Context, userID uuid.UUID, limit int) ([]Nudge, error)
+	CountUnread(ctx context.Context, userID uuid.UUID) (int, error)
+	MarkRead(ctx context.Context, id, userID uuid.UUID) (Nudge, error)
+	Dismiss(ctx context.Context, id, userID uuid.UUID) (Nudge, error)
+	ResolveForDay(ctx context.Context, userID uuid.UUID, kind, day string) ([]Nudge, error)
+	CountForDay(ctx context.Context, userID uuid.UUID, kinds []string, day string) (int, error)
 }
 
 // crewSource names the crewmates who checked in today. crews.Service
@@ -195,7 +209,7 @@ func (s *Service) WithCrews(c crewSource) *Service {
 	return s
 }
 
-func NewService(repo *Repository, accounts accounts, checkins checkinDays, goals activeGoals) *Service {
+func NewService(repo Repository, accounts accounts, checkins checkinDays, goals activeGoals) *Service {
 	return &Service{
 		repo:     repo,
 		accounts: accounts,

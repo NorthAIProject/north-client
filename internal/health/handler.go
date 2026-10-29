@@ -230,14 +230,14 @@ func throttleAnonymous(cfg HandlerConfig, log *slog.Logger, next http.Handler) h
 	}
 	buckets := ratelimit.New(perMinute)
 
-	trusted := cfg.TrustedProxies
+	clientIP := cfg.TrustedProxies.IPExtractor()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Not RemoteAddr: behind an ingress that is the proxy, and every
 		// caller would then share one bucket that any one of them can empty.
-		addr := middleware.ClientIP(r, trusted)
+		addr := clientIP(r)
 
-		if !buckets.Allow(addr) {
+		if ok, _ := buckets.Allow(addr); !ok {
 			log.Warn("health ingest throttled before authentication", slog.String("client_ip", addr))
 			tooManyRequests(w)
 			return
@@ -266,7 +266,7 @@ func throttle(cfg HandlerConfig, log *slog.Logger, next http.Handler) http.Handl
 			return
 		}
 
-		if !buckets.Allow(user.ID.String()) {
+		if allowed, _ := buckets.Allow(user.ID.String()); !allowed {
 			log.Warn("health ingest throttled",
 				slog.String("remote", r.RemoteAddr),
 				slog.String("user_id", user.ID.String()))

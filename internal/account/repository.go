@@ -11,20 +11,22 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	pool *pgxpool.Pool
 	q    *accountdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, q: accountdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool, q: accountdb.New(pool)}
 }
 
 // StorageKeys lists every object the account owns in bucket storage.
 //
 // Called before the erasure, never after: the keys exist only on the rows the
 // erasure removes, and a bucket cannot be asked what belonged to whom.
-func (r *Repository) StorageKeys(ctx context.Context, userID uuid.UUID) ([]string, error) {
+func (r *PostgresRepository) StorageKeys(ctx context.Context, userID uuid.UUID) ([]string, error) {
 	keys, err := r.q.ListUserStorageKeys(ctx, userID)
 	return keys, apperr.Wrap(err, "list storage keys for erasure")
 }
@@ -38,7 +40,7 @@ func (r *Repository) StorageKeys(ctx context.Context, userID uuid.UUID) ([]strin
 //
 // Returns the id of the event row, so the caller can fill in what the storage
 // pass found once it has run.
-func (r *Repository) Erase(ctx context.Context, userID uuid.UUID, objects int) (eventID uuid.UUID, jobs int64, err error) {
+func (r *PostgresRepository) Erase(ctx context.Context, userID uuid.UUID, objects int) (eventID uuid.UUID, jobs int64, err error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return uuid.Nil, 0, apperr.Wrap(err, "begin account erasure")
@@ -82,7 +84,7 @@ func (r *Repository) Erase(ctx context.Context, userID uuid.UUID, objects int) (
 }
 
 // RecordEvent writes a standalone account event.
-func (r *Repository) RecordEvent(ctx context.Context, userID uuid.UUID, event string) error {
+func (r *PostgresRepository) RecordEvent(ctx context.Context, userID uuid.UUID, event string) error {
 	_, err := r.q.RecordAccountEvent(ctx, accountdb.RecordAccountEventParams{
 		UserID: userID,
 		Event:  event,
@@ -92,7 +94,7 @@ func (r *Repository) RecordEvent(ctx context.Context, userID uuid.UUID, event st
 
 // CloseErasure fills in what the storage pass found, after the account itself
 // has already gone.
-func (r *Repository) CloseErasure(ctx context.Context, eventID uuid.UUID, e Erasure) error {
+func (r *PostgresRepository) CloseErasure(ctx context.Context, eventID uuid.UUID, e Erasure) error {
 	detail, err := json.Marshal(map[string]any{
 		"storage_objects":  e.StorageObjects,
 		"storage_failures": e.StorageFailures,

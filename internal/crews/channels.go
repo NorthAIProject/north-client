@@ -9,13 +9,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
-	crewsdb "github.com/NorthAIProject/north-client/internal/crews/db"
-	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
@@ -53,17 +49,17 @@ func validChannel(ctx context.Context, rawName, topic string) (string, string, e
 
 // manager is the crew when actorID runs it; not found otherwise, like every
 // other owner/admin-only refusal.
-func (s *Service) manager(ctx context.Context, crewID, actorID uuid.UUID) (crewsdb.Crew, error) {
+func (s *Service) manager(ctx context.Context, crewID, actorID uuid.UUID) (Crew, error) {
 	c, err := s.get(ctx, crewID, actorID)
 	if err != nil {
-		return crewsdb.Crew{}, err
+		return Crew{}, err
 	}
 	role, err := s.role(ctx, c, actorID)
 	if err != nil {
-		return crewsdb.Crew{}, err
+		return Crew{}, err
 	}
 	if !role.CanManage() {
-		return crewsdb.Crew{}, apperr.ErrNotFound
+		return Crew{}, apperr.ErrNotFound
 	}
 	return c, nil
 }
@@ -77,25 +73,18 @@ func (s *Service) CreateChannel(ctx context.Context, crewID, actorID uuid.UUID, 
 	if err != nil {
 		return Channel{}, err
 	}
-	n, err := s.q.CountChannels(ctx, crewID)
+	n, err := s.repo.CountChannels(ctx, crewID)
 	if err != nil {
-		return Channel{}, apperr.Wrap(err, "count channels")
+		return Channel{}, err
 	}
 	if n >= crew.MaxChannels {
 		return Channel{}, apperr.FieldErrors{}.Add("name", i18n.T(ctx, "crews.err.channel-limit"))
 	}
-	var row crewsdb.CrewChannel
-	err = s.inTx(ctx, func(q *crewsdb.Queries, tx pgx.Tx) error {
-		var insErr error
-		if row, insErr = q.InsertChannel(ctx, crewsdb.InsertChannelParams{CrewID: crewID, Name: name, Topic: topic, CreatedBy: &actorID}); insErr != nil {
-			return insErr
-		}
-		return live.Notify(ctx, tx, live.Event{Type: live.EventChannels, CrewID: crewID})
-	})
+	ch, err := s.repo.CreateChannel(ctx, crewID, actorID, name, topic)
 	if err != nil {
 		return Channel{}, channelErr(ctx, err)
 	}
-	return toChannel(row), nil
+	return ch, nil
 }
 
 // UpdateChannel renames a text channel or changes its topic. #general keeps
@@ -115,18 +104,11 @@ func (s *Service) UpdateChannel(ctx context.Context, crewID, channelID, actorID 
 	if ch.IsDefault && name != ch.Name {
 		return Channel{}, apperr.FieldErrors{}.Add("name", i18n.T(ctx, "crews.err.channel-keep"))
 	}
-	var row crewsdb.CrewChannel
-	err = s.inTx(ctx, func(q *crewsdb.Queries, tx pgx.Tx) error {
-		var upErr error
-		if row, upErr = q.UpdateChannel(ctx, crewsdb.UpdateChannelParams{ID: channelID, Name: name, Topic: topic}); upErr != nil {
-			return upErr
-		}
-		return live.Notify(ctx, tx, live.Event{Type: live.EventChannels, CrewID: crewID})
-	})
+	updated, err := s.repo.UpdateChannel(ctx, crewID, channelID, name, topic)
 	if err != nil {
 		return Channel{}, channelErr(ctx, err)
 	}
-	return toChannel(row), nil
+	return updated, nil
 }
 
 // DeleteChannel removes a text channel and its messages. #general stays.
@@ -141,12 +123,7 @@ func (s *Service) DeleteChannel(ctx context.Context, crewID, channelID, actorID 
 	if ch.IsDefault {
 		return apperr.FieldErrors{}.Add("channel", i18n.T(ctx, "crews.err.channel-keep"))
 	}
-	return s.inTx(ctx, func(q *crewsdb.Queries, tx pgx.Tx) error {
-		if delErr := q.DeleteChannel(ctx, channelID); delErr != nil {
-			return apperr.Wrap(delErr, "delete channel")
-		}
-		return live.Notify(ctx, tx, live.Event{Type: live.EventChannels, CrewID: crewID})
-	})
+	return s.repo.DeleteChannel(ctx, crewID, channelID)
 }
 
 // SetNotify is a member's own say over which messages in this crew push
@@ -155,50 +132,26 @@ func (s *Service) SetNotify(ctx context.Context, crewID, userID uuid.UUID, notif
 	if notify != crew.NotifyAll && notify != crew.NotifyMentions && notify != crew.NotifyNone {
 		return apperr.FieldErrors{}.Add("notify", i18n.T(ctx, "crews.err.notify"))
 	}
-	n, err := s.q.SetNotify(ctx, crewsdb.SetNotifyParams{CrewID: crewID, UserID: userID, Notify: notify, MutedUntil: mutedUntil})
-	if err != nil {
-		return apperr.Wrap(err, "set notify")
-	}
-	if n == 0 {
-		return apperr.ErrNotFound
-	}
-	return nil
+	return s.repo.SetNotify(ctx, crewID, userID, notify, mutedUntil)
 }
 
 // textChannel is a text channel of crewID; #wins and other crews' channels
 // are not found.
-func (s *Service) textChannel(ctx context.Context, crewID, channelID uuid.UUID) (crewsdb.CrewChannel, error) {
-	ch, err := s.q.ChannelInCrew(ctx, crewsdb.ChannelInCrewParams{ID: channelID, CrewID: crewID})
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && ch.Kind != crew.ChannelText) {
-		return crewsdb.CrewChannel{}, apperr.ErrNotFound
-	}
+func (s *Service) textChannel(ctx context.Context, crewID, channelID uuid.UUID) (Channel, error) {
+	ch, err := s.repo.ChannelInCrew(ctx, crewID, channelID)
 	if err != nil {
-		return crewsdb.CrewChannel{}, apperr.Wrap(err, "channel")
+		return Channel{}, err
+	}
+	if ch.Kind != crew.ChannelText {
+		return Channel{}, apperr.ErrNotFound
 	}
 	return ch, nil
 }
 
-func (s *Service) inTx(ctx context.Context, fn func(*crewsdb.Queries, pgx.Tx) error) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return apperr.Wrap(err, "begin")
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err = fn(s.q.WithTx(tx), tx); err != nil {
-		return err
-	}
-	return apperr.Wrap(tx.Commit(ctx), "commit")
-}
-
 // channelErr turns a taken name into a field error.
 func channelErr(ctx context.Context, err error) error {
-	var pg *pgconn.PgError
-	if errors.As(err, &pg) && pg.Code == "23505" {
+	if errors.Is(err, errChannelNameTaken) {
 		return apperr.FieldErrors{}.Add("name", i18n.T(ctx, "crews.err.channel-taken"))
 	}
 	return apperr.Wrap(err, "save channel")
-}
-
-func toChannel(r crewsdb.CrewChannel) Channel {
-	return Channel{ID: r.ID, Kind: r.Kind, Name: r.Name, Topic: r.Topic, Position: int(r.Position), IsDefault: r.IsDefault}
 }

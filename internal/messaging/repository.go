@@ -28,13 +28,15 @@ type Link struct {
 	LastSeenAt *time.Time
 }
 
-type Repository struct {
+type PostgresRepository struct {
 	pool *pgxpool.Pool
 	q    *messagingdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, q: messagingdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool, q: messagingdb.New(pool)}
 }
 
 // ClaimUpdate resolves the sender and rejects a redelivery in one statement.
@@ -46,7 +48,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 //
 // updateID of 0 means the platform has no delivery counter, so the watermark
 // is skipped and this is a plain lookup with a touch.
-func (r *Repository) ClaimUpdate(ctx context.Context, platform, externalID string, updateID int64, accountID string) (Link, error) {
+func (r *PostgresRepository) ClaimUpdate(ctx context.Context, platform, externalID string, updateID int64, accountID string) (Link, error) {
 	if updateID == 0 {
 		return r.Get(ctx, platform, externalID)
 	}
@@ -64,7 +66,7 @@ func (r *Repository) ClaimUpdate(ctx context.Context, platform, externalID strin
 	return linkFromDB(row), nil
 }
 
-func (r *Repository) Get(ctx context.Context, platform, externalID string) (Link, error) {
+func (r *PostgresRepository) Get(ctx context.Context, platform, externalID string) (Link, error) {
 	row, err := r.q.GetMessagingLink(ctx, messagingdb.GetMessagingLinkParams{
 		Platform: platform, ExternalID: externalID,
 	})
@@ -77,7 +79,7 @@ func (r *Repository) Get(ctx context.Context, platform, externalID string) (Link
 	return linkFromDB(row), nil
 }
 
-func (r *Repository) ListByUser(ctx context.Context, userID uuid.UUID) ([]Link, error) {
+func (r *PostgresRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]Link, error) {
 	rows, err := r.q.ListMessagingLinksByUser(ctx, userID)
 	if err != nil {
 		return nil, apperr.Wrap(err, "list messaging links")
@@ -97,7 +99,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID uuid.UUID) ([]Link, 
 // silently moving the link — would let anyone who can message the bot take
 // over a chat that is not theirs. This is linkGoogleIdentity's rule, and it is
 // the same rule for the same reason.
-func (r *Repository) Insert(ctx context.Context, userID uuid.UUID, platform, externalID string) (Link, error) {
+func (r *PostgresRepository) Insert(ctx context.Context, userID uuid.UUID, platform, externalID string) (Link, error) {
 	row, err := r.q.InsertMessagingLink(ctx, messagingdb.InsertMessagingLinkParams{
 		UserID: userID, Platform: platform, ExternalID: externalID,
 	})
@@ -122,7 +124,7 @@ func (r *Repository) Insert(ctx context.Context, userID uuid.UUID, platform, ext
 
 // Delete unlinks a platform from an account. Reports whether anything was
 // linked, so a settings page can tell "disconnected" from "was not connected".
-func (r *Repository) Delete(ctx context.Context, userID uuid.UUID, platform string) (bool, error) {
+func (r *PostgresRepository) Delete(ctx context.Context, userID uuid.UUID, platform string) (bool, error) {
 	rows, err := r.q.DeleteMessagingLink(ctx, messagingdb.DeleteMessagingLinkParams{
 		UserID: userID, Platform: platform,
 	})
@@ -136,7 +138,7 @@ func (r *Repository) Delete(ctx context.Context, userID uuid.UUID, platform stri
 // person and platform so only one code is ever live.
 //
 // The plaintext never reaches here.
-func (r *Repository) InsertCode(ctx context.Context, codeHash []byte, userID uuid.UUID, platform string, expiresAt time.Time) error {
+func (r *PostgresRepository) InsertCode(ctx context.Context, codeHash []byte, userID uuid.UUID, platform string, expiresAt time.Time) error {
 	if err := r.q.DeleteMessagingLinkCodesForUser(ctx, messagingdb.DeleteMessagingLinkCodesForUserParams{
 		UserID: userID, Platform: platform,
 	}); err != nil {
@@ -155,7 +157,7 @@ func (r *Repository) InsertCode(ctx context.Context, codeHash []byte, userID uui
 // Expiry and single use are enforced in the statement, so two messages racing
 // with the same code produce one winner. The error is never wrapped with the
 // hash: an error string is where a credential-shaped value ends up in a log.
-func (r *Repository) RedeemCode(ctx context.Context, codeHash []byte, platform string) (uuid.UUID, error) {
+func (r *PostgresRepository) RedeemCode(ctx context.Context, codeHash []byte, platform string) (uuid.UUID, error) {
 	userID, err := r.q.RedeemMessagingLinkCode(ctx, messagingdb.RedeemMessagingLinkCodeParams{
 		CodeHash: codeHash, Platform: platform,
 	})
@@ -170,7 +172,7 @@ func (r *Repository) RedeemCode(ctx context.Context, codeHash []byte, platform s
 
 // DeleteExpiredCodes clears codes nobody ever sent. Spent codes stay; their
 // tombstone is what lets a replay be recognised rather than merely missed.
-func (r *Repository) DeleteExpiredCodes(ctx context.Context, before time.Time) error {
+func (r *PostgresRepository) DeleteExpiredCodes(ctx context.Context, before time.Time) error {
 	if err := r.q.DeleteExpiredMessagingLinkCodes(ctx, before); err != nil {
 		return apperr.Wrap(err, "delete expired messaging link codes")
 	}
@@ -207,7 +209,7 @@ type OutboundRef struct {
 	CreatedAt  time.Time
 }
 
-func (r *Repository) SaveOutboundRef(ctx context.Context, ref OutboundRef) error {
+func (r *PostgresRepository) SaveOutboundRef(ctx context.Context, ref OutboundRef) error {
 	if r.pool == nil {
 		return nil
 	}
@@ -221,7 +223,7 @@ DO UPDATE SET message_id = EXCLUDED.message_id, created_at = now();
 	return err
 }
 
-func (r *Repository) GetOutboundRef(ctx context.Context, userID uuid.UUID, platform, kind, dedupeKey string) (OutboundRef, error) {
+func (r *PostgresRepository) GetOutboundRef(ctx context.Context, userID uuid.UUID, platform, kind, dedupeKey string) (OutboundRef, error) {
 	if r.pool == nil {
 		return OutboundRef{}, apperr.ErrNotFound
 	}
@@ -242,7 +244,7 @@ WHERE user_id = $1 AND platform = $2 AND kind = $3 AND dedupe_key = $4;
 	return out, nil
 }
 
-func (r *Repository) DeleteOutboundRef(ctx context.Context, userID uuid.UUID, platform, kind, dedupeKey string) error {
+func (r *PostgresRepository) DeleteOutboundRef(ctx context.Context, userID uuid.UUID, platform, kind, dedupeKey string) error {
 	if r.pool == nil {
 		return nil
 	}

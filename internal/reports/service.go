@@ -34,7 +34,7 @@ type Users interface {
 }
 
 type Service struct {
-	repo      *Repository
+	repo      Repository
 	users     Users
 	queue     Enqueuer
 	client    Generator
@@ -47,6 +47,23 @@ type Service struct {
 	chats     Chats
 	today     *TodayContext
 	focus     FocusSource
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps reports.
+type Repository interface {
+	Create(ctx context.Context, userID uuid.UUID, period Period, kind Kind) (Report, error)
+	Get(ctx context.Context, id, userID uuid.UUID) (Report, error)
+	ActiveForWeek(ctx context.Context, userID uuid.UUID, kind Kind, start time.Time) (Report, error)
+	List(ctx context.Context, userID uuid.UUID, kind Kind, includeArchived bool, limit int) ([]Report, error)
+	Archive(ctx context.Context, id, userID uuid.UUID) (Report, error)
+	MarkPending(ctx context.Context, id, userID uuid.UUID) (Report, error)
+	SaveGenerated(ctx context.Context, id, userID uuid.UUID, body string) (Report, error)
+	MarkFailed(ctx context.Context, id, userID uuid.UUID, reason string) (Report, error)
+	LatestReady(ctx context.Context, userID uuid.UUID, kind Kind) (Report, error)
+	SetHelpful(ctx context.Context, id, userID uuid.UUID, helpful *bool) (Report, error)
 }
 
 // Chats posts the finished briefing into the person's latest chat as a
@@ -69,7 +86,7 @@ type Notifier interface {
 }
 
 type Options struct {
-	Repository *Repository
+	Repository Repository
 	Users      Users
 	Queue      Enqueuer
 	Client     Generator

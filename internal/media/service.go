@@ -116,7 +116,7 @@ var imageExtensions = map[string]bool{
 }
 
 type Service struct {
-	repo     *Repository
+	repo     Repository
 	storage  Storage
 	queue    *jobs.Queue
 	registry *ai.Registry
@@ -127,7 +127,7 @@ type Service struct {
 }
 
 type Options struct {
-	Repository *Repository
+	Repository Repository
 	Storage    Storage
 	Queue      *jobs.Queue
 	Registry   *ai.Registry
@@ -148,6 +148,27 @@ type Options struct {
 func (s *Service) WithOnReady(fn func(ctx context.Context, userID, analysisID uuid.UUID)) *Service {
 	s.onReady = fn
 	return s
+}
+
+// Repository is the persistence Service needs. Service names it rather than
+// the Postgres type so the database stays a detail of the composition root:
+// NewRepository is what the process wires, and a test can hand Service
+// anything that keeps uploaded media and their form analyses.
+type Repository interface {
+	CreateMedia(ctx context.Context, m NewMedia) (Media, error)
+	CountByKind(ctx context.Context, userID uuid.UUID, kind string) (int, error)
+	LatestCreatedAt(ctx context.Context, userID uuid.UUID, kind string) (time.Time, bool, error)
+	GetMedia(ctx context.Context, id, userID uuid.UUID) (Media, error)
+	DeleteMedia(ctx context.Context, id, userID uuid.UUID) (string, error)
+	LatestOfKinds(ctx context.Context, userID uuid.UUID, kinds []string, name string) (Media, error)
+	GetMediaByID(ctx context.Context, id uuid.UUID) (Media, error)
+	CreateAnalysis(ctx context.Context, mediaID, userID uuid.UUID) (analysis.Analysis, error)
+	GetAnalysis(ctx context.Context, id, userID uuid.UUID) (analysis.Analysis, error)
+	GetAnalysisByMedia(ctx context.Context, mediaID uuid.UUID) (analysis.Analysis, error)
+	ListAnalyses(ctx context.Context, userID uuid.UUID, limit int) ([]analysis.Analysis, error)
+	StartAnalysis(ctx context.Context, id uuid.UUID) error
+	CompleteAnalysis(ctx context.Context, id uuid.UUID, result analysis.FormAnalysis, model, provider string) error
+	FailAnalysis(ctx context.Context, id uuid.UUID, reason string) error
 }
 
 func NewService(opts Options) *Service {

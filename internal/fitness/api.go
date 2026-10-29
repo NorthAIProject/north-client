@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
@@ -28,28 +28,28 @@ type API struct {
 	hub     *Service
 }
 
-// NewAPI builds the routes. Routes go behind auth.RequireBearer; PublicRoutes
+// NewAPI builds the routes. Register goes behind auth.Bearer; RegisterPublic
 // is the OAuth callback, which Strava calls with no session at all.
 func NewAPI(svc *strava.Service, baseURL string) *API {
 	return &API{strava: svc, baseURL: baseURL}
 }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/fitness/strava", a.status)
-	r.Post("/fitness/strava/connect", a.connect)
-	r.Post("/fitness/strava/sync", a.sync)
-	r.Delete("/fitness/strava", a.disconnect)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/fitness/strava", a.status)
+	g.POST("/fitness/strava/connect", a.connect)
+	g.POST("/fitness/strava/sync", a.sync)
+	g.DELETE("/fitness/strava", a.disconnect)
 
 	// The web app's pages (hub_api.go).
-	r.Get("/fitness/hub", a.hubView)
-	r.Get("/fitness/activities", a.activities)
-	r.Get("/fitness/activities/sessions", a.activitySessions)
-	r.Post("/fitness/strava/connect/web", a.connectWeb)
-	r.Post("/fitness/strava/connect/web/finish", a.finishWeb)
+	g.GET("/fitness/hub", a.hubView)
+	g.GET("/fitness/activities", a.activities)
+	g.GET("/fitness/activities/sessions", a.activitySessions)
+	g.POST("/fitness/strava/connect/web", a.connectWeb)
+	g.POST("/fitness/strava/connect/web/finish", a.finishWeb)
 }
 
-func (a *API) PublicRoutes(r chi.Router) {
-	r.Get("/fitness/strava/callback", a.callback)
+func (a *API) RegisterPublic(g *echo.Group) {
+	g.GET("/fitness/strava/callback", a.callback)
 }
 
 type StravaStatus struct {
@@ -74,62 +74,62 @@ type StravaConnect struct {
 	AuthorizeURL string `json:"authorizeUrl"`
 }
 
-func (a *API) status(w http.ResponseWriter, r *http.Request) {
-	s, err := a.strava.Status(r.Context(), auth.MustUser(r.Context()).ID)
+func (a *API) status(c *echo.Context) error {
+	ctx := c.Request().Context()
+	s, err := a.strava.Status(ctx, auth.MustUser(ctx).ID)
 	if err != nil {
-		httpx.Error(w, err, "Strava's status could not be loaded.")
-		return
+		return httpx.Fail(err, "Strava's status could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, StravaStatus{
+	return c.JSON(http.StatusOK, StravaStatus{
 		Configured: s.Configured, Connected: s.Connected,
 		LastSyncedAt: s.LastSyncedAt, LastSyncAttemptedAt: s.LastSyncAttemptedAt,
 		LastSyncError: s.LastSyncError, SyncPending: s.SyncPending,
 	})
 }
 
-func (a *API) connect(w http.ResponseWriter, r *http.Request) {
-	consent, err := a.strava.BeginNativeConnect(r.Context(), auth.MustUser(r.Context()).ID, a.baseURL)
+func (a *API) connect(c *echo.Context) error {
+	ctx := c.Request().Context()
+	consent, err := a.strava.BeginNativeConnect(ctx, auth.MustUser(ctx).ID, a.baseURL)
 	if err != nil {
-		httpx.Error(w, err, "Strava is not available right now.")
-		return
+		return httpx.Fail(err, "Strava is not available right now.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, StravaConnect{AuthorizeURL: consent})
+	return c.JSON(http.StatusOK, StravaConnect{AuthorizeURL: consent})
 }
 
-func (a *API) sync(w http.ResponseWriter, r *http.Request) {
-	if err := a.strava.RequestSync(r.Context(), auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "Connect Strava first.")
-		return
+func (a *API) sync(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := a.strava.RequestSync(ctx, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "Connect Strava first.")
 	}
-	w.WriteHeader(http.StatusAccepted)
+	return c.NoContent(http.StatusAccepted)
 }
 
-func (a *API) disconnect(w http.ResponseWriter, r *http.Request) {
-	if err := a.strava.Disconnect(r.Context(), auth.MustUser(r.Context()).ID); err != nil {
-		httpx.Error(w, err, "Strava could not be disconnected.")
-		return
+func (a *API) disconnect(c *echo.Context) error {
+	ctx := c.Request().Context()
+	if err := a.strava.Disconnect(ctx, auth.MustUser(ctx).ID); err != nil {
+		return httpx.Fail(err, "Strava could not be disconnected.")
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // callback finishes a connection begun by connect and hands the result back to
 // the app. It always redirects to the app, never renders: the sign-in sheet
 // shows nothing of its own, so the app is the only place to say what happened.
-func (a *API) callback(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+func (a *API) callback(c *echo.Context) error {
+	ctx := c.Request().Context()
 	result := "connected"
 	switch {
-	case q.Get("error") != "":
+	case c.QueryParam("error") != "":
 		result = "cancelled"
 	default:
-		err := a.strava.FinishNativeConnect(r.Context(), q.Get("state"), q.Get("code"))
+		err := a.strava.FinishNativeConnect(ctx, c.QueryParam("state"), c.QueryParam("code"))
 		switch {
 		case apperr.Is(err, apperr.ErrNotFound):
 			result = "expired"
 		case err != nil:
-			middleware.FromContext(r.Context()).Error("native strava connect failed", slog.Any("error", err))
+			middleware.FromContext(ctx).Error("native strava connect failed", slog.Any("error", err))
 			result = "failed"
 		}
 	}
-	http.Redirect(w, r, NativeReturnURL+"?"+url.Values{"result": {result}}.Encode(), http.StatusFound)
+	return c.Redirect(http.StatusFound, NativeReturnURL+"?"+url.Values{"result": {result}}.Encode())
 }

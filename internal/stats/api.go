@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
@@ -23,12 +23,12 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/stats/sleep", a.sleep)
-	r.Get("/stats/cardio", a.cardio)
-	r.Get("/stats/cardio/kinds/{name}", a.cardioKind)
-	r.Get("/stats/eating", a.eating)
-	r.Get("/stats/patterns", a.patterns)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/stats/sleep", a.sleep)
+	g.GET("/stats/cardio", a.cardio)
+	g.GET("/stats/cardio/kinds/:name", a.cardioKind)
+	g.GET("/stats/eating", a.eating)
+	g.GET("/stats/patterns", a.patterns)
 }
 
 type StatsDayValue struct {
@@ -199,47 +199,47 @@ type StatsPatterns struct {
 	Findings []StatsFinding `json:"findings"`
 }
 
-func (a *API) window(r *http.Request) (users.User, timerange.Range) {
-	user := auth.MustUser(r.Context())
-	return user, timerange.Parse(r.URL.Query().Get("range"), user.Location())
+func (a *API) window(c *echo.Context) (users.User, timerange.Range) {
+	user := auth.MustUser(c.Request().Context())
+	return user, timerange.Parse(c.QueryParam("range"), user.Location())
 }
 
-func (a *API) sleep(w http.ResponseWriter, r *http.Request) {
-	user, rg := a.window(r)
-	st, err := a.svc.Sleep(r.Context(), user, rg)
+func (a *API) sleep(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := a.window(c)
+	st, err := a.svc.Sleep(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, "Sleep stats could not be loaded.")
-		return
+		return httpx.Fail(err, "Sleep stats could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectSleep(rg.Key, st))
+	return c.JSON(http.StatusOK, ProjectSleep(rg.Key, st))
 }
 
-func (a *API) cardio(w http.ResponseWriter, r *http.Request) {
-	user, rg := a.window(r)
-	st, err := a.svc.Cardio(r.Context(), user, rg)
+func (a *API) cardio(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := a.window(c)
+	st, err := a.svc.Cardio(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, "Cardio stats could not be loaded.")
-		return
+		return httpx.Fail(err, "Cardio stats could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectCardio(rg.Key, st))
+	return c.JSON(http.StatusOK, ProjectCardio(rg.Key, st))
 }
 
-func (a *API) cardioKind(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
+func (a *API) cardioKind(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
 	// Names have spaces ("Indoor running"); a router handed the raw path
 	// would leave them escaped.
-	name := chi.URLParam(r, "name")
+	name := c.Param("name")
 	if unescaped, err := url.PathUnescape(name); err == nil {
 		name = unescaped
 	}
-	st, err := a.svc.CardioKind(r.Context(), user, name, time.Now())
+	st, err := a.svc.CardioKind(ctx, user, name, time.Now())
 	if err != nil {
-		httpx.Error(w, err, "That activity could not be loaded.")
-		return
+		return httpx.Fail(err, "That activity could not be loaded.")
 	}
 	// Bests' labels read in the caller's language; the name does not, since
 	// it is what the client sends back to ask for this kind again.
-	httpx.WriteJSON(w, http.StatusOK, ProjectCardioKind(st.In(i18n.LocaleFrom(r.Context()))))
+	return c.JSON(http.StatusOK, ProjectCardioKind(st.In(i18n.LocaleFrom(ctx))))
 }
 
 // ProjectCardioKind is one activity type as the API returns it.
@@ -257,26 +257,26 @@ func ProjectCardioKind(k stat.KindStats) StatsCardioKind {
 	return out
 }
 
-func (a *API) eating(w http.ResponseWriter, r *http.Request) {
-	user, rg := a.window(r)
-	st, err := a.svc.Eating(r.Context(), user, rg)
+func (a *API) eating(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := a.window(c)
+	st, err := a.svc.Eating(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, "Eating stats could not be loaded.")
-		return
+		return httpx.Fail(err, "Eating stats could not be loaded.")
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectEating(rg.Key, st))
+	return c.JSON(http.StatusOK, ProjectEating(rg.Key, st))
 }
 
-func (a *API) patterns(w http.ResponseWriter, r *http.Request) {
-	user, rg := a.window(r)
-	found, days, err := a.svc.Patterns(r.Context(), user, rg)
+func (a *API) patterns(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user, rg := a.window(c)
+	found, days, err := a.svc.Patterns(ctx, user, rg)
 	if err != nil {
-		httpx.Error(w, err, "Patterns could not be loaded.")
-		return
+		return httpx.Fail(err, "Patterns could not be loaded.")
 	}
 	// Worded for the person here, at the edge: Patterns stays English because
 	// the coach reads the same findings.
-	httpx.WriteJSON(w, http.StatusOK, ProjectPatterns(rg.Key, days, stat.Localize(i18n.LocaleFrom(r.Context()), found)))
+	return c.JSON(http.StatusOK, ProjectPatterns(rg.Key, days, stat.Localize(i18n.LocaleFrom(ctx), found)))
 }
 
 func days(values []stat.DayValue) []StatsDayValue {

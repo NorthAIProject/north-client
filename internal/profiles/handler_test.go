@@ -153,7 +153,7 @@ func TestProfilePageAwardsStrip(t *testing.T) {
 	w := newWorld(t)
 	leo, ana := person(t, w.pool, "leo-st@n.test", "Leo"), person(t, w.pool, "ana-st@n.test", "Ana")
 	w.handle(t, leo, "leost")
-	aw := awards.NewService(w.pool)
+	aw := awards.NewService(awards.NewRepository(w.pool))
 	at := time.Now().Add(-time.Hour)
 	aw.Grant(context.Background(), leo.ID, at, "workouts_1")
 	aw.Grant(context.Background(), leo.ID, at, "water_week") // private

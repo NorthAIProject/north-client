@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/bodymap"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -29,14 +30,14 @@ type API struct {
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/lifts/stats", a.stats)
-	r.Get("/lifts/last", a.last)
-	r.Get("/lifts/today", a.today)
-	r.Post("/lifts/sets", a.log)
-	r.Delete("/lifts/sets/{setID}", a.undo)
-	r.Get("/lifts/sessions/{sessionID}/recap", a.recap)
-	r.Get("/body/map", a.bodyMap)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/lifts/stats", a.stats)
+	g.GET("/lifts/last", a.last)
+	g.GET("/lifts/today", a.today)
+	g.POST("/lifts/sets", a.log)
+	g.DELETE("/lifts/sets/:setID", a.undo)
+	g.GET("/lifts/sessions/:sessionID/recap", a.recap)
+	g.GET("/body/map", a.bodyMap)
 }
 
 // WorkoutCardView is a finished workout for someone else to read. It carries
@@ -104,24 +105,23 @@ type BodyMapMuscle struct {
 }
 
 // bodyMap is GET /body/map?days=7: which regions recent training heated.
-func (a *API) bodyMap(w http.ResponseWriter, r *http.Request) {
+func (a *API) bodyMap(c *echo.Context) error {
+	ctx := c.Request().Context()
 	days := 7
-	if raw := r.URL.Query().Get("days"); raw != "" {
+	if raw := c.QueryParam("days"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil {
-			msg := i18n.T(r.Context(), "lifts.api.days")
-			httpx.Error(w, apperr.FieldErrors{}.Add("days", msg), msg)
-			return
+			msg := i18n.T(ctx, "lifts.api.days")
+			return httpx.Fail(apperr.FieldErrors{}.Add("days", msg), msg)
 		}
 		days = n
 	}
-	user := auth.MustUser(r.Context())
-	m, err := a.svc.BodyMap(r.Context(), user, days)
+	user := auth.MustUser(ctx)
+	m, err := a.svc.BodyMap(ctx, user, days)
 	if err != nil {
-		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "lifts.api.bodymap"))
-		return
+		return httpx.Fail(localize(ctx, err), i18n.T(ctx, "lifts.api.bodymap"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, NewBodyMapView(m, user.Location()))
+	return c.JSON(http.StatusOK, NewBodyMapView(m, user.Location()))
 }
 
 // NewBodyMapView renders a body map with dates in loc.
@@ -140,9 +140,10 @@ func NewBodyMapView(m bodymap.Map, loc *time.Location) BodyMapView {
 	return out
 }
 
-// UploadRoutes go in the API's upload group, whose body cap fits a file.
-func (a *API) UploadRoutes(r chi.Router) {
-	r.Post("/lifts/import/hevy", a.importHevy)
+// RegisterUploads registers on the API's upload group, whose body cap fits a
+// file.
+func (a *API) RegisterUploads(g *echo.Group) {
+	g.POST("/lifts/import/hevy", a.importHevy)
 }
 
 // LiftImportView is what an import did.
@@ -155,34 +156,33 @@ type LiftImportView struct {
 }
 
 // importHevy takes a Hevy workout export as the multipart field "file".
-func (a *API) importHevy(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, MaxImportBytes+(1<<20))
+func (a *API) importHevy(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
+	r.Body = http.MaxBytesReader(c.Response(), r.Body, MaxImportBytes+(1<<20))
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
-		msg := i18n.T(r.Context(), "lifts.err.upload")
+		msg := i18n.T(ctx, "lifts.err.upload")
 		var tooBig *http.MaxBytesError
 		if apperr.As(err, &tooBig) {
-			msg = i18n.T(r.Context(), "lifts.err.toolarge")
+			msg = i18n.T(ctx, "lifts.err.toolarge")
 		}
-		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
-		return
+		return httpx.Fail(apperr.FieldErrors{}.Add("file", msg), msg)
 	}
 	defer func() { _ = r.MultipartForm.RemoveAll() }()
 	data, msgKey := formFile(r)
 	if msgKey != "" {
-		msg := i18n.T(r.Context(), msgKey)
-		httpx.Error(w, apperr.FieldErrors{}.Add("file", msg), msg)
-		return
+		msg := i18n.T(ctx, msgKey)
+		return httpx.Fail(apperr.FieldErrors{}.Add("file", msg), msg)
 	}
-	res, err := a.svc.ImportHevy(r.Context(), auth.MustUser(r.Context()), bytes.NewReader(data))
+	res, err := a.svc.ImportHevy(ctx, auth.MustUser(ctx), bytes.NewReader(data))
 	if err != nil {
-		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "lifts.api.import"))
-		return
+		return httpx.Fail(localize(ctx, err), i18n.T(ctx, "lifts.api.import"))
 	}
 	unmatched := res.Unmatched
 	if unmatched == nil {
 		unmatched = []string{}
 	}
-	httpx.WriteJSON(w, http.StatusOK, LiftImportView{
+	return c.JSON(http.StatusOK, LiftImportView{
 		Workouts: res.Workouts, Duplicates: res.Duplicates, Sets: res.Sets, Skipped: res.Skipped, Unmatched: unmatched,
 	})
 }
@@ -302,20 +302,19 @@ type LiftRecapView struct {
 	Exercises       []LiftRecapExercise `json:"exercises"`
 }
 
-func (a *API) recap(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "sessionID"))
+func (a *API) recap(c *echo.Context) error {
+	ctx := c.Request().Context()
+	id, err := uuid.Parse(c.Param("sessionID"))
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "lifts.api.notfound"))
-		return
+		return httpx.Fail(apperr.ErrNotFound, i18n.T(ctx, "lifts.api.notfound"))
 	}
-	recap, err := a.svc.Recap(r.Context(), auth.MustUser(r.Context()), id)
+	recap, err := a.svc.Recap(ctx, auth.MustUser(ctx), id)
 	if err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.recap"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "lifts.api.recap"))
 	}
 	view := ProjectRecap(recap)
-	view.Sentence = recap.SentenceIn(i18n.LocaleFrom(r.Context()))
-	httpx.WriteJSON(w, http.StatusOK, view)
+	view.Sentence = recap.SentenceIn(i18n.LocaleFrom(ctx))
+	return c.JSON(http.StatusOK, view)
 }
 
 // ProjectRecap is the wire shape of a recap.
@@ -337,24 +336,24 @@ func ProjectRecap(rc lift.Recap) LiftRecapView {
 	return out
 }
 
-func (a *API) stats(w http.ResponseWriter, r *http.Request) {
-	user := auth.MustUser(r.Context())
-	st, err := a.svc.Stats(r.Context(), user, timerange.Parse(r.URL.Query().Get("range"), user.Location()))
+func (a *API) stats(c *echo.Context) error {
+	ctx := c.Request().Context()
+	user := auth.MustUser(ctx)
+	st, err := a.svc.Stats(ctx, user, timerange.Parse(c.QueryParam("range"), user.Location()))
 	if err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.stats"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "lifts.api.stats"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectStats(st))
+	return c.JSON(http.StatusOK, ProjectStats(st))
 }
 
-func (a *API) last(w http.ResponseWriter, r *http.Request) {
-	keys := r.URL.Query()["exercise"]
-	last, err := a.svc.Last(r.Context(), auth.MustUser(r.Context()), keys)
+func (a *API) last(c *echo.Context) error {
+	ctx := c.Request().Context()
+	keys := c.QueryParams()["exercise"]
+	last, err := a.svc.Last(ctx, auth.MustUser(ctx), keys)
 	if err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.last"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "lifts.api.last"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, ProjectLast(keys, last))
+	return c.JSON(http.StatusOK, ProjectLast(keys, last))
 }
 
 // LiftTodayView is the web's set logger: the sets logged since local
@@ -365,11 +364,11 @@ type LiftTodayView struct {
 	Recent []string      `json:"recent"`
 }
 
-func (a *API) today(w http.ResponseWriter, r *http.Request) {
-	sets, recent, err := a.svc.Today(r.Context(), auth.MustUser(r.Context()))
+func (a *API) today(c *echo.Context) error {
+	ctx := c.Request().Context()
+	sets, recent, err := a.svc.Today(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "lifts.err.generic"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "lifts.err.generic"))
 	}
 	out := LiftTodayView{Sets: make([]LiftSetView, 0, len(sets)), Recent: recent}
 	if out.Recent == nil {
@@ -378,55 +377,51 @@ func (a *API) today(w http.ResponseWriter, r *http.Request) {
 	for _, s := range sets {
 		out.Sets = append(out.Sets, ProjectSet(s))
 	}
-	httpx.WriteJSON(w, http.StatusOK, out)
+	return c.JSON(http.StatusOK, out)
 }
 
-func (a *API) log(w http.ResponseWriter, r *http.Request) {
+func (a *API) log(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req LiftSetRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 4 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.body"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 4 << 10}, i18n.T(ctx, "lifts.api.body")); err != nil {
+		return err
 	}
-	user := auth.MustUser(r.Context())
+	user := auth.MustUser(ctx)
 	// No set number is the web form's set: the server matches the name to
 	// the catalogue and numbers it as the next set of that exercise today,
 	// as the web handler always has.
 	if req.SetNumber == 0 && strings.TrimSpace(req.ExerciseName) != "" {
 		req.ExerciseName = strings.TrimSpace(req.ExerciseName)
 		if req.ExerciseSlug == "" {
-			slug, err := a.svc.MatchExercise(r.Context(), req.ExerciseName)
+			slug, err := a.svc.MatchExercise(ctx, req.ExerciseName)
 			if err != nil {
-				httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.log"))
-				return
+				return httpx.Fail(err, i18n.T(ctx, "lifts.api.log"))
 			}
 			req.ExerciseSlug = slug
 		}
-		n, err := a.svc.NextSetNumber(r.Context(), user, req.ExerciseSlug, req.ExerciseName)
+		n, err := a.svc.NextSetNumber(ctx, user, req.ExerciseSlug, req.ExerciseName)
 		if err != nil {
-			httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.log"))
-			return
+			return httpx.Fail(err, i18n.T(ctx, "lifts.api.log"))
 		}
 		req.SetNumber = n
 	}
-	set, err := a.svc.Log(r.Context(), user, LogInput(req))
+	set, err := a.svc.Log(ctx, user, LogInput(req))
 	if err != nil {
-		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "lifts.api.log"))
-		return
+		return httpx.Fail(localize(ctx, err), i18n.T(ctx, "lifts.api.log"))
 	}
-	httpx.WriteJSON(w, http.StatusCreated, ProjectSet(set))
+	return c.JSON(http.StatusCreated, ProjectSet(set))
 }
 
-func (a *API) undo(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "setID"))
+func (a *API) undo(c *echo.Context) error {
+	ctx := c.Request().Context()
+	id, err := uuid.Parse(c.Param("setID"))
 	if err != nil {
-		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "lifts.api.nosuch"))
-		return
+		return httpx.Fail(apperr.ErrNotFound, i18n.T(ctx, "lifts.api.nosuch"))
 	}
-	if err := a.svc.Undo(r.Context(), auth.MustUser(r.Context()), id); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "lifts.api.remove"))
-		return
+	if err := a.svc.Undo(ctx, auth.MustUser(ctx), id); err != nil {
+		return httpx.Fail(err, i18n.T(ctx, "lifts.api.remove"))
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.NoContent(http.StatusNoContent)
 }
 
 func ProjectSet(s Set) LiftSetView {

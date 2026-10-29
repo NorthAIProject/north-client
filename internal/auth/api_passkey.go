@@ -5,6 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labstack/echo/v5"
+
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
@@ -44,106 +47,102 @@ type PasskeyFinishRequest struct {
 	Credential  json.RawMessage `json:"credential"`
 }
 
-func (a *API) passkeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
+func (a *API) passkeyRegisterBegin(c *echo.Context) error {
+	ctx := c.Request().Context()
 	if !a.service.PasskeyEnabled() {
-		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "auth.api.passkeys"))
-		return
+		return httpx.Fail(apperr.ErrNotFound, i18n.T(ctx, "auth.api.passkeys"))
 	}
 	var req PasskeyRegisterBeginRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: maxCeremonyBytes}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.passkey"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: maxCeremonyBytes}, i18n.T(ctx, "auth.api.body.passkey")); err != nil {
+		return err
 	}
-	ceremony, err := a.service.PasskeyRegisterBegin(r.Context(), PasskeyRegisterBeginInput(req))
+	ceremony, err := a.service.PasskeyRegisterBegin(ctx, PasskeyRegisterBeginInput(req))
 	if err != nil {
-		writeAPIPasskeyError(w, r, err)
-		return
+		return apiPasskeyError(c, err)
 	}
-	httpx.WriteJSON(w, http.StatusOK, PasskeyCeremonyResponse(ceremony))
+	return c.JSON(http.StatusOK, PasskeyCeremonyResponse(ceremony))
 }
 
-func (a *API) passkeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
+func (a *API) passkeyRegisterFinish(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	if !a.service.PasskeyEnabled() {
-		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "auth.api.passkeys"))
-		return
+		return httpx.Fail(apperr.ErrNotFound, i18n.T(ctx, "auth.api.passkeys"))
 	}
 	var req PasskeyFinishRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: maxCeremonyBytes}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.credential"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: maxCeremonyBytes}, i18n.T(ctx, "auth.api.body.credential")); err != nil {
+		return err
 	}
-	user, token, err := a.service.PasskeyRegisterFinish(r.Context(), PasskeyRegisterFinishInput(req), a.mw.RequestMetadata(r))
+	user, token, err := a.service.PasskeyRegisterFinish(ctx, PasskeyRegisterFinishInput(req), a.mw.RequestMetadata(r))
 	if err != nil {
-		writeAPIPasskeyError(w, r, err)
-		return
+		return apiPasskeyError(c, err)
 	}
-	a.writeSession(w, r, http.StatusCreated, user.ID.String(), token)
+	return a.writeSession(c, http.StatusCreated, user.ID.String(), token)
 }
 
-func (a *API) passkeyLoginBegin(w http.ResponseWriter, r *http.Request) {
+func (a *API) passkeyLoginBegin(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	if !a.service.PasskeyEnabled() {
-		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "auth.api.passkeys"))
-		return
+		return httpx.Fail(apperr.ErrNotFound, i18n.T(ctx, "auth.api.passkeys"))
 	}
 	var req PasskeyLoginBeginRequest
 	// An empty body is a discoverable login.
 	if r.ContentLength != 0 {
-		if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: maxCeremonyBytes}); err != nil {
-			httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.passkey"))
-			return
+		if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: maxCeremonyBytes}, i18n.T(ctx, "auth.api.body.passkey")); err != nil {
+			return err
 		}
 	}
-	ceremony, err := a.service.PasskeyLoginBegin(r.Context(), PasskeyLoginBeginInput(req))
+	ceremony, err := a.service.PasskeyLoginBegin(ctx, PasskeyLoginBeginInput(req))
 	if err != nil {
-		writeAPIPasskeyError(w, r, err)
-		return
+		return apiPasskeyError(c, err)
 	}
-	httpx.WriteJSON(w, http.StatusOK, PasskeyCeremonyResponse(ceremony))
+	return c.JSON(http.StatusOK, PasskeyCeremonyResponse(ceremony))
 }
 
-func (a *API) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
+func (a *API) passkeyLoginFinish(c *echo.Context) error {
+	r := c.Request()
+	ctx := r.Context()
 	if !a.service.PasskeyEnabled() {
-		httpx.Error(w, apperr.ErrNotFound, i18n.T(r.Context(), "auth.api.passkeys"))
-		return
+		return httpx.Fail(apperr.ErrNotFound, i18n.T(ctx, "auth.api.passkeys"))
 	}
 	var req PasskeyFinishRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: maxCeremonyBytes}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.body.credential"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: maxCeremonyBytes}, i18n.T(ctx, "auth.api.body.credential")); err != nil {
+		return err
 	}
-	user, token, err := a.service.PasskeyLoginFinish(r.Context(), PasskeyLoginFinishInput(req), a.mw.RequestMetadata(r))
+	user, token, err := a.service.PasskeyLoginFinish(ctx, PasskeyLoginFinishInput(req), a.mw.RequestMetadata(r))
 	if err != nil {
-		writeAPIPasskeyError(w, r, err)
-		return
+		return apiPasskeyError(c, err)
 	}
-	a.writeSession(w, r, http.StatusOK, user.ID.String(), token)
+	return a.writeSession(c, http.StatusOK, user.ID.String(), token)
 }
 
 // writeSession answers a finished sign-in with the token, its expiry and the
 // user, the same AuthResponse every other sign-in route returns.
-func (a *API) writeSession(w http.ResponseWriter, r *http.Request, status int, userID, token string) {
-	session, err := a.sessions.Resolve(r.Context(), token)
+func (a *API) writeSession(c *echo.Context, status int, userID, token string) error {
+	ctx := c.Request().Context()
+	session, err := a.sessions.Resolve(ctx, token)
 	if err != nil {
-		middleware.FromContext(r.Context()).Error("resolve new passkey session", slog.String("user_id", userID), slog.Any("error", err))
-		httpx.Error(w, apperr.ErrUnavailable, i18n.T(r.Context(), "auth.api.generic"))
-		return
+		middleware.FromContext(ctx).Error("resolve new passkey session", slog.String("user_id", userID), slog.Any("error", err))
+		return httpx.Fail(apperr.ErrUnavailable, i18n.T(ctx, "auth.api.generic"))
 	}
-	httpx.WriteJSON(w, status, AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: ProjectUser(session.User)})
+	return c.JSON(status, AuthResponse{Token: token, ExpiresAt: session.ExpiresAt, User: ProjectUser(session.User)})
 }
 
-// writeAPIPasskeyError maps ceremony failures to the API's error shape. The
+// apiPasskeyError maps ceremony failures to the API's error shape. The
 // messages match the web ceremony's so both clients say the same thing.
-func writeAPIPasskeyError(w http.ResponseWriter, r *http.Request, err error) {
+func apiPasskeyError(c *echo.Context, err error) error {
+	ctx := c.Request().Context()
 	var fields apperr.FieldErrors
 	switch {
 	case apperr.As(err, &fields):
-		httpx.Error(w, err, i18n.T(r.Context(), "auth.api.fields"))
+		return httpx.Fail(err, i18n.T(ctx, "auth.api.fields"))
 	case apperr.Is(err, ErrInvalidCredentials):
-		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: i18n.T(r.Context(), "auth.err.passkey.failed")}})
+		return c.JSON(http.StatusUnauthorized, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: i18n.T(ctx, "auth.err.passkey.failed")}})
 	case err.Error() == "invalid or expired passkey challenge" || err.Error() == "invalid passkey ceremony":
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: i18n.T(r.Context(), "auth.err.passkey.expired")}})
+		return c.JSON(http.StatusBadRequest, httpx.ErrorBody{Error: httpx.ErrorDetail{Message: i18n.T(ctx, "auth.err.passkey.expired")}})
 	default:
-		middleware.FromContext(r.Context()).Error("passkey failed", slog.Any("error", err))
-		httpx.Error(w, apperr.ErrUnavailable, i18n.T(r.Context(), "auth.err.passkey.generic"))
+		middleware.FromContext(ctx).Error("passkey failed", slog.Any("error", err))
+		return httpx.Fail(apperr.ErrUnavailable, i18n.T(ctx, "auth.err.passkey.generic"))
 	}
 }

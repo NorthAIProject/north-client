@@ -5,26 +5,27 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/weekly/week"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 )
 
-// API is the weekly review for native clients. Mount behind auth.RequireBearer.
+// API is the weekly review for native clients. Register behind auth.Bearer.
 type API struct {
 	svc *Service
 }
 
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
 
-func (a *API) Routes(r chi.Router) {
-	r.Get("/weekly/review", a.review)
-	r.Put("/weekly/focus", a.setFocus)
+func (a *API) Register(g *echo.Group) {
+	g.GET("/weekly/review", a.review)
+	g.PUT("/weekly/focus", a.setFocus)
 }
 
 type FocusView struct {
@@ -68,29 +69,28 @@ type FocusRequest struct {
 	Volume     string      `json:"volume"`
 }
 
-func (a *API) review(w http.ResponseWriter, r *http.Request) {
-	rv, err := a.svc.Review(r.Context(), auth.MustUser(r.Context()))
+func (a *API) review(c *echo.Context) error {
+	ctx := c.Request().Context()
+	rv, err := a.svc.Review(ctx, auth.MustUser(ctx))
 	if err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "weekly.api.review"))
-		return
+		return httpx.Fail(err, i18n.T(ctx, "weekly.api.review"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectReview(rv))
+	return c.JSON(http.StatusOK, projectReview(rv))
 }
 
-func (a *API) setFocus(w http.ResponseWriter, r *http.Request) {
+func (a *API) setFocus(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var req FocusRequest
-	if err := httpx.ReadJSON(w, r, &req, httpx.ReadOptions{MaxBytes: 16 << 10}); err != nil {
-		httpx.Error(w, err, i18n.T(r.Context(), "weekly.api.body"))
-		return
+	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 16 << 10}, i18n.T(ctx, "weekly.api.body")); err != nil {
+		return err
 	}
-	f, err := a.svc.SetFocus(r.Context(), auth.MustUser(r.Context()), Input{
+	f, err := a.svc.SetFocus(ctx, auth.MustUser(ctx), Input{
 		Priorities: req.Priorities, GoalOrder: req.GoalOrder, Volume: plan.Volume(req.Volume),
 	})
 	if err != nil {
-		httpx.Error(w, localize(r.Context(), err), i18n.T(r.Context(), "weekly.api.save"))
-		return
+		return httpx.Fail(localize(ctx, err), i18n.T(ctx, "weekly.api.save"))
 	}
-	httpx.WriteJSON(w, http.StatusOK, projectFocus(f))
+	return c.JSON(http.StatusOK, projectFocus(f))
 }
 
 func projectReview(rv Review) ReviewView {

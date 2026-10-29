@@ -6,8 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/NorthAIProject/north-client/internal/awards/award"
-	awardsdb "github.com/NorthAIProject/north-client/internal/awards/db"
 	"github.com/NorthAIProject/north-client/internal/shared/sweep"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -54,16 +52,12 @@ func (s *Sweeper) sweepOne(ctx context.Context, now time.Time, user users.User) 
 	if now.In(user.Location()).Hour() != sweepHour {
 		return false, nil
 	}
-	rows, err := s.svc.q.ActiveAreas(ctx, awardsdb.ActiveAreasParams{UserID: user.ID, Since: now.Add(-sweepWindow)})
+	areas, err := s.svc.repo.ActiveAreas(ctx, user.ID, now.Add(-sweepWindow))
 	if err != nil {
 		return false, err
 	}
-	if len(rows) == 0 {
+	if len(areas) == 0 {
 		return false, nil
-	}
-	areas := make([]award.Area, len(rows))
-	for i, r := range rows {
-		areas[i] = award.Area(r)
 	}
 	earned, err := s.svc.Evaluate(ctx, user.ID, now, areas...)
 	return len(earned) > 0, err

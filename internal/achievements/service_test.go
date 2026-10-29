@@ -63,7 +63,7 @@ func titles(items []achievements.Item) []string {
 func TestFeedShowsOnlyWhatIsShared(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
 	soc := social.NewService(social.NewRepository(pool))
 	ana := person(t, pool, "ana@north.test", "Ana")
 	leo := person(t, pool, "leo@north.test", "Leo")
@@ -111,7 +111,7 @@ func TestFeedShowsOnlyWhatIsShared(t *testing.T) {
 func TestRecordingIsSparseAndOnce(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
 	ana := person(t, pool, "ana@north.test", "Ana")
 	session := uuid.New()
 
@@ -132,7 +132,7 @@ func TestRecordingIsSparseAndOnce(t *testing.T) {
 func TestCrewChallengeMetIsOncePerWeek(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
 	ana := person(t, pool, "ana@north.test", "Ana")
 	runners, lifters := uuid.New(), uuid.New()
 	week := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
@@ -159,7 +159,7 @@ func TestKudos(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	inbox := &noteSpy{}
-	ach := achievements.NewService(pool).WithInbox(inbox)
+	ach := achievements.NewService(achievements.NewRepository(pool)).WithInbox(inbox)
 	soc := social.NewService(social.NewRepository(pool))
 	ana := person(t, pool, "ana@north.test", "Ana")
 	leo := person(t, pool, "leo@north.test", "Leo")
@@ -200,7 +200,7 @@ func TestKudos(t *testing.T) {
 func TestGoalsRecordWhenAchieved(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
 	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAchievements(ach)
 	ana := person(t, pool, "ana@north.test", "Ana")
 
@@ -222,7 +222,7 @@ func TestGoalsRecordWhenAchieved(t *testing.T) {
 func TestPostRefreshesInPlace(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
-	ach := achievements.NewService(pool)
+	ach := achievements.NewService(achievements.NewRepository(pool))
 	ana := person(t, pool, "ana@north.test", "Ana")
 
 	first := time.Now().Add(-time.Hour).Truncate(time.Microsecond)

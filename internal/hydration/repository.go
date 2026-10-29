@@ -12,15 +12,17 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
-type Repository struct {
+type PostgresRepository struct {
 	q *hydrationdb.Queries
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: hydrationdb.New(pool)}
+var _ Repository = (*PostgresRepository)(nil)
+
+func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{q: hydrationdb.New(pool)}
 }
 
-func (r *Repository) Create(ctx context.Context, userID uuid.UUID, date time.Time, amountML int) (Entry, error) {
+func (r *PostgresRepository) Create(ctx context.Context, userID uuid.UUID, date time.Time, amountML int) (Entry, error) {
 	row, err := r.q.CreateHydrationEntry(ctx, hydrationdb.CreateHydrationEntryParams{
 		UserID:   userID,
 		LogDate:  toDate(date),
@@ -32,14 +34,14 @@ func (r *Repository) Create(ctx context.Context, userID uuid.UUID, date time.Tim
 	return fromDB(row), nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	if err := r.q.DeleteHydrationEntry(ctx, hydrationdb.DeleteHydrationEntryParams{ID: id, UserID: userID}); err != nil {
 		return apperr.Wrap(err, "delete hydration entry")
 	}
 	return nil
 }
 
-func (r *Repository) ListForDate(ctx context.Context, userID uuid.UUID, date time.Time) ([]Entry, error) {
+func (r *PostgresRepository) ListForDate(ctx context.Context, userID uuid.UUID, date time.Time) ([]Entry, error) {
 	rows, err := r.q.ListHydrationEntriesForDate(ctx, hydrationdb.ListHydrationEntriesForDateParams{
 		UserID:  userID,
 		LogDate: toDate(date),
@@ -56,7 +58,7 @@ func (r *Repository) ListForDate(ctx context.Context, userID uuid.UUID, date tim
 }
 
 // TotalForDate returns the day's millilitres and how many entries made it up.
-func (r *Repository) TotalForDate(ctx context.Context, userID uuid.UUID, date time.Time) (int, int, error) {
+func (r *PostgresRepository) TotalForDate(ctx context.Context, userID uuid.UUID, date time.Time) (int, int, error) {
 	row, err := r.q.SumHydrationForDate(ctx, hydrationdb.SumHydrationForDateParams{
 		UserID:  userID,
 		LogDate: toDate(date),
@@ -70,7 +72,7 @@ func (r *Repository) TotalForDate(ctx context.Context, userID uuid.UUID, date ti
 // TotalsSince returns one row per day that has entries, most recent first.
 // Days with nothing logged are absent rather than zero — the caller knows
 // which dates it asked about and can fill the gaps if it needs them.
-func (r *Repository) TotalsSince(ctx context.Context, userID uuid.UUID, since time.Time) ([]Day, error) {
+func (r *PostgresRepository) TotalsSince(ctx context.Context, userID uuid.UUID, since time.Time) ([]Day, error) {
 	rows, err := r.q.SumHydrationByDateSince(ctx, hydrationdb.SumHydrationByDateSinceParams{
 		UserID:  userID,
 		LogDate: toDate(since),
@@ -94,7 +96,7 @@ func (r *Repository) TotalsSince(ctx context.Context, userID uuid.UUID, since ti
 // TotalsBetween returns one row per day that has entries in the half-open
 // window [since, until). Days with nothing logged are absent rather than zero,
 // same as TotalsSince.
-func (r *Repository) TotalsBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Day, error) {
+func (r *PostgresRepository) TotalsBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Day, error) {
 	rows, err := r.q.SumHydrationByDateBetween(ctx, hydrationdb.SumHydrationByDateBetweenParams{
 		UserID:    userID,
 		LogDate:   toDate(since),
@@ -118,7 +120,7 @@ func (r *Repository) TotalsBetween(ctx context.Context, userID uuid.UUID, since,
 
 // ListBetween returns the individual entries in [since, until), newest first.
 // The activity timeline needs each pour, not the daily total.
-func (r *Repository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error) {
+func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Entry, error) {
 	rows, err := r.q.ListHydrationEntriesBetween(ctx, hydrationdb.ListHydrationEntriesBetweenParams{
 		UserID:    userID,
 		LogDate:   toDate(since),
