@@ -291,7 +291,8 @@ func (a *API) writeDetail(c *echo.Context, status int, id uuid.UUID) error {
 	if err != nil {
 		return httpx.Fail(err, "The goal could not be loaded.")
 	}
-	updates, err := a.svc.Updates(ctx, id, userID, 20)
+	// 50, as the Go detail page showed: the web app renders this list in full.
+	updates, err := a.svc.Updates(ctx, id, userID, 50)
 	if err != nil {
 		return httpx.Fail(err, "The goal could not be loaded.")
 	}

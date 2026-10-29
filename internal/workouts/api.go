@@ -183,7 +183,8 @@ type PrescriptionRequest struct {
 
 func (a *API) listPlans(c *echo.Context) error {
 	ctx := c.Request().Context()
-	plans, err := a.svc.ListCurrentPlans(ctx, auth.MustUser(ctx).ID, 20)
+	// 50, as the Go week editor read: the web app picks from this whole list.
+	plans, err := a.svc.ListCurrentPlans(ctx, auth.MustUser(ctx).ID, 50)
 	if err != nil {
 		return httpx.Fail(err, "Your plans could not be loaded.")
 	}
