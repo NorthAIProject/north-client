@@ -75,7 +75,7 @@ import (
 //   - uploads: bearer too, with a body cap that fits a file
 //
 // The body caps live here rather than around the mount, because one cap does
-// not fit both: JSON is a few kilobytes and a filmed set is up to 200 MB.
+// not fit both: JSON is a few kilobytes and a filmed set is up to 90 MB.
 func mountAPI(r chi.Router, sessions auth.SessionResolver, apis apiSet) {
 	r.Route("/api/v1", func(r chi.Router) {
 		// A guess from Accept-Language for the signed-out routes, so an account

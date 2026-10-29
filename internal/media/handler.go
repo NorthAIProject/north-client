@@ -57,7 +57,7 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Covers both "no file chosen" and a body that exceeded MaxBytesReader,
 		// which surfaces here as a failed multipart parse.
-		h.uploadFailed(w, r, "Choose a video to upload. Clips must be under 200 MB.")
+		h.uploadFailed(w, r, "Choose a video to upload. Clips must be under 90 MB.")
 		return
 	}
 	defer func() { _ = file.Close() }()

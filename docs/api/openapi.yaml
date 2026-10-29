@@ -2799,7 +2799,7 @@ paths:
                 video:
                   type: string
                   format: binary
-                  description: A video up to 200 MB.
+                  description: A video up to 90 MB.
       responses:
         '202':
           description: OK
