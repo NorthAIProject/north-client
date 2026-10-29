@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -328,6 +329,7 @@ func TestAnonymousThrottleRunsBeforeAuthentication(t *testing.T) {
 		authenticate(Config{Auth: auth}, discardLog(), okHandler(&reached)))
 
 	var throttled int
+	start := time.Now()
 	for range anonymousPerMinute * 2 {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
@@ -341,9 +343,12 @@ func TestAnonymousThrottleRunsBeforeAuthentication(t *testing.T) {
 	if throttled == 0 {
 		t.Fatal("a flood of bad tokens was never throttled")
 	}
-	if auth.calls > anonymousPerMinute {
+	// The bucket keeps refilling at anonymousPerMinute/60 a second while the
+	// loop runs, so a slow run earns a few more attempts than the burst.
+	allowed := anonymousPerMinute + int(time.Since(start).Seconds()*anonymousPerMinute/60) + 1
+	if auth.calls > allowed {
 		t.Errorf("the store was asked %d times for %d allowed attempts; the flood reached the database",
-			auth.calls, anonymousPerMinute)
+			auth.calls, allowed)
 	}
 	if reached {
 		t.Error("an unauthenticated request reached the handler")

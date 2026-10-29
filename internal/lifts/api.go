@@ -2,6 +2,7 @@ package lifts
 
 import (
 	"bytes"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
 
@@ -176,15 +178,40 @@ func (a *API) importHevy(c *echo.Context) error {
 	}
 	res, err := a.svc.ImportHevy(ctx, auth.MustUser(ctx), bytes.NewReader(data))
 	if err != nil {
-		return httpx.Fail(localize(ctx, err), i18n.T(ctx, "lifts.api.import"))
+		err = localize(ctx, err)
+		if httpx.Status(err) < http.StatusInternalServerError {
+			return httpx.Fail(err, i18n.T(ctx, "lifts.api.import"))
+		}
+		// Each set is saved as it goes, so what res counts was kept.
+		middleware.FromContext(ctx).Error("import hevy", slog.Any("error", err))
+		return c.JSON(http.StatusInternalServerError, ProjectImportPartial(i18n.T(ctx, "lifts.err.partial"), res))
 	}
+	return c.JSON(http.StatusOK, projectImport(res))
+}
+
+// LiftImportPartial is the 500 for an import that stopped part way: the usual
+// error shape, plus what was saved before it stopped.
+type LiftImportPartial struct {
+	Error    httpx.ErrorDetail `json:"error"`
+	Imported LiftImportView    `json:"imported"`
+}
+
+// ProjectImportPartial is the reply for an import that failed after res.
+func ProjectImportPartial(message string, res ImportResult) LiftImportPartial {
+	return LiftImportPartial{
+		Error:    httpx.ErrorDetail{Message: message, Code: "import_partial"},
+		Imported: projectImport(res),
+	}
+}
+
+func projectImport(res ImportResult) LiftImportView {
 	unmatched := res.Unmatched
 	if unmatched == nil {
 		unmatched = []string{}
 	}
-	return c.JSON(http.StatusOK, LiftImportView{
+	return LiftImportView{
 		Workouts: res.Workouts, Duplicates: res.Duplicates, Sets: res.Sets, Skipped: res.Skipped, Unmatched: unmatched,
-	})
+	}
 }
 
 type LiftSetRequest struct {
