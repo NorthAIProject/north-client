@@ -19,7 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-// apiRouter mounts the consent API as cmd/web does: the public half bare, the
+// apiRouter mounts the consent API as cmd/api does: the public half bare, the
 // decision behind Bearer.
 func (h harness) apiRouter(t *testing.T) (http.Handler, *auth.SessionStore) {
 	t.Helper()
@@ -29,7 +29,7 @@ func (h harness) apiRouter(t *testing.T) (http.Handler, *auth.SessionStore) {
 	onboardingSvc := onboarding.NewService(userSvc,
 		memories.NewService(memories.NewRepository(h.pool)),
 		goals.NewService(goals.NewRepository(h.pool)))
-	api := mcpauth.NewAPI(h.svc, authSvc, auth.NewMiddleware(sessions, false, nil), onboardingSvc, discardLog())
+	api := mcpauth.NewAPI(h.svc, authSvc, auth.NewMiddleware(nil), onboardingSvc, discardLog())
 
 	e := echox.New(echox.Config{})
 	api.RegisterPublic(e.Group(""))

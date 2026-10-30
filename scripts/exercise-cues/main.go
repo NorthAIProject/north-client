@@ -35,7 +35,7 @@
 // free-exercise-db is Unlicense: public domain, no attribution obligation, no
 // downstream condition. That is the only reason it is the sole source here.
 // The artwork's CC BY-SA still applies to the artwork; nothing about this
-// changes that, and web/assets/exercises/NOTICE remains correct.
+// changes that, and internal/exercises/art/NOTICE remains correct.
 //
 // # What it cannot do
 //

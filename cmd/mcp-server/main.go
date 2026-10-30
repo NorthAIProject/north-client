@@ -15,7 +15,7 @@
 // leaked environment variable is a silent account takeover fixable only by a
 // redeploy.
 //
-// For anyone else, cmd/web serves the same tool surface at /mcp with per-user
+// For anyone else, cmd/api serves the same tool surface at /mcp with per-user
 // tokens issued from the settings page — see internal/connections. This binary
 // remains for the private tailnet deployment documented in
 // skills/north-connect/SKILL.md, and is the one to reach for only when there is
@@ -140,7 +140,7 @@ func run() error {
 		return err
 	}
 
-	// Shared with cmd/web: the same key that sealed a user's provider key has
+	// Shared with cmd/api: the same key that sealed a user's provider key has
 	// to be here to open it, or ask_coach would fall back to North's providers
 	// for somebody who supplied their own.
 	sealer, err := cfg.Encryption.Sealer()
@@ -155,7 +155,7 @@ func run() error {
 
 		// One token, one account, straight from the environment. This binary is
 		// the single-user tailnet deployment; the multi-user endpoint lives on
-		// cmd/web and authenticates against agent_connections instead.
+		// cmd/api and authenticates against agent_connections instead.
 		Auth: mcpserver.StaticAuthenticator{Token: token, UserID: userID, Users: services.Users},
 
 		Log: log,
@@ -183,12 +183,12 @@ func run() error {
 
 // buildServices constructs what the tools call into.
 //
-// The coach is given the same context sources cmd/web gives it, because an
+// The coach is given the same context sources cmd/api gives it, because an
 // answer from the MCP tool has to be as grounded as one from the web UI —
 // a coach that forgot the user's goals when asked through Hermes would be
 // worse than no tool at all.
 //
-// This list is duplicated from cmd/web's routes(). Adding a context source in
+// This list is duplicated from cmd/api's routes(). Adding a context source in
 // one place and not the other is the drift to watch for; the two are worth
 // unifying into a shared composition root once a third binary needs them.
 func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry, embedder ai.Embedder, sealer *secret.Sealer) mcpserver.Services {
@@ -275,7 +275,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, registry *ai.Registry
 		// different providers for the same question.
 		//
 		// Nil when this deployment has no encryption key, which is the same
-		// state cmd/web handles.
+		// state cmd/api handles.
 		Own: aicreds.NewService(aicreds.NewRepository(pool), sealer, slog.Default()),
 
 		Model:     cfg.AI.Model,

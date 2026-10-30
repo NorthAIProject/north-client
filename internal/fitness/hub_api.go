@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
@@ -11,12 +12,12 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/fitness/fitnessview"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
-	fitnesspages "github.com/NorthAIProject/north-client/web/fitness"
 )
 
 // The web fitness pages as JSON: the hub, the Strava activities page and its
@@ -30,9 +31,6 @@ func (a *API) WithHub(svc *Service) *API {
 	a.hub = svc
 	return a
 }
-
-// Hub is the service behind the hub page, for wiring the API.
-func (h *Handler) Hub() *Service { return h.svc }
 
 // dateOnly is how a calendar day crosses the wire: the person's local day,
 // with no zone to misread it in.
@@ -167,7 +165,7 @@ func (a *API) hubView(c *echo.Context) error {
 	return c.JSON(http.StatusOK, projectHub(snap, buildHubData(snap, loc, time.Now(), ""), loc))
 }
 
-func projectHub(snap Snapshot, data fitnesspages.HubData, loc *time.Location) FitnessHub {
+func projectHub(snap Snapshot, data fitnessview.HubData, loc *time.Location) FitnessHub {
 	out := FitnessHub{
 		Strava:         statusView(snap.StravaStatus),
 		Recent:         make([]HubSession, 0, len(snap.Recent)),
@@ -239,7 +237,7 @@ func projectHub(snap Snapshot, data fitnesspages.HubData, loc *time.Location) Fi
 
 // trendDays is a device card's series as the page draws it: trailing empty
 // days already trimmed (trendView), empty when there is no card.
-func trendDays(t *fitnesspages.Trend) []HubDayValue {
+func trendDays(t *fitnessview.Trend) []HubDayValue {
 	if t == nil {
 		return []HubDayValue{}
 	}
@@ -526,4 +524,16 @@ func validWebCallback(raw string) bool {
 		return false
 	}
 	return u.Path == strava.WebCallbackPath && u.RawQuery == "" && u.Fragment == ""
+}
+
+// sessionPageParam reads ?page=. Anything that is not a positive number is
+// page one: a pager is navigation, and navigation that answers a fat-fingered
+// URL with a 422 is worse than one that answers it with the first page. The
+// service clamps the upper end against how many pages there actually are.
+func sessionPageParam(r *http.Request) int {
+	n, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || n < 1 {
+		return 1
+	}
+	return n
 }

@@ -26,7 +26,7 @@ const defaultRequestsPerMinute = 120
 //
 // It lives here rather than in a binary because the tool surface is what it
 // names, and that surface is now served from two processes. A version that
-// differed between cmd/web and cmd/mcp-server would describe the same contract
+// differed between cmd/api and cmd/mcp-server would describe the same contract
 // two ways. The contract this names is testdata/tools.golden.json.
 //
 // 0.2.0: every tool declares whether it writes, and results carry structured
@@ -198,7 +198,7 @@ func NewHandler(cfg Config) http.Handler {
 
 // Endpoint is the /mcp handler alone, without the health checks.
 //
-// cmd/web mounts this into its own router, which already answers /healthz;
+// cmd/api mounts this into its own router, which already answers /healthz;
 // a second health check under a different name would leave two answers to the
 // same question.
 func Endpoint(cfg Config) http.Handler {

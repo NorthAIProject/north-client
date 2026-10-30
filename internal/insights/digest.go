@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/rasterize"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 // Digest renders this person's window as a message.
@@ -32,11 +32,11 @@ func (s *Service) Digest(ctx context.Context, user users.User, rg timerange.Rang
 
 // digestView loads the window and builds the view both the words and the
 // picture are read from.
-func (s *Service) digestView(ctx context.Context, user users.User, rg timerange.Range) (insightpages.SummaryView, error) {
+func (s *Service) digestView(ctx context.Context, user users.User, rg timerange.Range) (insightview.SummaryView, error) {
 	ctx = digestContext(ctx, user)
 	data, err := s.Summary(ctx, user, rg)
 	if err != nil {
-		return insightpages.SummaryView{}, err
+		return insightview.SummaryView{}, err
 	}
 	return buildSummaryView(ctx, data)
 }
@@ -60,7 +60,7 @@ func digestContext(ctx context.Context, user users.User) context.Context {
 // The card's labels come from the view, already in tag's language; its
 // subtitle is the one sentence digestCard writes itself, so it is reworded
 // here in the recipient's language — the same words as the message above it.
-func renderDigestCard(tag string, view insightpages.SummaryView) []byte {
+func renderDigestCard(tag string, view insightview.SummaryView) []byte {
 	if view.Empty || view.Judged == 0 {
 		return nil
 	}
@@ -83,7 +83,7 @@ func renderDigestCard(tag string, view insightpages.SummaryView) []byte {
 // verdicts, highlights) are already in it, because digestView built the view
 // under the same locale; the sentences written here are the only ones left.
 // "On track" is the page's own key, so the digest still says what the page says.
-func renderDigest(tag string, view insightpages.SummaryView, siteURL string) string {
+func renderDigest(tag string, view insightview.SummaryView, siteURL string) string {
 	if view.Empty || view.Judged == 0 {
 		// Both forms of the label go in: English reads it mid-sentence in lower
 		// case, the others lead with it as a heading.
@@ -120,6 +120,6 @@ func renderDigest(tag string, view insightpages.SummaryView, siteURL string) str
 }
 
 // onTrack is the page's "n of m on track", in tag's language.
-func onTrack(tag string, view insightpages.SummaryView) string {
+func onTrack(tag string, view insightview.SummaryView) string {
 	return i18n.TranslateF(tag, "insights.summary.onTrack", view.OnTrack, view.Judged)
 }

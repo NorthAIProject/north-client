@@ -8,7 +8,7 @@ import (
 )
 
 // The mesh-name → muscle-key table is MUSCLE_ALIASES in
-// web/assets/js/shared/muscle-viewer/muscles.js, which tools/model/build-body.mjs
+// tools/model/muscles.js, which tools/model/build-body.mjs
 // also reads to decide which atlas meshes go into body.glb. Reading it here
 // instead of copying it keeps one table. The file's shape is fixed and
 // hand-maintained; internal/workouts/plan/muscle_test.go parses it the same way.

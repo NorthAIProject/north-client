@@ -190,7 +190,7 @@ type AttachmentLoader interface {
 }
 
 // AttachmentTexter reads a document this person sent as plain text: a PDF's
-// words, a spreadsheet's rows. The wiring in cmd/web satisfies it with the
+// words, a spreadsheet's rows. The wiring in cmd/api satisfies it with the
 // media service and planimport's reader, which this package must not import.
 //
 // A refusal the person should hear (a password-protected PDF, an unsupported

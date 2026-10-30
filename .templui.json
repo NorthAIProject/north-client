@@ -1,7 +1,0 @@
-{
-  "componentsDir": "web/shared/ui",
-  "utilsDir": "web/shared/utils",
-  "moduleName": "github.com/NorthAIProject/north-client",
-  "jsDir": "web/assets/js",
-  "jsPublicPath": "/assets/js"
-}

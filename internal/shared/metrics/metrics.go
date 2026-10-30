@@ -202,7 +202,7 @@ func (r *Registry) WorkerHeartbeat(at time.Time) {
 //
 // Whoever mounts this decides where it listens, and it must not be the public
 // router: request rates, model spend and job failure counts describe the
-// business to anyone who asks. See the metrics listener in cmd/web.
+// business to anyone who asks. See the metrics listener in cmd/api.
 func (r *Registry) Handler() http.Handler {
 	if r == nil {
 		return http.NotFoundHandler()

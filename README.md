@@ -180,32 +180,27 @@ North uses summarized activity data to provide intelligent coaching.
 ### Exercise illustrations
 
 The exercise catalog ships pose artwork: three frames per movement, covering
-302 of the catalog's exercises, under `web/assets/exercises`.
+302 of the catalog's exercises. The API embeds them from
+`internal/exercises/art` and returns each frame's path data with the exercise
+(`GET /api/v1/exercises/{slug}`), with the credit beside it.
 
 The art comes from [workout-guide](https://github.com/bryllim/workout-guide) by
 Bryl Lim, which builds on [Everkinetic](https://github.com/everkinetic/data).
 Both are licensed **CC BY-SA 4.0** — note that upstream's `LICENSE` covers its
 code and is MIT; the artwork is governed by its separate `LICENSE-ASSETS`.
 
-That licence requires visible credit wherever the art appears, which is what
-`web/shared/exerciseart.Credit()` renders. Any page calling `Frames()` must
-also call `Credit()`. The full attribution and the record of changes the
-licence obliges North to state live in `web/assets/exercises/NOTICE`.
+That licence requires visible credit wherever the art appears, which is why
+the API sends `art.credit` and every client must show it. The full attribution
+and the record of changes the licence obliges North to state live in
+`internal/exercises/art/NOTICE`.
 
-Two things about how it is stored, both easy to trip over:
-
-- **The files are `.svg.gz`, and templates ask for `.svg`.** `mountAssets` in
-  `cmd/web/main.go` bridges the two and sets `Content-Encoding: gzip`. Storing
-  them compressed is 14 MB off the binary and every image layer, and nothing
-  here mounts compression middleware, so it is also what keeps them from going
-  over the wire uncompressed.
-- **They are painted as CSS masks, not loaded as images.** The art is drawn
-  white on transparent, so an `<img>` would be invisible on the light theme.
-  A mask reads only the alpha channel and takes its colour from the page, so
-  one asset serves both themes and the files stay byte-identical to upstream.
+The frames are stored `.svg.gz`: 14 MB off the binary and every image layer.
+The web app serves its own plain `.svg` copies, plus the `loop.gif` animations
+Telegram links to, from `north-web-app/static/assets/exercises`; copy new
+frames there by hand (see `scripts/workout-guide-art`).
 
 No npm dependency is involved. `scripts/workout-guide-art` reads a shallow
-clone and regenerates both the assets and `migrations/20260827150000_exercise_illustrations.sql`; the upstream repo
+clone and regenerates both the frames and `migrations/20260827150000_exercise_illustrations.sql`; the upstream repo
 is never vendored.
 
 ---
@@ -300,19 +295,18 @@ See [Setting up Telegram](#setting-up-telegram) below.
 ## Backend
 
 - Go
-- Chi
-- Templ
+- Echo
 - PostgreSQL
 - pgx
 - sqlc
 
-## Frontend
+## Clients
 
-- Server Side Rendering
-- Tailwind CSS
-- Alpine.js
-- HTMX
-- Server-Sent Events
+This repository is the API. The clients live elsewhere and talk to `/api/v1`:
+
+- Web: `north-web-app` (SvelteKit)
+- iOS: `north-ios-app`
+- Server-Sent Events for streamed coach replies
 
 ## AI
 
@@ -350,7 +344,7 @@ than four. Layering is enforced *inside* the slice, not across the tree.
 
 ```
 cmd/
-    web/            HTTP server
+    api/            HTTP API (`/api/v1`, MCP, OAuth, ingest, webhooks)
     worker/         background jobs
     mcp-server/     MCP server
 
@@ -361,7 +355,7 @@ internal/
         openrouter/
         fake/
         prompts/
-    auth/           sessions, passwords, RequireAuth
+    auth/           sessions, passwords, Bearer
     users/
     coach/          CoachService, ContextBuilder, PromptBuilder
     conversations/
@@ -380,19 +374,8 @@ internal/
     shared/
         database/   pgxpool
         errors/     sentinel errors
-        middleware/ request id, logging, recover, CSRF
+        middleware/ request id, logging, recover, locale
         types/
-
-web/
-    shared/
-        layout/     base and app layouts
-        ui/         templUI components
-        utils/
-    auth/           login, signup pages
-    chat/
-    workouts/
-    landing/
-    assets/         css, js, fonts (embedded)
 
 migrations/         goose migrations
 terraform/
@@ -404,7 +387,7 @@ Every slice follows the same shape:
 
 ```
 internal/<feature>/
-    handler.go      parse, validate, authenticate, call service, render
+    api.go          parse, validate, authenticate, call service, write JSON
     service.go      business logic; depends on repository interfaces
     repository.go   thin wrapper over generated code
     db/queries.sql  sqlc input
@@ -488,19 +471,10 @@ being evaluated.
 
 # Design Philosophy
 
-North is intentionally built as a **Server-Side Rendered** application.
-
-Reasons:
-
-- Fast initial load
-- Excellent SEO
-- Simple architecture
-- Minimal JavaScript
-- Easier maintenance
-- Great developer experience
-- Progressive enhancement
-
-Client-side JavaScript is used only where it provides clear value.
+The Go server is an API and renders no pages. Every client — the SvelteKit
+web app, the iOS app, MCP agents, the messaging bots — reaches the same
+services, so a feature is built once, behind `/api/v1` or the gateway it
+arrives through.
 
 ---
 
@@ -512,7 +486,6 @@ Client-side JavaScript is used only where it provides clear value.
 - Business logic belongs in services.
 - The AI provider is an implementation detail.
 - Keep Go code idiomatic.
-- Use HTMX before writing JavaScript.
 - Avoid unnecessary dependencies.
 
 ---
@@ -749,7 +722,7 @@ curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/deleteWebhook"
 ### 5. Check it before you trust it
 
 ```bash
-go run ./cmd/web telegram-check
+go run ./cmd/api telegram-check
 ```
 
 Read-only, so it is safe to run against production. It confirms the token

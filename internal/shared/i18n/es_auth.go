@@ -50,6 +50,7 @@ var spanishAuth = map[string]string{
 	"auth.err.form":               "No se pudo leer el formulario. Inténtalo de nuevo.",
 	"auth.err.signup":             "Algo salió mal al crear tu cuenta. Inténtalo de nuevo.",
 	"auth.err.credentials":        "El correo o la contraseña no son correctos.",
+	"auth.err.throttled":          "Demasiados intentos en esta cuenta. Espera un minuto y vuelve a intentarlo.",
 	"auth.err.signin":             "Algo salió mal al iniciar sesión. Inténtalo de nuevo.",
 	"auth.err.generic":            "Algo salió mal. Inténtalo de nuevo.",
 	"auth.err.mismatch":           "Las contraseñas no coinciden.",

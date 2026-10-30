@@ -27,7 +27,7 @@ clients never send a user ID to select an account.
 
 1. Put API-specific request and response DTOs beside the feature API handler.
 2. Reuse the feature service; do not put business rules in the HTTP handler.
-3. Register the feature under `mountAPI` in `cmd/web/api.go`.
+3. Register the feature under `mountAPI` in `cmd/api/api.go`.
 4. Keep paths relative to `/api/v1`; feature packages must not add `/v1`.
 5. Use `internal/shared/httpx` for JSON decoding, encoding, and errors.
 6. Add the path, schemas, authentication, and error responses to `openapi.yaml`.

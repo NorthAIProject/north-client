@@ -53,9 +53,9 @@ const (
 
 // The dark palette, as literal colours.
 //
-// This is a real duplication of web/assets/css/input.css and is named as such:
-// those values are OKLCH custom properties resolved by a browser, and there is
-// no browser here to resolve them. Changing the app's ground colour means
+// This is a real duplication of the web app's theme (north-web-app) and is
+// named as such: those values are OKLCH custom properties resolved by a
+// browser, and there is no browser here to resolve them. Changing the app's ground colour means
 // changing it in both places — which is the cost of drawing the same product
 // in two renderers.
 var (

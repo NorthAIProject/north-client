@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
@@ -34,7 +33,6 @@ func asUser(next http.Handler) http.Handler {
 type liveServer struct {
 	hub *live.Hub
 	api *httptest.Server
-	web *httptest.Server
 }
 
 func newLiveServer(t *testing.T, r room) liveServer {
@@ -43,12 +41,8 @@ func newLiveServer(t *testing.T, r room) liveServer {
 	t.Cleanup(hub.Close)
 	api := echox.New(echox.Config{})
 	crews.NewAPI(r.svc, "https://north.test").WithLive(r.chat, hub).WithHeartbeat(50 * time.Millisecond).Register(api.Group("", echo.WrapMiddleware(asUser)))
-	web := chi.NewRouter()
-	web.Use(asUser)
-	crews.NewHandler(r.svc, "https://north.test", false).WithLive(r.chat, hub).WithHeartbeat(50 * time.Millisecond).Routes(web)
-	s := liveServer{hub: hub, api: httptest.NewServer(api), web: httptest.NewServer(web)}
+	s := liveServer{hub: hub, api: httptest.NewServer(api)}
 	t.Cleanup(s.api.Close)
-	t.Cleanup(s.web.Close)
 	return s
 }
 
@@ -222,34 +216,6 @@ func TestLiveHeartbeat(t *testing.T) {
 	s := newLiveServer(t, r)
 	_, st := open(t, s.api.URL, "/crews/"+r.crew.ID.String()+"/live", r.ana)
 	st.subscribed(t)
-}
-
-func TestLiveWebEventNames(t *testing.T) {
-	r := newRoom(t)
-	s := newLiveServer(t, r)
-	other, err := r.svc.CreateChannel(context.Background(), r.crew.ID, r.owner.ID, "legs", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, st := open(t, s.web.URL, "/crews/"+r.crew.ID.String()+"/live?channel="+r.general.String(), r.ana)
-	st.subscribed(t)
-
-	here := r.send(t, r.leo, "here")
-	s.hub.Publish(live.Event{Type: live.EventMessage, CrewID: r.crew.ID, ChannelID: r.general, MessageID: here.ID, Seq: here.Seq})
-	st.expect(t, "crew-new")
-
-	there, err := r.chat.Send(context.Background(), r.crew.ID, other.ID, r.leo.ID, crews.SendInput{Body: "there"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.hub.Publish(live.Event{Type: live.EventMessage, CrewID: r.crew.ID, ChannelID: other.ID, MessageID: there.ID, Seq: there.Seq})
-	st.expect(t, "crew-unread")
-
-	s.hub.Publish(live.Event{Type: live.EventUpdate, CrewID: r.crew.ID, ChannelID: r.general, MessageID: here.ID})
-	st.expect(t, "msg-"+here.ID.String())
-
-	s.hub.Publish(live.Event{Type: live.EventResync, CrewID: r.crew.ID})
-	st.expect(t, "crew-resync")
 }
 
 func TestSendTermsRequired403(t *testing.T) {

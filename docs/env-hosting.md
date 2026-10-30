@@ -17,7 +17,7 @@ into the cluster. The defaults are for `localhost`.
 
 ## Which process this is for
 
-The published image (`Dockerfile`) runs **`cmd/web` only**. That process
+The published image (`Dockerfile`) runs **`cmd/api` only**. That process
 serves the site, `POST /mcp`, `POST /ingest/health`, and the Telegram
 webhook.
 
@@ -26,7 +26,7 @@ image today:
 
 | Binary | Role | On a public k3s cluster |
 |---|---|---|
-| `cmd/web` | HTTP + per-user MCP at `/mcp` | Yes — this is the app |
+| `cmd/api` | HTTP + per-user MCP at `/mcp` | Yes — this is the app |
 | `cmd/worker` | Background jobs (document index, video analysis, reports, Strava, memory extraction) | Same secrets as web, when that Deployment exists. Jobs otherwise sit in `jobs` forever |
 | `cmd/mcp-server` | One static token, one account, listen `:8093` | **No.** Private / tailnet only. Public MCP is `/mcp` on web |
 
@@ -426,7 +426,7 @@ raises most nudges and does the sending.
 Generate the pair once:
 
 ```sh
-go run ./cmd/web vapid-keygen
+go run ./cmd/api vapid-keygen
 ```
 
 and put both lines in the SealedSecret. **Do not rotate casually.** A new
@@ -477,7 +477,7 @@ Those tokens are **not** environment variables. The snippet they copy uses
 | `MCP_ALLOWED_ORIGINS` | empty | Leave empty. Empty rejects every browser `Origin`, which is correct |
 | `MCP_REQUESTS_PER_MINUTE` | package default (120) | Per account, in memory, per replica |
 
-### Do not put these on `cmd/web`
+### Do not put these on `cmd/api`
 
 | Variable | Belongs to |
 |---|---|

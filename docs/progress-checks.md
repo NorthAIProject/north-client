@@ -119,7 +119,7 @@ the measurements over height against `bodymap.ShellBaseline`; the web page
 renders them into the figure's props, and `/body/current` returns the same
 four numbers for iOS, so the clients cannot disagree.
 
-The mesh side lives in `scripts/bodymap` and `web/assets/models/README.md`:
+The mesh side lives in `scripts/bodymap` (see its `README.md`):
 four shape keys on the skin only, so the same muscles sit inside a wider
 body. `ShellBaseline` is generated from the mesh by the same run that writes
 the shape keys, in `internal/bodymap/baseline_gen.go`, so rebuilding the

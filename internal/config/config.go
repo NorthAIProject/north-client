@@ -46,10 +46,8 @@ type Config struct {
 	// /app/ops/moderation and get a push for every new report. Not a secret.
 	OperatorUserIDs []uuid.UUID
 
-	// AuthAttemptsPerMinute bounds sign-in, sign-up and password-reset attempts
-	// from one address; AuthAttemptsPerEmailPerMinute bounds them against one
-	// account from every address at once.
-	AuthAttemptsPerMinute         int
+	// AuthAttemptsPerEmailPerMinute bounds sign-in, sign-up and password-reset
+	// attempts against one account from every address at once.
 	AuthAttemptsPerEmailPerMinute int
 
 	DatabaseURL string
@@ -347,7 +345,7 @@ func (e EncryptionConfig) Sealer() (*secret.Sealer, error) {
 //
 // Optional, like Strava and Google: an empty APIKey in production just means
 // no events. Unlike them, an empty APIKey in development fails the boot —
-// see cmd/web/main.go — because a missing analytics key is a silent gap that
+// see cmd/api/main.go — because a missing analytics key is a silent gap that
 // only shows up as an empty dashboard, and every other optional integration
 // here at least reports its own absence somewhere a person will see it.
 type PostHogConfig struct {
@@ -769,12 +767,6 @@ func Load() (*Config, error) {
 	// Zero means the auth package's own default, the same contract
 	// MCP_REQUESTS_PER_MINUTE has: the number belongs beside the code that
 	// enforces it, not here.
-	authRate, err := intValue("AUTH_ATTEMPTS_PER_MINUTE", 0)
-	if err != nil {
-		problems = append(problems, err.Error())
-	}
-	cfg.AuthAttemptsPerMinute = authRate
-
 	authEmailRate, err := intValue("AUTH_ATTEMPTS_PER_EMAIL_PER_MINUTE", 0)
 	if err != nil {
 		problems = append(problems, err.Error())
@@ -1134,7 +1126,7 @@ func (c AIConfig) ChainSet() ai.ChainSet {
 
 // ProviderOptions renders the AI configuration as the registry's build input.
 //
-// It lives here rather than in each main so that cmd/web and cmd/worker cannot
+// It lives here rather than in each main so that cmd/api and cmd/worker cannot
 // drift apart — they previously repeated the same literal, and a provider added
 // to one but not the other would have failed only in whichever process happened
 // to need it.

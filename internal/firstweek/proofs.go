@@ -9,7 +9,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-// What proves each template's day, wired in cmd/web from the packages that
+// What proves each template's day, wired in cmd/api from the packages that
 // own the logs:
 //
 //	sleep    a sleep entry dated that day (the night that ended that morning)

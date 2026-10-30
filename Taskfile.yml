@@ -9,14 +9,11 @@ tasks:
   # ---------------------------------------------------------------------------
   # Development
   # ---------------------------------------------------------------------------
-  templ:
-    desc: Run templ with integrated server and hot reload
+  api:
+    desc: Run the API server
     deps: [port:free]
     cmds:
-      # scripts/dev-web.sh rather than `go run ./cmd/web` — see that file for
-      # why. Short version: `go run` leaves the real server orphaned on the
-      # port every time templ restarts or you Ctrl-C.
-      - GOFLAGS=-mod=mod go tool templ generate --watch --proxy="http://localhost:8090" --cmd="./scripts/dev-web.sh" --open-browser=false
+      - go run ./cmd/api
 
   # Frees the dev port if a previous run left something behind. Runs before the
   # watcher rather than being something to remember: the whole problem with a
@@ -31,33 +28,20 @@ tasks:
     cmds:
       - task: port:free
 
-  tailwind:
-    desc: Watch Tailwind CSS changes
-    cmds:
-      - |
-        TEMPLUI_PATH="$(go list -mod=mod -m -f {{`'{{.Dir}}'`}} github.com/templui/templui)" && \
-        printf '%s\n' \
-          '@source "./**/*.templ";' \
-          '@source "./**/*.js";' \
-          "@source \"$TEMPLUI_PATH/components/**/*.templ\";" \
-          "@source \"$TEMPLUI_PATH/components/**/*.js\";" \
-          > ./web/assets/css/sources.generated.css && \
-        tailwindcss -i ./web/assets/css/input.css -o ./web/assets/css/output.css --watch
-
-  # The worker runs alongside the web process, not on request. Every async
+  # The worker runs alongside the API process, not on request. Every async
   # feature — Strava sync, memory extraction, thread summaries, the daily
   # briefing, document indexing — is a job, and a job nobody claims is a
   # feature that silently does nothing. Leaving the worker as a separate
   # command people had to remember cost eleven days of "Strava is broken".
   dev:
-    desc: Start development server, background worker, and hot reload (expects DB already up)
+    desc: Start the API server and the background worker (expects DB already up)
     cmds:
-      - task --parallel tailwind templ worker
+      - task --parallel api worker
 
-  # Full local stack: containers, wait for Postgres, then hot-reload app.
-  # Schema migrations run automatically when the web process starts.
+  # Full local stack: containers, wait for Postgres, then the app.
+  # Schema migrations run automatically when the API process starts.
   dev:up:
-    desc: Start Postgres/MinIO and the hot-reload app
+    desc: Start Postgres/MinIO and the app
     cmds:
       - task: db:up
       - task: db:wait
@@ -125,7 +109,7 @@ tasks:
   # ---------------------------------------------------------------------------
   # Migrations (goose)
   # ---------------------------------------------------------------------------
-  # Prefer app start for "up": web and worker call database.Migrate on boot
+  # Prefer app start for "up": the API and worker call database.Migrate on boot
   # with embedded SQL. These tasks remain for inspection and authoring.
   migrate:up:
     desc: Apply pending migrations manually (also runs automatically on app start)
@@ -158,37 +142,23 @@ tasks:
   generate:
     desc: Run every code generator
     cmds:
-      - GOFLAGS=-mod=mod go tool templ generate
       - sqlc generate
 
   # ---------------------------------------------------------------------------
   # Quality
   # ---------------------------------------------------------------------------
-  assets:
-    desc: Build Tailwind CSS (required before go build/test — css is gitignored)
-    cmds:
-      - bash scripts/build-css.sh
-
   # The body figure, for web and iOS alike. The iOS paths assume the sibling
-  # checkout; see web/assets/models/README.md.
+  # checkout; the web GLB is copied to north-web-app by hand. See
+  # scripts/bodymap/README.md.
   bodymap:
-    desc: Rebuild the body figure (web GLB, flat SVG, iOS USDZ, skin and light rig)
+    desc: Rebuild the body figure (web GLB, iOS USDZ, skin and light rig)
     cmds:
       - go run ./scripts/bodymap -usdz ../north-ios-app/khepri/khepri/Resources/BodyMap.usdz -shell ../north-ios-app/khepri/khepri/Resources/BodyShell.bin -ibl ../north-ios-app/khepri/khepri/Resources/BodyStudio.png
-
-  # The coin medals' preview page. Open it via scripts/medals/preview/serve.py.
-  medals:
-    desc: Regenerate the medals preview page (scripts/medals/preview/index.html)
-    cmds:
-      - GOFLAGS=-mod=mod go tool templ generate ./web/shared/medal
-      - go run ./scripts/medals
 
   build:
     desc: Build all binaries
     cmds:
-      - GOFLAGS=-mod=mod go tool templ generate
       - sqlc generate
-      - task: assets
       - go build ./...
 
   mcp:
@@ -200,16 +170,6 @@ tasks:
     desc: Run the offline test suite
     cmds:
       - go test ./...
-      - task: test:js
-
-  # The command palette is the only navigation route to most of the
-  # application, and its matching, ranking and keyboard model are the one part
-  # of it Go cannot reach. Node's built-in runner, so this stays dependency-free
-  # and there is no package.json.
-  test:js:
-    desc: Run the browser-side tests
-    cmds:
-      - node --test web/assets/js/_tests/*.test.js
 
   test:eval:
     desc: Run the grounding evals, offline tier (no API key, no database)
@@ -229,15 +189,9 @@ tasks:
       - go vet ./...
 
   fmt:
-    desc: Format Go (gofumpt) and templ sources
+    desc: Format Go (gofumpt)
     cmds:
       - go tool gofumpt -w .
-      - |
-        # Generated Lucide dumps from templUI — leave generator formatting.
-        git checkout -- \
-          web/shared/ui/icon/icon_data.go \
-          web/shared/ui/icon/icon_defs.go 2>/dev/null || true
-      - go tool templ fmt .
 
   hooks:
     desc: Install versioned git hooks (.githooks → core.hooksPath)
@@ -248,13 +202,8 @@ tasks:
     desc: Everything CI runs (local equivalent of .github/workflows/ci.yml)
     cmds:
       - bash scripts/check-no-build-artifacts.sh
-      - GOFLAGS=-mod=mod go tool templ generate
-      - task: assets
       - |
         go tool gofumpt -w .
-        git checkout -- \
-          web/shared/ui/icon/icon_data.go \
-          web/shared/ui/icon/icon_defs.go 2>/dev/null || true
         if ! git diff --exit-code -- '*.go'; then
           echo "Go files need gofumpt -w . (run: task fmt)"
           exit 1

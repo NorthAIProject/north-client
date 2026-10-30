@@ -2,6 +2,7 @@ package quota_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/quota"
+	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -28,7 +30,7 @@ func guarded(t *testing.T, limit quota.Limit, counter quota.Counter) (http.Handl
 	})
 
 	reached := 0
-	handler := svc.Guard(quota.ReportGenerate)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := svc.GuardJSON(quota.ReportGenerate)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reached++
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -39,8 +41,7 @@ func guarded(t *testing.T, limit quota.Limit, counter quota.Counter) (http.Handl
 func request(t *testing.T, h http.Handler, _ users.User) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodPost, "/app/reports/generate", nil)
-	req.Header.Set("HX-Request", "true")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/reports", nil)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -80,12 +81,15 @@ func TestARefusalRendersSomethingAPersonCanRead(t *testing.T) {
 	request(t, h, user)
 	rec := request(t, h, user)
 
-	body := rec.Body.String()
-	if strings.TrimSpace(body) == "" {
-		t.Fatal("a refusal rendered an empty body; the user sees a blank panel")
+	var body httpx.ErrorBody
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("a refusal is not the API's error body: %v", err)
 	}
-	if !strings.Contains(body, "role=\"alert\"") {
-		t.Errorf("the refusal did not render the alert component; body = %q", body)
+	if strings.TrimSpace(body.Error.Message) == "" {
+		t.Fatal("a refusal carried no message; the user sees a blank panel")
+	}
+	if body.Error.Code != quota.CodeExceeded {
+		t.Errorf("code = %q, want %q", body.Error.Code, quota.CodeExceeded)
 	}
 }
 

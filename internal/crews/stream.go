@@ -113,27 +113,3 @@ func apiFrame(ev live.Event) (frame, bool) {
 	}
 	return frame{event: ev.Type, data: string(data)}, true
 }
-
-// webFrame names an event for the page watching channelID. htmx turns named
-// events into DOM events, which the page's elements listen for; nothing is
-// swapped from the stream itself.
-func webFrame(channelID uuid.UUID) func(live.Event) (frame, bool) {
-	return func(ev live.Event) (frame, bool) {
-		switch ev.Type {
-		case live.EventMessage:
-			if ev.ChannelID == channelID {
-				return frame{event: "crew-new"}, true
-			}
-			return frame{event: "crew-unread"}, true
-		case live.EventUpdate:
-			return frame{event: "msg-" + ev.MessageID.String()}, true
-		case live.EventChannels:
-			return frame{event: "crew-channels"}, true
-		case live.EventResync:
-			return frame{event: "crew-resync"}, true
-		case live.EventRemoved:
-			return frame{event: "crew-removed"}, true
-		}
-		return frame{}, false
-	}
-}
