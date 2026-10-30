@@ -3,15 +3,11 @@ package planimport_test
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
-	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/planimport"
@@ -162,41 +158,5 @@ func TestMealPlanCannotBeGeneratedWithoutATarget(t *testing.T) {
 	}
 	if len(model.Calls()) != 0 {
 		t.Fatal("the model was asked for a plan nobody can save")
-	}
-}
-
-func TestWebMealGenerateFormRemembersAnswersAndShowsTheReview(t *testing.T) {
-	f := newFixture(t)
-	testFoods(t, f)
-	ctx := auth.ContextWithUser(context.Background(), f.user)
-	reply := strings.Replace(planReply(120, "Test chicken"), `{"food":"Test chicken","grams":100}`, `{"food":"Test rice","grams":5}`, 1)
-	h := planimport.NewHandler(generator(t, f, fake.Text(reply)), nil)
-
-	req := httptest.NewRequest(http.MethodGet, "/app/nutrition/plans/generate", nil).WithContext(ctx)
-	rec := httptest.NewRecorder()
-	h.MealGenerateForm(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `action="/app/nutrition/plans/generate"`) {
-		t.Fatalf("form: %d\n%s", rec.Code, rec.Body.String())
-	}
-
-	form := url.Values{
-		"objective": {"cutting"}, "days": {"1"}, "meals_per_day": {"2"}, "plan_type": {"mid_carb"},
-		"exclusions": {"dairy, peanuts"}, "notes": {"quick lunches"},
-	}
-	rec = postForm(t, ctx, h.MealGenerate, "/app/nutrition/plans/generate", form)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Lean week") || hiddenDraft(t, rec.Body.String()) == "" {
-		t.Fatalf("generate: %d\n%s", rec.Code, rec.Body.String())
-	}
-
-	rec = httptest.NewRecorder()
-	h.MealGenerateForm(rec, req)
-	if !strings.Contains(rec.Body.String(), "dairy, peanuts") || !strings.Contains(rec.Body.String(), "quick lunches") {
-		t.Fatalf("the form does not remember the last answers:\n%s", rec.Body.String())
-	}
-
-	form.Set("meals_per_day", "9")
-	rec = postForm(t, ctx, h.MealGenerate, "/app/nutrition/plans/generate", form)
-	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "Choose between 1 and 8 meals a day.") {
-		t.Fatalf("invalid: %d\n%s", rec.Code, rec.Body.String())
 	}
 }

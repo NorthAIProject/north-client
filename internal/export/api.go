@@ -24,10 +24,9 @@ func NewHandler(exporter *Exporter, quotas *quota.Service, acct *account.Service
 	return &Handler{exporter: exporter, quotas: quotas, account: acct}
 }
 
-// RegisterAPI registers the same archive for the native app, behind
-// auth.Bearer; only the refusal differs, as JSON. The download is shared with
-// the browser route and streams straight to the writer, so it is wrapped
-// rather than rewritten as an Echo handler.
+// RegisterAPI registers the account archive, behind auth.Bearer. A refusal is
+// JSON. The download streams straight to the writer, so it is wrapped rather
+// than rewritten as an Echo handler.
 func (h *Handler) RegisterAPI(g *echo.Group) {
 	g.GET("/account/export", echo.WrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.download(w, r, refuseJSON)

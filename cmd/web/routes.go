@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
@@ -107,13 +106,8 @@ import (
 	"github.com/NorthAIProject/north-client/internal/watches"
 	"github.com/NorthAIProject/north-client/internal/weekly"
 	"github.com/NorthAIProject/north-client/internal/workouts"
-	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 	"github.com/NorthAIProject/north-client/internal/xp"
 	"github.com/NorthAIProject/north-client/web/assets"
-	"github.com/NorthAIProject/north-client/web/landing"
-	"github.com/NorthAIProject/north-client/web/legal"
-	"github.com/NorthAIProject/north-client/web/pwa"
-	"github.com/a-h/templ"
 )
 
 func routes(
@@ -124,7 +118,7 @@ func routes(
 	embedder ai.Embedder,
 	posthogClient posthog.Client,
 	metricsReg *metrics.Registry,
-) (*server, background) {
+) (*echo.Echo, background) {
 	// Wiring happens once, here. Every dependency is constructed explicitly and
 	// passed down, so the shape of the application is readable in one place
 	// rather than discovered through package-level initialisation.
@@ -158,13 +152,7 @@ func routes(
 		WebAuthnRPOrigins:   cfg.WebAuthnRPOrigins,
 		Log:                 slog.Default(),
 	}).WithFunnel(funnel)
-	authMW := auth.NewMiddleware(sessions, cfg.Env.IsProduction(), cfg.TrustedProxies)
-	authThrottle := auth.NewThrottle(auth.ThrottleConfig{
-		PerMinute:         cfg.AuthAttemptsPerMinute,
-		PerEmailPerMinute: cfg.AuthAttemptsPerEmailPerMinute,
-		TrustedProxies:    cfg.TrustedProxies,
-	}, slog.Default())
-	authHandler := auth.NewHandler(authSvc, authMW, "/app", authThrottle)
+	authMW := auth.NewMiddleware(cfg.TrustedProxies)
 
 	conversationSvc := conversations.NewService(conversations.NewRepository(pool))
 
@@ -182,10 +170,8 @@ func routes(
 	awardsSvc := awards.NewService(awards.NewRepository(pool))
 
 	goalSvc := goals.NewService(goals.NewRepository(pool)).WithAchievements(achievementSvc).WithAwards(awardsSvc)
-	goalHandler := goals.NewHandler(goalSvc).WithFunnel(funnel)
 
 	checkinSvc := checkins.NewService(checkins.NewRepository(pool), goalSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
-	checkinHandler := checkins.NewHandler(checkinSvc, goalSvc).WithFunnel(funnel)
 
 	notificationSvc := notifications.NewService(notifications.NewRepository(pool))
 
@@ -195,7 +181,6 @@ func routes(
 	vapid := push.VAPIDFrom(cfg.Push)
 	pushSvc := push.NewService(push.NewRepository(pool), push.NewSender(vapid), vapid, slog.Default()).
 		WithFunnel(funnel)
-	pushHandler := push.NewHandler(pushSvc)
 
 	// APNs to the iOS app. Without a key it is switched off the same way.
 	apnsSvc, err := apns.FromConfig(apns.NewRepository(pool), cfg.APNs, slog.Default())
@@ -209,7 +194,6 @@ func routes(
 		WithPush(pushSvc).
 		WithPush(apnsSvc).
 		WithFunnel(funnel)
-	nudgeHandler := nudges.NewHandler(nudgeSvc)
 	achievementSvc.WithInbox(nudgeSvc)
 
 	// Handles, invite links, follows and blocks. The bell tells people about
@@ -223,10 +207,8 @@ func routes(
 	if fb := facebook.New(cfg.FacebookAppID, cfg.FacebookAppSecret); fb != nil {
 		socialSvc.WithFacebook(fb)
 	}
-	socialHandler := social.NewHandler(socialSvc, cfg.BaseURL, cfg.Env.IsProduction()).WithAchievements(achievementSvc)
 
 	memorySvc := memories.NewService(memories.NewRepository(pool))
-	memoryHandler := memories.NewHandler(memorySvc)
 
 	// Notes and uploaded documents. Bytes go to the same object storage as
 	// media; parsing and chunking happen on the worker, never here.
@@ -255,8 +237,6 @@ func routes(
 	checkinReplySvc := checkinreply.NewService(checkinSvc, checkinreply.NewRepository(pool),
 		checkinreply.NewAIWriter(runner, cfg.AI.FastModel)).WithQuota(quotaSvc)
 
-	documentHandler := documents.NewHandler(documentSvc, quotaSvc)
-
 	vaultSvc := vault.NewService(vault.Options{
 		Repository: vault.NewRepository(vaultdb.New(pool)),
 		Documents:  documentSvc,
@@ -275,18 +255,12 @@ func routes(
 	// Built before workouts: the plan generator picks from this catalog, so
 	// the catalog has to exist before the thing that reads it.
 	exerciseSvc := exercises.NewService(exercises.NewRepository(pool))
-	exerciseHandler := exercises.NewHandler(exerciseSvc)
 
 	workoutSvc := workouts.NewService(workouts.Options{
 		Repository: workouts.NewRepository(pool),
 		Runner:     runner,
 		Catalog:    exerciseSvc,
 		Model:      cfg.AI.Model,
-	})
-	workoutHandler := workouts.NewHandler(workoutSvc)
-	exerciseHandler.WithPlans(func(ctx context.Context, userID uuid.UUID) (uuid.UUID, plan.Plan, error) {
-		stored, lookupErr := workoutSvc.ActivePlan(ctx, userID)
-		return stored.ID, stored.Plan, lookupErr
 	})
 
 	mediaSvc := media.NewService(media.Options{
@@ -297,7 +271,6 @@ func routes(
 		Provider:   cfg.AI.UploadProvider,
 		Model:      cfg.AI.Model,
 	})
-	mediaHandler := media.NewHandler(mediaSvc, quotaSvc)
 
 	// Biometrics -> calculator/activity both need the user's current weight,
 	// so biometrics is constructed first and passed in as a lookup rather
@@ -311,7 +284,6 @@ func routes(
 	calculatorSvc := calculator.NewService(calculator.NewRepository(pool), biometricSvc)
 
 	activitySvc := activity.NewService(activity.NewRepository(pool), biometricSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
-	activityHandler := activity.NewHandler(activitySvc)
 
 	// Crews read check-ins and finished sessions for their boards, and keep
 	// people out of crews whose owner they have a block with.
@@ -323,11 +295,9 @@ func routes(
 	moderationSvc := moderation.NewService(moderation.NewRepository(pool)).
 		WithOperators(cfg.OperatorUserIDs, apnsSvc, pushSvc).
 		WithLogger(slog.Default())
-	moderationHandler := moderation.NewHandler(moderationSvc)
 	crewChat := crews.NewChat(crews.NewRepository(pool), moderationSvc, moderation.NewFilter(), queue)
 	crewLive := live.NewHub()
 	moderationSvc.Register(crews.MessageSubject, crewChat.Hider())
-	crewHandler := crews.NewHandler(crewSvc, cfg.BaseURL, cfg.Env.IsProduction()).WithLive(crewChat, crewLive)
 
 	// Export reads across profile, goals, check-ins, memories, documents,
 	// conversations, medications, progress checks and crew messages, which is
@@ -349,7 +319,6 @@ func routes(
 	// XP is derived from what the slices above record; the leaderboard reads
 	// it and the check-in streak.
 	xpSvc := xp.NewService(xp.NewRepository(pool), checkinSvc)
-	xpHandler := xp.NewHandler(xpSvc)
 
 	// Preferences owns the units system, which the calculator renders in.
 	preferencesSvc := preferences.NewService(preferences.NewRepository(pool))
@@ -360,8 +329,6 @@ func routes(
 	if cfg.News.Enabled() {
 		newsSvc = news.NewService(news.NewRepository(pool), news.NewClient(cfg.News.FeedsBaseURL, nil), preferencesSvc, cfg.News.CuratedFeeds)
 	}
-
-	calculatorHandler := calculator.NewHandler(calculatorSvc, biometricSvc, preferencesSvc)
 
 	// Built once and shared by everything that stores a user's secret: the
 	// Strava tokens below, and the bring-your-own provider key further down.
@@ -421,9 +388,6 @@ func routes(
 	// exists, below; the lighter-day card asks it whether today's message
 	// already covers recovery, so it is read through this variable.
 	var outreachSvc *outreach.Service
-	lighterHandler := lighterday.NewHandler(lighterSvc).WithCoveredBy(func(ctx context.Context, u users.User) bool {
-		return outreachSvc != nil && outreachSvc.CoversRecovery(ctx, u)
-	})
 
 	mealsOpts := meals.HandlerOptions{
 		Ingredients: mealIngredientSvc,
@@ -433,7 +397,6 @@ func routes(
 		Progress:    mealProgressSvc,
 		Recommend:   mealRecommendSvc,
 	}
-	mealsHandler := meals.NewHandler(mealsOpts)
 
 	// Plan import reads a workout or meal plan out of a file. It owns no
 	// table: a confirmed import is stored by the workouts and meals services
@@ -451,7 +414,6 @@ func routes(
 		Planner: planimport.NewAIMealPlanner(runner, cfg.AI.Model, mealIngredientSvc.SharedCatalog),
 		Diets:   mealDietSvc.UserDietNames,
 	})
-	planImportHandler := planimport.NewHandler(planImportSvc, quotaSvc)
 
 	// Personal access tokens for outside agents. The base URL comes from
 	// configuration and not from the request, because the setup instructions
@@ -498,10 +460,8 @@ func routes(
 	// able to issue a code.
 
 	mindSvc := mind.NewService(mind.NewRepository(pool), checkinSvc).WithAwards(awardsSvc)
-	mindHandler := mind.NewHandler(mindSvc, checkinSvc)
 
 	decisionSvc := decisions.NewService(decisions.NewRepository(pool))
-	decisionHandler := decisions.NewHandler(decisionSvc)
 
 	// Daily lifestyle signals. None of these own a page: they are logged from
 	// /app/care, the same way biometrics and preferences are reached through
@@ -521,11 +481,8 @@ func routes(
 		WithRecaps(activitySvc, workoutSvc).
 		WithImports(activitySvc, biometricSvc, exerciseSvc).
 		WithAwards(awardsSvc)
-	workoutHandler.WithRecaps(liftSvc).WithLoads(liftSvc)
 	achievementSvc.WithWorkoutCards(liftSvc)
 	profilesSvc := profiles.NewService(socialSvc, achievementSvc, xpSvc, activitySvc, liftSvc).WithAwards(awardsSvc)
-	profilesHandler := profiles.NewHandler(profilesSvc, socialSvc)
-	awardsHandler := awards.NewHandler(awardsSvc, profilesSvc)
 	milestoneSvc := milestones.NewService(milestones.NewRepository(pool))
 
 	careOpts := care.Options{
@@ -537,7 +494,6 @@ func routes(
 
 		Medications: medicationSvc,
 	}
-	careHandler := care.NewHandler(careOpts)
 
 	// Speech to text: a dedicated endpoint, not a chat model.
 	//
@@ -581,15 +537,10 @@ func routes(
 		Vocabulary: vocab.New(goalSvc, habitSvc),
 	}).WithMetrics(metricsReg)
 
-	// Dictation: the microphone beside every text box that reaches the coach.
-	// It answers with words for the box and nothing else — the person still
-	// sends what they said, the same way they would have after typing.
-	voiceHandler := voice.NewHandler(voiceSvc, quotaSvc)
-
 	// Quick capture composes the six logging slices behind one box. It owns no
 	// table; the parse is a model call and the commit is the same writes the
 	// care page makes.
-	captureHandler := capture.NewHandler(capture.NewService(capture.Options{
+	captureSvc := capture.NewService(capture.Options{
 		// FastModel for the same reason the daily briefing uses it: this is
 		// transcription, not writing.
 		Parser: capture.NewAIParser(runner, cfg.AI.FastModel),
@@ -601,9 +552,9 @@ func routes(
 		FoodLog:     foodLogSvc,
 		Ingredients: mealIngredientSvc,
 		CheckIns:    checkinSvc,
-	}), quotaSvc)
+	})
 
-	captureAPI := capture.NewAPI(captureHandler.Service(), connectionSvc, quotaSvc, slog.Default()).WithSessions(sessions)
+	captureAPI := capture.NewAPI(captureSvc, connectionSvc, quotaSvc, slog.Default()).WithSessions(sessions)
 	authAPI := auth.NewAPI(sessions).WithAuthService(authSvc, authMW)
 
 	dashboardOpts := dashboard.Options{
@@ -628,7 +579,6 @@ func routes(
 		dashboardOpts.NewsTicker = newsSvc
 	}
 	dashboardSvc := dashboard.NewService(dashboardOpts)
-	dashboardHandler := dashboard.NewHandler(dashboardSvc)
 	dashboardAPI := dashboard.NewAPI(dashboardSvc)
 
 	// My Day reads one date across the slices above and reuses the dashboard's
@@ -655,7 +605,6 @@ func routes(
 		CheckInTotals: checkinSvc,
 		CheckIns:      checkinSvc,
 	})
-	dayHandler := day.NewHandler(daySvc).WithBodyMaps(liftSvc).WithProgress(progressSvc)
 
 	// Insights reuses the dashboard's timeline rather than reimplementing the
 	// merge across eight slices. Two copies of that would drift.
@@ -666,7 +615,7 @@ func routes(
 		ScreenTime: screenTimeSvc, CheckIns: checkinSvc, Lifts: liftSvc, Rules: daySvc,
 	})
 
-	fitnessHandler := fitness.NewHandler(fitness.Options{
+	fitnessSvc := fitness.NewService(fitness.Options{
 		Activity:   activitySvc,
 		Workouts:   workoutSvc,
 		Strava:     stravaSvc,
@@ -675,7 +624,7 @@ func routes(
 		Biometrics: biometricSvc,
 		Lifts:      liftSvc,
 		Cardio:     statsSvc,
-	}, cfg.Env.IsProduction())
+	})
 
 	insightsSvc := insights.NewService(insights.Options{
 		Dashboard: dashboardSvc,
@@ -700,7 +649,6 @@ func routes(
 		Sets:          liftSvc,
 		SiteURL:       cfg.BaseURL,
 	})
-	insightsHandler := insights.NewHandler(insightsSvc).WithAwards(awardsSvc)
 
 	// Built here rather than beside the other slices because a weekly review
 	// reads the whole week through insights: it has to come after everything
@@ -714,14 +662,12 @@ func routes(
 		Context:    reports.NewInsightsContext(insightsSvc, mealProgressSvc, memorySvc),
 		FastModel:  cfg.AI.FastModel,
 	})
-	reportHandler := reports.NewHandler(reportSvc, quotaSvc)
 
 	// The weekly review reads goals and reports, and sets the week's training
 	// volume, so it is wired after both and handed back to workouts.
 	weeklySvc := weekly.NewService(weekly.NewRepository(pool), goalSvc, reportSvc).WithAchievements(achievementSvc).WithAwards(awardsSvc)
 	workoutSvc.WithVolume(weeklySvc)
 	reportSvc.WithFocus(weeklySvc)
-	weeklyHandler := weekly.NewHandler(weeklySvc)
 
 	// The "your week" recap reads the logs the slices above already keep,
 	// and posts to the friends feed through achievements.
@@ -732,7 +678,6 @@ func routes(
 		CheckIns:     checkinSvc,
 		Achievements: achievementSvc,
 	})
-	recapHandler := recaps.NewHandler(recapSvc, cfg.BaseURL)
 
 	// The daily post: the worker writes it, everyone reads it here.
 	dailyPostSvc := dailyposts.NewService(dailyposts.NewRepository(pool))
@@ -741,7 +686,6 @@ func routes(
 	inboxSvc := inbox.NewService(inbox.NewRepository(pool), inbox.Options{
 		Queue: queue, Goals: goalSvc, Notes: documentSvc, Journal: mindSvc, Users: userSvc,
 	})
-	inboxHandler := inbox.NewHandler(inboxSvc)
 
 	// Late-wired: see Service.WithBriefings. reports needs insights, and
 	// insights needs the dashboard, so the briefing card arrives last.
@@ -872,7 +816,6 @@ func routes(
 		Model:     cfg.AI.Model,
 		FastModel: cfg.AI.FastModel,
 	})
-	coachHandler := coach.NewHandler(coachSvc, quotaSvc).WithMedia(mediaSvc)
 
 	// Wired after construction: the bell and the coach both already exist,
 	// and a cycle of constructors would be worse than two setters.
@@ -1004,7 +947,6 @@ func routes(
 		WithCoach(coachSvc, slog.Default()).
 		WithFunnel(funnel).
 		WithFirstWeek(firstWeekSvc)
-	onboardingHandler := onboarding.NewHandler(onboardingSvc)
 	onboardingAPI := onboarding.NewAPI(onboardingSvc)
 
 	if telegramClient != nil {
@@ -1034,12 +976,9 @@ func routes(
 		WithFunnel(funnel)
 	mcpAuthMachine := mcpauth.NewMachineHandler(mcpAuthSvc, slog.Default(), cfg.TrustedProxies)
 
-	// The consent screen. It creates accounts, so it holds the auth service and
-	// the onboarding service rather than reimplementing either.
-	mcpAuthBrowser := mcpauth.NewBrowserHandler(
-		mcpAuthSvc, authSvc, authMW, onboardingSvc, slog.Default(), cfg.Env.IsProduction(),
-	).WithFunnel(funnel)
-	// The same screen's JSON half, for the SvelteKit front end.
+	// The consent screen's server half, for the SvelteKit front end that
+	// renders it. It creates accounts, so it holds the auth service and the
+	// onboarding service rather than reimplementing either.
 	mcpAuthAPI := mcpauth.NewAPI(mcpAuthSvc, authSvc, authMW, onboardingSvc, slog.Default()).WithFunnel(funnel)
 
 	// The MCP endpoint an outside agent connects to.
@@ -1081,11 +1020,6 @@ func routes(
 	// for every request here, and the JSON API registers on it natively.
 	e := echox.New(echox.Config{Logger: slog.Default(), TrustedProxies: cfg.TrustedProxies})
 
-	// r is the browser app, still on chi until the web front end moves out of
-	// this process. Echo hands it every request no Echo route claims.
-	r := chi.NewRouter()
-	e.RouteNotFound("/*", echo.WrapHandler(r))
-
 	// Liveness and the operator's user count. Neither carries a session: the
 	// kubelet and the portfolio dashboard are not people.
 	e.GET("/healthz", healthz(pool))
@@ -1096,16 +1030,9 @@ func routes(
 		e.GET("/internal/metrics", metricsHandler(pool, cfg.MetricsSecret))
 	}
 
-	// /mcp sits outside the session group, and the two middlewares it skips are
-	// the reason it needs its own.
-	//
-	// CSRF is a browser defence: it works by requiring back a token the server
-	// put in a form. An MCP client has no form and no cookie — it authenticates
-	// with a bearer, which a browser never attaches on its own, so there is no
-	// ambient authority to confuse and nothing for CSRF to protect. Left in the
-	// main group it would reject every call with a 403 and an HTML body no MCP
-	// client can read. LoadUser would meanwhile resolve a session that has
-	// nothing to do with the token.
+	// /mcp authenticates with a bearer, never a cookie: an MCP client has no
+	// session, and one a browser happens to hold has nothing to do with the
+	// token.
 	//
 	// The body cap is its own and far below the media limit: an MCP request is a
 	// small JSON-RPC envelope, and there is no reason to accept a video's worth
@@ -1116,18 +1043,16 @@ func routes(
 	//
 	// A client fetching discovery has no session, a token request authenticates
 	// with a code rather than a cookie, and both need permissive CORS so a
-	// browser-based client can call them from its own page — which is the
-	// opposite of what the consent screen needs. The consent screen is
-	// therefore mounted in the session group further down, not here.
+	// browser-based client can call them from its own page. The consent screen
+	// is the web app's; its server half is under /api/v1 (mcpauth.API).
 	//
 	// A smaller cap than /mcp: everything here is a handful of short strings.
 	mcpAuthMachine.Register(e.Group("", echomw.BodyLimit(64<<10)))
 
-	// /api/v1 sits beside /mcp for the same three reasons: no cookie, no form,
-	// and a bearer a browser never attaches on its own. The native app signs
-	// in for a bearer session; capture keeps its nk_ connection token. Body
-	// caps are set per group inside mountAPI. It is Echo's own, so no request
-	// for /api/v1 ever reaches the browser app below.
+	// /api/v1 sits beside /mcp for the same reasons: no cookie, no form, and a
+	// bearer a browser never attaches on its own. The native app and the web
+	// app sign in for a bearer session; capture keeps its nk_ connection token.
+	// Body caps are set per group inside mountAPI.
 	//
 	// The web transcript loads a photo a turn carried through the API.
 	coachAPI := coach.NewAPI(coachSvc, quotaSvc, mediaSvc).WithAttachmentURLs(func(ctx context.Context, id, userID uuid.UUID) (string, error) {
@@ -1162,7 +1087,7 @@ func routes(
 		training:     workouts.NewAPI(workoutSvc).WithRecaps(liftSvc).WithLoads(liftSvc),
 		activity:     activity.NewAPI(activitySvc),
 		health:       health.NewAPI(healthSvc),
-		fitness:      fitness.NewAPI(stravaSvc, cfg.BaseURL).WithHub(fitnessHandler.Hub()),
+		fitness:      fitness.NewAPI(stravaSvc, cfg.BaseURL).WithHub(fitnessSvc),
 		insights:     insights.NewAPI(insightsSvc).WithFocus(weeklySvc),
 		goals:        goals.NewAPI(goalSvc),
 		checkins:     checkins.NewAPI(checkinSvc).WithFunnel(funnel),
@@ -1202,7 +1127,7 @@ func routes(
 
 	// Health ingest sits beside /mcp for exactly the reasons above: the caller is
 	// a background process on somebody's phone, holding the same revocable
-	// bearer token and carrying neither a cookie nor a CSRF token.
+	// bearer token and carrying no cookie.
 	//
 	// It gets its own group only because of the cap. An MCP call is a small
 	// envelope; one health sync is a week of per-beat samples, and 1 MiB would
@@ -1233,156 +1158,7 @@ func routes(
 		e.Any("/webhooks/telegram", echo.WrapHandler(telegramWebhook), echomw.BodyLimit(1<<20))
 	}
 
-	r.Group(func(r chi.Router) {
-		// Before CSRF: that middleware parses multipart bodies to find the token,
-		// so the cap has to be in place first. Slightly above the media limit, so a
-		// too-large video gets the media handler's explanation rather than a bare
-		// connection error.
-		r.Use(middleware.MaxBody(media.MaxVideoBytes + (16 << 20)))
-		r.Use(middleware.CSRF(cfg.Env.IsProduction()))
-		// Locale before LoadUser, deliberately: this one can only guess from a
-		// cookie or Accept-Language, and LoadUser overwrites the guess with the
-		// account's own setting. The other order would let a laptop's browser
-		// settings override what somebody chose in Khepri.
-		r.Use(middleware.Locale)
-		// Before LoadUser for the same reason: a visitor's cookie, which
-		// LoadUser replaces with the account's own appearance when it has one.
-		r.Use(middleware.Appearance)
-		// Before LoadUser for the same reason as Locale: the snippet this feeds
-		// is rendered for signed-out visitors too, and the landing page is the
-		// one page whose numbers it exists to collect. LoadUser then adds the
-		// account id on top, for the identify call.
-		r.Use(middleware.Analytics(middleware.AnalyticsConfig{
-			APIKey: cfg.PostHog.APIKey,
-			Host:   cfg.PostHog.Host,
-		}))
-		r.Use(authMW.LoadUser)
-
-		mountAssets(r, cfg)
-		pwa.Mount(r)
-
-		r.Get("/.well-known/apple-app-site-association", auth.AppleAppSiteAssociation(cfg.AppleTeamID, cfg.AppleBundleID))
-		r.Method(http.MethodGet, "/", templ.Handler(landing.Page()))
-
-		// Public and outside /app on purpose: somebody deciding whether to
-		// trust the product with their health data has to be able to read the
-		// policy before creating the account that would let them read it.
-		r.Method(http.MethodGet, "/privacy", templ.Handler(legal.Privacy()))
-		// Somebody's invite link: who sent it, and the way in.
-		socialHandler.PublicRoutes(r)
-		// A crew's join link.
-		crewHandler.PublicRoutes(r)
-		r.Method(http.MethodGet, "/terms", templ.Handler(legal.Terms()))
-		// Meta's "Data Deletion Instructions URL" for Facebook Login.
-		r.Method(http.MethodGet, "/facebook-data", templ.Handler(legal.FacebookDataDeletion()))
-
-		// The footer language switcher, for visitors who have no account to
-		// store a preference on. A POST rather than a link: it writes a cookie,
-		// and a GET that changes state is a GET a prefetcher can fire.
-		//
-		// Signed-in users never see the switcher — Settings owns their language
-		// — and this route would not help them if they found it, because
-		// LoadUser overwrites the cookie with the account's own setting.
-		r.Post("/locale", setLocale)
-
-		// The appearance switcher on the public pages. Unlike /locale it also
-		// writes the account when somebody is signed in, because the switcher
-		// is shown to them too and a toggle that LoadUser then ignored would
-		// visibly do nothing.
-		r.Post("/appearance", setAppearance(userSvc))
-
-		authHandler.Routes(r)
-
-		// The consent screen, inside this group rather than beside /mcp.
-		//
-		// It is a browser page: it reads the session cookie, resolves a locale,
-		// and renders a form with a CSRF token. Its machine half — discovery,
-		// registration, tokens — is mounted above, outside the group, because
-		// those need permissive CORS and no cookie. Chi routes exact paths, so
-		// splitting /oauth across the two groups is legal.
-		mcpAuthBrowser.Routes(r)
-
-		// Everything under /app requires a session.
-		r.Route("/app", func(r chi.Router) {
-			r.Use(authMW.RequireAuth)
-			// An invite link opened before signing up or in connects the two
-			// people on the first page inside, whichever way they signed in.
-			r.Use(socialHandler.RedeemInvite)
-			r.Use(crewHandler.JoinFromCookie)
-			// Before any page renders, so each text box knows whether to offer
-			// a microphone without every handler passing that along.
-			r.Use(voiceHandler.Advertise)
-
-			onboardingHandler.Routes(r)
-			// Outside RequireOnboarded: the onboarding form offers dictation
-			// too, for the coaching style written in the person's own words.
-			voiceHandler.Routes(r)
-
-			r.Group(func(r chi.Router) {
-				r.Use(onboarding.RequireOnboarded)
-				// A running first week shows a smaller rail; see internal/firstweek.
-				r.Use(firstWeekSvc.SimpleNav)
-
-				dayHandler.Routes(r)
-				caffeine.NewHandler(caffeineSvc).Routes(r)
-				fasting.NewHandler(fastingSvc).Routes(r)
-				supplements.NewHandler(supplementSvc).Routes(r)
-				screentime.NewHandler(screenTimeSvc).Routes(r)
-				soreness.NewHandler(sorenessSvc).Routes(r)
-				lifts.NewHandler(liftSvc).Routes(r)
-				milestones.NewHandler(milestoneSvc).Routes(r)
-				health.NewWebHandler(healthSvc).Routes(r)
-				dashboardHandler.Routes(r)
-				if newsSvc != nil {
-					news.NewHandler(newsSvc).Routes(r)
-				}
-				insightsHandler.Routes(r)
-				reportHandler.Routes(r)
-
-				coachHandler.Routes(r)
-				checkinHandler.Routes(r)
-				checkinreply.NewHandler(checkinReplySvc).Routes(r)
-				nudgeHandler.Routes(r)
-				pushHandler.Routes(r)
-				goalHandler.Routes(r)
-				memoryHandler.Routes(r)
-				documentHandler.Routes(r)
-				exportHandler.Routes(r)
-				exerciseHandler.Routes(r)
-				workoutHandler.Routes(r)
-				mediaHandler.Routes(r)
-				settingsHandler.Routes(r)
-				vaultHandler.Routes(r)
-				mindHandler.Routes(r)
-				decisionHandler.Routes(r)
-				socialHandler.Routes(r)
-				profilesHandler.Routes(r)
-				awardsHandler.Routes(r)
-				crewHandler.Routes(r)
-				moderationHandler.Routes(r)
-				xpHandler.Routes(r)
-				weeklyHandler.Routes(r)
-				recapHandler.Routes(r)
-				dailyposts.NewHandler(dailyPostSvc).Routes(r)
-				inboxHandler.Routes(r)
-				lighterHandler.Routes(r)
-				outreach.NewHandler(outreachSvc).Routes(r)
-				firstweek.NewHandler(firstWeekSvc).Routes(r)
-				careHandler.Routes(r)
-				// The medications card's writes, rendered back through the care page.
-				medications.NewHandler(medicationSvc, careHandler).Routes(r)
-				captureHandler.Routes(r)
-				activityHandler.Routes(r)
-				calculatorHandler.Routes(r)
-				mealsHandler.Routes(r)
-				planImportHandler.Routes(r)
-				progresschecks.NewHandler(progressSvc, quotaSvc).Routes(r)
-				fitnessHandler.Routes(r)
-			})
-		})
-	})
-
-	return &server{Echo: e, web: r}, func(ctx context.Context) error {
+	return e, func(ctx context.Context) error {
 		// One LISTEN connection feeds every open crew stream in this process.
 		// When the process is told to stop, the streams end at once, so the
 		// server's graceful shutdown does not wait out its timeout on them.
@@ -1400,14 +1176,6 @@ func routes(
 		}
 		return runTelegram(ctx, telegramClient, telegramPoller)
 	}
-}
-
-// server is the process's HTTP side: Echo in front, serving the JSON API and
-// owning the middleware every request runs through, and the browser app's
-// chi router behind it for whatever Echo does not route itself.
-type server struct {
-	*echo.Echo
-	web *chi.Mux
 }
 
 // runTelegram publishes the command menu, then polls for the life of the

@@ -1,15 +1,10 @@
 package planimport_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"html"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -212,80 +207,6 @@ func TestMealCSVPreviewsAgainstTheTargetAndCannotSilentlySaveAnOverage(t *testin
 }
 
 func within(got, want float64) bool { return got > want-0.01 && got < want+0.01 }
-
-// The web round trip: upload a sheet, see it on the review page, fix it, save.
-// The quota guard is the router's concern and is not mounted here.
-func TestWebWorkoutImportRoundTrip(t *testing.T) {
-	f := newFixture(t)
-	ctx := auth.ContextWithUser(context.Background(), f.user)
-	h := planimport.NewHandler(f.svc, nil)
-
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	part, _ := mw.CreateFormFile("file", "block.csv")
-	_, _ = part.Write([]byte("Day,Exercise,Sets,Reps\nDay 1,Back Squat,3,5\n,Leg Curl,,\n"))
-	_ = mw.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/app/training/import", &body).WithContext(ctx)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	rec := httptest.NewRecorder()
-	h.WorkoutParse(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Back Squat") {
-		t.Fatalf("parse: %d\n%s", rec.Code, rec.Body.String())
-	}
-
-	draftJSON := hiddenDraft(t, rec.Body.String())
-	form := url.Values{
-		"draft":      {draftJSON},
-		"name":       {"Block 3"},
-		"d0.weekday": {"Tuesday"},
-		"d0.e0.name": {"Back Squat"},
-		"d0.e0.sets": {"3"},
-		"d0.e0.reps": {"5"},
-		"d0.e1.name": {"Leg Curl"},
-		"d0.e1.sets": {""},
-		"action":     {"delete-exercise:0:1"},
-	}
-	rec = postForm(t, ctx, h.WorkoutReview, "/app/training/import/review", form)
-	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "Leg Curl") {
-		t.Fatalf("delete: %d, Leg Curl still shown", rec.Code)
-	}
-
-	form.Set("draft", hiddenDraft(t, rec.Body.String()))
-	form.Del("d0.e1.name")
-	form.Set("action", "save")
-	rec = postForm(t, ctx, h.WorkoutReview, "/app/training/import/review", form)
-	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/app/training/") {
-		t.Fatalf("save: %d %q\n%s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
-	}
-
-	plans, err := f.workouts.ListPlans(context.Background(), f.user.ID, 5)
-	if err != nil || len(plans) != 1 {
-		t.Fatalf("plans = %d, err %v", len(plans), err)
-	}
-	p := plans[0].Plan
-	if p.Name != "Block 3" || p.Days[0].Weekday != "Tuesday" || len(p.Days[0].Exercises) != 1 {
-		t.Fatalf("plan = %+v", p)
-	}
-}
-
-func hiddenDraft(t *testing.T, page string) string {
-	t.Helper()
-	m := regexp.MustCompile(`name="draft" value="([^"]*)"`).FindStringSubmatch(page)
-	if m == nil {
-		t.Fatalf("no draft field on the page")
-	}
-	return html.UnescapeString(m[1])
-}
-
-func postForm(t *testing.T, ctx context.Context, handler http.HandlerFunc, path string, form url.Values) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode())).WithContext(ctx)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-	handler(rec, req)
-	return rec
-}
 
 // A dayless plan with options: only the first option counts toward the day,
 // the one day is saved on all seven, and a personal food in an option is

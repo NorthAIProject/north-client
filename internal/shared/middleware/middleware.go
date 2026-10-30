@@ -1,5 +1,6 @@
 // Package middleware holds the HTTP concerns that apply across every route:
-// request identity, structured logging, panic recovery, and CSRF protection.
+// request identity, structured logging, panic recovery, the locale guess, and
+// the client address behind trusted proxies.
 //
 // Authentication middleware lives in internal/auth, next to the session code it
 // depends on, so that this package stays free of business concepts.

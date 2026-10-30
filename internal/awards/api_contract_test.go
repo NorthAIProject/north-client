@@ -103,5 +103,3 @@ func TestAwardsListSplitsEarnedAndLocked(t *testing.T) {
 		}
 	}
 }
-
-func (e *apiEnv) pool() *pgxpool.Pool { return e.db }

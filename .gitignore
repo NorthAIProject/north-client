@@ -1,7 +1,4 @@
 .env
-web/assets/css/output.css
-web/assets/css/sources.generated.css
-*_templ.go
 
 # Compiled binaries (local and CI outputs)
 bin/
@@ -22,9 +19,9 @@ bin/
 /worker
 /mcp-server
 
-# `go build ./cmd/...`-adjacent strays. `templ` is the templ CLI itself, which
-# `go tool templ` never writes here but a manual `go build` of the tool does —
-# 20 MB of Mach-O reached main that way.
+# `go build ./cmd/...`-adjacent strays. `templ` is the templ CLI the browser
+# app used to generate with; a manual `go build` of it wrote 20 MB of Mach-O
+# here once.
 /templ
 
 # tools/model is a build-time Node tool, run by hand and never deployed
@@ -36,5 +33,5 @@ package-lock.json
 # so every file in there had to be force-added, and one that was not would go
 # missing with no error until a page tried to load it.
 /vendor/
-# Dev server binary built by the templ watcher.
+# Local scratch output.
 tmp/

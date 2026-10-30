@@ -1,3 +1,8 @@
+//go:build ignore
+
+// Excluded from the module build: it renders web/shared/medal, which left
+// with the browser app. It moves to the web app's repository with web/assets.
+
 // Command medals writes scripts/medals/preview/index.html: every coin medal
 // with its id, English name and description, so names, copy and art can be
 // judged together. Run from the repository root: go run ./scripts/medals

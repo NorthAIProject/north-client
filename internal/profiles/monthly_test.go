@@ -3,8 +3,6 @@ package profiles_test
 import (
 	"context"
 	"errors"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -87,47 +85,6 @@ func TestProfileNeverShowsAMissedMonth(t *testing.T) {
 	}
 }
 
-func TestProfilePageMonthlyCardFollowsAwardsSwitch(t *testing.T) {
-	w := newWorld(t)
-	leo, ana := person(t, w.pool, "leo-mc@n.test", "Leo"), person(t, w.pool, "ana-mc@n.test", "Ana")
-	w.handle(t, leo, "leomc")
-	do := w.pageClient(t)
-	const card = `id="monthly-challenge"`
-
-	w.share(t, leo, achievements.Sharing{Training: true, Awards: true})
-	do(leo, http.MethodGet, "/app/u/leomc") // the owner's visit opens the month
-	if body := do(ana, http.MethodGet, "/app/u/leomc").Body.String(); !strings.Contains(body, card) || !strings.Contains(body, "challenge") {
-		t.Error("a follower does not see a shared monthly card")
-	}
-	if !strings.Contains(do(leo, http.MethodGet, "/app/u/leomc").Body.String(), card) {
-		t.Error("the owner does not see their card")
-	}
-
-	w.share(t, leo, achievements.Sharing{Training: true, Awards: false})
-	if strings.Contains(do(ana, http.MethodGet, "/app/u/leomc").Body.String(), card) {
-		t.Error("the card shows with the awards switch off")
-	}
-	if !strings.Contains(do(leo, http.MethodGet, "/app/u/leomc").Body.String(), card) {
-		t.Error("the owner lost their card when the switch went off")
-	}
-}
-
-func TestProfileStripCarriesMonthlyMedals(t *testing.T) {
-	w := newWorld(t)
-	leo, ana := person(t, w.pool, "leo-ms@n.test", "Leo"), person(t, w.pool, "ana-ms@n.test", "Ana")
-	w.handle(t, leo, "leoms")
-	w.meetMonth(t, leo, "2026-09")
-	body := newWorldBody(t, w, ana, "/app/u/leoms")
-	if !strings.Contains(body, ">SEP<") {
-		t.Error("the strip lacks the September coin")
-	}
-}
-
-func newWorldBody(t *testing.T, w world, as users.User, path string) string {
-	t.Helper()
-	return w.pageClient(t)(as, http.MethodGet, path).Body.String()
-}
-
 // Looking at someone's profile must not write their data: the row fixes their
 // target for the month, so only their own visit may create it.
 func TestViewingAnotherProfileNeverCreatesTheirChallenge(t *testing.T) {
@@ -151,10 +108,6 @@ func TestViewingAnotherProfileNeverCreatesTheirChallenge(t *testing.T) {
 	}
 	if seen.MonthlyChallenge != nil || count() != 0 {
 		t.Fatalf("a viewer's visit left card=%v rows=%d", seen.MonthlyChallenge, count())
-	}
-	body := newWorldBody(t, w, ana, "/app/u/leopk")
-	if strings.Contains(body, `id="monthly-challenge"`) || count() != 0 {
-		t.Fatalf("the page showed a card or wrote a row (rows=%d)", count())
 	}
 
 	own, err := w.svc.View(ctx, leo, "leopk", oct20)
@@ -205,9 +158,5 @@ func TestProfileSurvivesAFailedMonthlyRead(t *testing.T) {
 		if v.MonthlyChallenge != nil || len(v.Monthly) != 0 || len(v.Awards) != 1 {
 			t.Fatalf("view = %+v, want badges only", v)
 		}
-	}
-	rec := w.pageClient(t)(ana, http.MethodGet, "/app/u/leobk")
-	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `id="monthly-challenge"`) {
-		t.Fatalf("page %d, card shown or 500", rec.Code)
 	}
 }

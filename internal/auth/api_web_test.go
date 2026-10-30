@@ -196,7 +196,7 @@ func TestResetPasswordFromTheEmailedLink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := publicRouter(auth.NewAPI(sessions).WithAuthService(svc, auth.NewMiddleware(sessions, false, nil)))
+	r := publicRouter(auth.NewAPI(sessions).WithAuthService(svc, auth.NewMiddleware(nil)))
 
 	body := `{"token":"` + token + `","password":"` + goodPassword + `x","passwordConfirmation":"mismatch"}`
 	if rec := postJSON(t, r, "/auth/reset-password", body); rec.Code != http.StatusUnprocessableEntity {
