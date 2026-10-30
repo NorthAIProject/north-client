@@ -147,7 +147,7 @@ func (a *API) signup(c *echo.Context) error {
 	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 64 << 10}, i18n.T(ctx, "auth.api.body.signup")); err != nil {
 		return err
 	}
-	if !a.throttle.AllowAccount(c.Request(), req.Email) {
+	if !a.throttle.Allow(c.Request(), req.Email) {
 		return throttled(c)
 	}
 
@@ -177,7 +177,7 @@ func (a *API) login(c *echo.Context) error {
 	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 64 << 10}, i18n.T(ctx, "auth.api.body.login")); err != nil {
 		return err
 	}
-	if !a.throttle.AllowAccount(c.Request(), req.Email) {
+	if !a.throttle.Allow(c.Request(), req.Email) {
 		return throttled(c)
 	}
 
@@ -245,7 +245,7 @@ func (a *API) forgotPassword(c *echo.Context) error {
 	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 16 << 10}, i18n.T(ctx, "auth.api.body.email")); err != nil {
 		return err
 	}
-	if !a.throttle.AllowAccount(c.Request(), req.Email) {
+	if !a.throttle.Allow(c.Request(), req.Email) {
 		return throttled(c)
 	}
 	if err := a.service.RequestPasswordReset(ctx, req.Email); err != nil {

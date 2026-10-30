@@ -50,6 +50,10 @@ type Config struct {
 	// attempts against one account from every address at once.
 	AuthAttemptsPerEmailPerMinute int
 
+	// AuthAttemptsPerAddressPerMinute bounds the same attempts from one
+	// address against every account at once.
+	AuthAttemptsPerAddressPerMinute int
+
 	DatabaseURL string
 
 	// News is the breaking-news ticker's source: the cluster's shared feed
@@ -779,6 +783,12 @@ func Load() (*Config, error) {
 		problems = append(problems, err.Error())
 	}
 	cfg.AuthAttemptsPerEmailPerMinute = authEmailRate
+
+	authAddressRate, err := intValue("AUTH_ATTEMPTS_PER_IP_PER_MINUTE", 0)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.AuthAttemptsPerAddressPerMinute = authAddressRate
 
 	// A malformed CIDR is a boot failure rather than a warning. Silently
 	// believing nobody would leave every limiter keyed on the ingress address,
