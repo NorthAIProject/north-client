@@ -13,20 +13,6 @@ import (
 	vaultpages "github.com/NorthAIProject/north-client/web/settings/vault"
 )
 
-type Handler struct {
-	svc     *Service
-	enabled bool
-}
-
-// NewHandler builds the vault handler. enabled is false in a hosted deployment:
-// Connect stats a path on the server's own filesystem and the sync job walks it,
-// so in a container the folder a user types resolves inside the pod and the
-// feature cannot work. Nothing links to these routes, so switching them off
-// removes a guaranteed failure rather than a capability.
-func NewHandler(svc *Service, enabled bool) *Handler {
-	return &Handler{svc: svc, enabled: enabled}
-}
-
 func (h *Handler) Routes(r chi.Router) {
 	if !h.enabled {
 		return

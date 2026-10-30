@@ -21,10 +21,6 @@ import (
 	knowledgepages "github.com/NorthAIProject/north-client/web/knowledge"
 )
 
-// maxMultipartMemory bounds what an upload buffers in RAM before spilling to a
-// temporary file. The service enforces the real size limit.
-const maxMultipartMemory = 4 << 20 // 4 MiB
-
 type Handler struct {
 	svc    *Service
 	quotas *quota.Service

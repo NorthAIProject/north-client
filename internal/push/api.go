@@ -11,6 +11,19 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
+// A subscription serialises to a few hundred bytes. Anything near this is not
+// one.
+const maxRequestBytes = 8 << 10
+
+// subscriptionJSON is PushSubscription.toJSON() as the browser emits it.
+type subscriptionJSON struct {
+	Endpoint string `json:"endpoint"`
+	Keys     struct {
+		P256dh string `json:"p256dh"`
+		Auth   string `json:"auth"`
+	} `json:"keys"`
+}
+
 // API is Web Push opt-in for web clients over /api/v1: the same subscribe and
 // unsubscribe the cookie-session handler serves, plus the VAPID key the
 // browser subscribes with. Register it behind auth.Bearer.

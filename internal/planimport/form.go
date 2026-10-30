@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -186,45 +185,6 @@ func applyMealAction(d *MealDraft, a reviewAction) {
 		}
 	}
 	dropEmpty(d)
-}
-
-// dropEmpty removes the meals left with no option and the days left with no
-// meal.
-func dropEmpty(d *MealDraft) {
-	for i := range d.Days {
-		d.Days[i].Meals = slices.DeleteFunc(d.Days[i].Meals, func(m MealDraftMeal) bool { return len(m.Foods) == 0 && len(m.Alternatives) == 0 })
-	}
-	d.Days = slices.DeleteFunc(d.Days, func(day MealDayDraft) bool { return len(day.Meals) == 0 })
-}
-
-// optionFoods is option o's food lines (0 being the first option), or nil
-// when the meal has no such option.
-func optionFoods(m *MealDraftMeal, o int) *[]FoodDraft {
-	switch {
-	case o == 0:
-		return &m.Foods
-	case o <= len(m.Alternatives):
-		return &m.Alternatives[o-1].Foods
-	}
-	return nil
-}
-
-// deleteOption removes option o. Removing the first promotes the next
-// option to be the one counted; removing the only one empties the meal,
-// which applyMealAction then drops.
-func deleteOption(m *MealDraftMeal, o int) {
-	switch {
-	case o == 0 && len(m.Alternatives) > 0:
-		next := m.Alternatives[0]
-		m.OptionLabel, m.Foods, m.Alternatives = next.Label, next.Foods, m.Alternatives[1:]
-	case o == 0:
-		m.OptionLabel, m.Foods = "", nil
-	case o <= len(m.Alternatives):
-		m.Alternatives = append(m.Alternatives[:o-1], m.Alternatives[o:]...)
-	}
-	if len(m.Alternatives) == 0 {
-		m.Alternatives = nil
-	}
 }
 
 // formInt reads an optional whole number typed on the review page. Blank is

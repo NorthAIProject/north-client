@@ -15,7 +15,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/exercises/exercise"
-	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/htmx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
@@ -36,20 +35,10 @@ type Handler struct {
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
-// Recaps finds the latest finished workout in a window.
-type Recaps interface {
-	LatestRecap(ctx context.Context, user users.User, rg timerange.Range) (lift.Recap, bool, error)
-}
-
 // WithRecaps puts this week's latest workout at the top of the plan page.
 func (h *Handler) WithRecaps(recaps Recaps) *Handler {
 	h.recaps = recaps
 	return h
-}
-
-// Loads reads how ready each muscle is from logged sets.
-type Loads interface {
-	Readiness(ctx context.Context, user users.User) (lift.Load, error)
 }
 
 // WithLoads lights the plan page's body from what was actually lifted.

@@ -4,7 +4,6 @@ import (
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -116,18 +115,6 @@ func (h *Handler) activitySessions(w http.ResponseWriter, r *http.Request) {
 	if err := fitnesspages.ActivitySessions(sessions, user.Location()).Render(ctx, w); err != nil {
 		middleware.FromContext(ctx).Error("render activity sessions", slog.Any("error", err))
 	}
-}
-
-// sessionPageParam reads ?page=. Anything that is not a positive number is
-// page one: a pager is navigation, and navigation that answers a fat-fingered
-// URL with a 422 is worse than one that answers it with the first page. The
-// service clamps the upper end against how many pages there actually are.
-func sessionPageParam(r *http.Request) int {
-	n, err := strconv.Atoi(r.URL.Query().Get("page"))
-	if err != nil || n < 1 {
-		return 1
-	}
-	return n
 }
 
 func (h *Handler) hub(w http.ResponseWriter, r *http.Request) {
