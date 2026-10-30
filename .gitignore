@@ -27,10 +27,7 @@ bin/
 node_modules/
 package-lock.json
 
-# Go module vendoring, at the repository root only. Unanchored, this pattern
-# also matched web/assets/js/vendor — the committed third-party JavaScript —
-# so every file in there had to be force-added, and one that was not would go
-# missing with no error until a page tried to load it.
+# Go module vendoring, at the repository root only.
 /vendor/
 # Local scratch output.
 tmp/

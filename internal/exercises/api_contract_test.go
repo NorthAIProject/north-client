@@ -5,28 +5,28 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NorthAIProject/north-client/internal/exercises/art"
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
-	"github.com/NorthAIProject/north-client/web/assets"
 )
 
 func TestExerciseDetailShape(t *testing.T) {
 	t.Parallel()
 
-	art, err := NewAPI(nil, assets.Assets).frames("push-up")
+	pushUp, err := NewAPI(nil, art.Frames).frames("push-up")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Pinned with the first few hundred characters of each frame: the whole
 	// path is 12 KB of numbers that would drown the diff that matters.
-	for i, frame := range art.Frames {
-		art.Frames[i] = frame[:200] + "…"
+	for i, frame := range pushUp.Frames {
+		pushUp.Frames[i] = frame[:200] + "…"
 	}
 	apitest.AssertGolden(t, "exercise.golden.json", ExerciseDetail{
 		Slug: "push-up", Name: "Push-Up", Category: "strength", Equipment: "none", Difficulty: "beginner",
 		Instructions: "Lie face down with your hands shoulder-width apart.",
 		VideoURL:     "https://youtu.be/IODxDxX7oi4",
 		Primary:      []string{"chest"}, Secondary: []string{"triceps", "shoulders"},
-		Art: art,
+		Art: pushUp,
 	})
 }
 
@@ -35,8 +35,8 @@ func TestExerciseDetailShape(t *testing.T) {
 func TestEveryMovementsArtIsOnePathInASquare(t *testing.T) {
 	t.Parallel()
 
-	api := NewAPI(nil, assets.Assets)
-	dirs, err := fs.ReadDir(assets.Assets, "exercises")
+	api := NewAPI(nil, art.Frames)
+	dirs, err := fs.ReadDir(art.Frames, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,12 +45,12 @@ func TestEveryMovementsArtIsOnePathInASquare(t *testing.T) {
 		if !dir.IsDir() {
 			continue
 		}
-		art, err := api.frames(dir.Name())
+		got, err := api.frames(dir.Name())
 		if err != nil {
 			t.Errorf("%s: %v", dir.Name(), err)
 			continue
 		}
-		for i, frame := range art.Frames {
+		for i, frame := range got.Frames {
 			// A path must open with a move; a relative "m" first is legal and
 			// counts from the origin, and twelve frames use it.
 			if f := strings.TrimSpace(frame); !strings.HasPrefix(f, "M") && !strings.HasPrefix(f, "m") {

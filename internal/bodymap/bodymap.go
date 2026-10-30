@@ -1,7 +1,7 @@
 // Package bodymap is the body figure's vocabulary: which muscle keys the figure
 // has a patch of skin for, and how the rest fold into them.
 //
-// The figure (web/assets/models/body-map.glb, and BodyMap.usdz on iOS) is the
+// The figure (scripts/bodymap/body-map.glb, and BodyMap.usdz on iOS) is the
 // skin of a body cut into one region per muscle key, built by scripts/bodymap.
 // A muscle that never reaches the surface — the rhomboids sit under the
 // trapezius — has no skin of its own, so its heat shows on the region above it.

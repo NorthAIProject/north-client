@@ -30,8 +30,8 @@ type API struct {
 	art fs.FS
 }
 
-// NewAPI serves catalog entries, with artwork read from art (the embedded
-// web/assets tree; frames live under exercises/<slug>/frame-N.svg.gz).
+// NewAPI serves catalog entries, with artwork read from art (art.Frames in
+// production; frames live at <slug>/frame-N.svg.gz).
 // Register behind auth.Bearer.
 func NewAPI(svc *Service, art fs.FS) *API {
 	return &API{svc: svc, art: art}
@@ -166,7 +166,7 @@ var (
 func (a *API) frames(illustration string) (*Art, error) {
 	art := &Art{Credit: ArtCredit, Frames: make([]string, 0, artFrameCount)}
 	for i := 1; i <= artFrameCount; i++ {
-		svg, err := readGzip(a.art, fmt.Sprintf("exercises/%s/frame-%d.svg.gz", illustration, i))
+		svg, err := readGzip(a.art, fmt.Sprintf("%s/frame-%d.svg.gz", illustration, i))
 		if err != nil {
 			return nil, err
 		}

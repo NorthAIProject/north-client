@@ -2,8 +2,8 @@
 
 Builds `tools/model/body-source.glb`: the anatomical atlas placed inside an outer
 skin. It is not served. `task bodymap` (`go run ./scripts/bodymap`) turns it into the
-figure every client draws (`web/assets/models/body-map.glb`, the iOS `BodyMap.usdz`
-and the flat fallback); see `web/assets/models/README.md`.
+figure every client draws (`scripts/bodymap/body-map.glb`, which the web app serves,
+and the iOS `BodyMap.usdz`); see `scripts/bodymap/README.md`.
 
 **The raw sources are not on disk any more.** `body-source.glb` is committed and is
 the only input the figure needs; the scripts here are the record of how it was made
@@ -58,8 +58,8 @@ node build-body.mjs \
 **Muscles.** [hpfrei/body-anatomy-3d-viewer](https://github.com/hpfrei/body-anatomy-3d-viewer)'s
 `public/body.glb`, built on [Z-Anatomy](https://www.z-anatomy.com/) (CC BY-SA 4.0). The
 script keeps only meshes whose names match `MUSCLE_ALIASES` in
-`web/assets/js/shared/muscle-viewer/muscles.js` — the same table the browser uses to
-decide what to light up — and hard-fails if any of the 15 groups has no matching mesh,
+`tools/model/muscles.js` — the same table `scripts/bodymap` uses to
+group the figure's muscles — and hard-fails if any of the 15 groups has no matching mesh,
 because a group with no geometry can never be highlighted and nothing else would tell you.
 
 **Skin.** Any humanoid body mesh, subject to three requirements:
@@ -109,4 +109,4 @@ whole exercise was about.
 
 Z-Anatomy is CC BY-SA 4.0, and ShareAlike is viral: whatever the skin's own licence,
 the **combined** asset ships as CC BY-SA 4.0. Attribution for every source lives in
-`siteFooter()` in `web/landing/sections.templ`. Update it when you change a source.
+the web app's site footer (north-web-app). Update it when you change a source.

@@ -1,6 +1,6 @@
 // Command workout-guide-art imports the Workout Guide pose artwork into
-// North: it writes the SVG frames into web/assets/exercises and generates the
-// migration that points catalog rows at them.
+// North: it writes the SVG frames into internal/exercises/art, which the API
+// embeds, and generates the migration that points catalog rows at them.
 //
 // It is a one-off, but it is committed alongside its output for the same
 // reason scripts/fitme-exercises is — the output is hundreds of rows of
@@ -16,8 +16,19 @@
 //	git clone --depth 1 https://github.com/bryllim/workout-guide /tmp/workout-guide
 //	go run ./scripts/workout-guide-art \
 //	  -source /tmp/workout-guide \
-//	  -assets web/assets/exercises \
+//	  -assets internal/exercises/art \
 //	  -out    migrations/20260827150000_exercise_illustrations.sql
+//
+// The web app serves its own copies, which this repository does not write.
+// After a run, copy each frame to north-web-app by hand, decompressed, as
+// static/assets/exercises/<slug>/frame-{1,2,3}.svg:
+//
+//	for f in internal/exercises/art/*/frame-*.svg.gz; do
+//	  d=../north-web-app/static/assets/exercises/$(basename "$(dirname "$f")")
+//	  mkdir -p "$d" && gunzip -c "$f" > "$d/$(basename "$f" .gz)"
+//	done
+//
+// The loop.gif beside them, which Telegram links to, is the web app's too.
 //
 // The upstream repository is never vendored: it carries 906 PNG duplicates of
 // the SVGs and an npm workspace, none of which belongs in this tree.
@@ -52,7 +63,7 @@ import (
 
 func main() {
 	source := flag.String("source", "", "path to a workout-guide checkout")
-	assets := flag.String("assets", "web/assets/exercises", "directory to write the SVG frames into")
+	assets := flag.String("assets", "internal/exercises/art", "directory to write the SVG frames into")
 	out := flag.String("out", "", "path to write the generated migration to")
 	seed := flag.String("seed", "migrations/00024_seed_exercises.sql", "the catalog seed, read to resolve alias targets")
 	flag.Parse()
@@ -446,20 +457,19 @@ func muscles(sources []string, report *resolveReport) []string {
 // The frames are stored byte-identical to upstream apart from gzip.
 //
 // They ship drawn white on transparent, which would be invisible on the light
-// theme — but the template never loads them as images. web/shared/exerciseart
-// uses each frame as a CSS mask and paints currentColor through it, so only
-// the alpha channel is read and the fill inside the file is irrelevant. That
-// is what lets one asset serve both themes without editing 906 files, and it
+// theme — but no client draws them as images. The browser uses each frame as
+// a CSS mask and paints currentColor through it, and the API hands out only
+// the path data, so the fill inside the file is irrelevant. That is what lets
+// one asset serve both themes without editing 906 files, and it
 // keeps the list of changes CC BY-SA requires North to declare down to
 // "compressed, and the PNGs were not imported".
 
 // writeFrames stores each frame gzipped.
 //
 // The set is 24.7 MB of SVG raw and 10.0 MB gzipped, and it is embedded into
-// the binary — so this is 15 MB off every build and every image layer. It also
-// fixes the wire: cmd/api/main.go mounts no compression middleware, so raw
-// frames would go out uncompressed at ~28 KB each. mountAssets serves these
-// bytes verbatim under Content-Encoding: gzip.
+// the binary (internal/exercises/art) — so this is 15 MB off every build and
+// every image layer. The API reads the path data out of them; it never serves
+// the files.
 func writeFrames(source, assets string, entries []manifestEntry) (int, error) {
 	base := filepath.Join(source, "packages", "workout-guide")
 

@@ -148,9 +148,10 @@ tasks:
   # Quality
   # ---------------------------------------------------------------------------
   # The body figure, for web and iOS alike. The iOS paths assume the sibling
-  # checkout; see web/assets/models/README.md.
+  # checkout; the web GLB is copied to north-web-app by hand. See
+  # scripts/bodymap/README.md.
   bodymap:
-    desc: Rebuild the body figure (web GLB, flat SVG, iOS USDZ, skin and light rig)
+    desc: Rebuild the body figure (web GLB, iOS USDZ, skin and light rig)
     cmds:
       - go run ./scripts/bodymap -usdz ../north-ios-app/khepri/khepri/Resources/BodyMap.usdz -shell ../north-ios-app/khepri/khepri/Resources/BodyShell.bin -ibl ../north-ios-app/khepri/khepri/Resources/BodyStudio.png
 
