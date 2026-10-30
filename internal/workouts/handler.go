@@ -22,7 +22,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
-	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
+	"github.com/NorthAIProject/north-client/internal/workouts/workoutsummary"
 	workoutpages "github.com/NorthAIProject/north-client/web/workouts"
 
 	"github.com/a-h/templ"

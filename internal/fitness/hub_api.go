@@ -11,12 +11,12 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/fitness/fitnessview"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
-	fitnesspages "github.com/NorthAIProject/north-client/web/fitness"
 )
 
 // The web fitness pages as JSON: the hub, the Strava activities page and its
@@ -167,7 +167,7 @@ func (a *API) hubView(c *echo.Context) error {
 	return c.JSON(http.StatusOK, projectHub(snap, buildHubData(snap, loc, time.Now(), ""), loc))
 }
 
-func projectHub(snap Snapshot, data fitnesspages.HubData, loc *time.Location) FitnessHub {
+func projectHub(snap Snapshot, data fitnessview.HubData, loc *time.Location) FitnessHub {
 	out := FitnessHub{
 		Strava:         statusView(snap.StravaStatus),
 		Recent:         make([]HubSession, 0, len(snap.Recent)),
@@ -239,7 +239,7 @@ func projectHub(snap Snapshot, data fitnesspages.HubData, loc *time.Location) Fi
 
 // trendDays is a device card's series as the page draws it: trailing empty
 // days already trimmed (trendView), empty when there is no card.
-func trendDays(t *fitnesspages.Trend) []HubDayValue {
+func trendDays(t *fitnessview.Trend) []HubDayValue {
 	if t == nil {
 		return []HubDayValue{}
 	}

@@ -13,12 +13,12 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
+	summary "github.com/NorthAIProject/north-client/internal/workouts/workoutsummary"
+	liftpages "github.com/NorthAIProject/north-client/web/lifts"
 	"github.com/NorthAIProject/north-client/web/shared/exerciseart"
 	"github.com/NorthAIProject/north-client/web/shared/exerciserow"
 	"github.com/NorthAIProject/north-client/web/shared/layout"
-	liftpages "github.com/NorthAIProject/north-client/web/lifts"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
-	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 	"github.com/NorthAIProject/north-client/web/shared/ui/alert"
 	"github.com/NorthAIProject/north-client/web/shared/ui/badge"
@@ -33,6 +33,7 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/label"
 	"github.com/NorthAIProject/north-client/web/shared/ui/selectbox"
 	"github.com/NorthAIProject/north-client/web/shared/ui/textarea"
+	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
 )
 
 // IntakeForm is the questionnaire, re-rendered with the user's answers when
@@ -344,9 +345,9 @@ type PlanView struct {
 	Week   *WeekView
 
 	// Recap is this week's latest finished workout; nil before the first.
-	Recap *workoutsummary.Recap
+	Recap *summary.Recap
 	// Readiness is the body lit from logged sets; nil before the first set.
-	Readiness *workoutsummary.Readiness
+	Readiness *summary.Readiness
 }
 
 // Done reports whether the day at dayIndex was trained this week.

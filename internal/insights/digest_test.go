@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 )
 
 func TestDigestNamesEveryScoredDomain(t *testing.T) {
@@ -107,4 +107,4 @@ func TestDigestIsPlainEnoughForTelegram(t *testing.T) {
 	}
 }
 
-var _ = insightpages.SummaryView{}
+var _ = insightview.SummaryView{}

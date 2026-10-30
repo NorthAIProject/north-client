@@ -12,21 +12,21 @@ import (
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
-	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
+	"github.com/NorthAIProject/north-client/internal/workouts/workoutsummary"
 )
 
 // Chart options are built here rather than in a template, the same way
 // goals/view.go does it: a templ file that constructs an ECharts option is a
 // templ file nobody can test.
 
-func buildTimelineView(ctx context.Context, data TimelineData) insightpages.TimelineView {
-	rows := make([]insightpages.EntryRow, len(data.Entries))
+func buildTimelineView(ctx context.Context, data TimelineData) insightview.TimelineView {
+	rows := make([]insightview.EntryRow, len(data.Entries))
 	for i, e := range data.Entries {
-		rows[i] = insightpages.EntryRow{
+		rows[i] = insightview.EntryRow{
 			Kind:   string(e.Kind),
 			Label:  kindLabel(ctx, e.Kind),
 			At:     e.At,
@@ -53,8 +53,8 @@ func buildTimelineView(ctx context.Context, data TimelineData) insightpages.Time
 		dashboard.KindSupplement,
 		dashboard.KindFasting,
 	}
-	chips := make([]insightpages.FilterChip, 0, len(kinds)+1)
-	chips = append(chips, insightpages.FilterChip{
+	chips := make([]insightview.FilterChip, 0, len(kinds)+1)
+	chips = append(chips, insightview.FilterChip{
 		Key: "", Label: i18n.T(ctx, "insights.timeline.everything"), Count: data.Total, Selected: data.Kind == "",
 	})
 	for _, k := range kinds {
@@ -62,12 +62,12 @@ func buildTimelineView(ctx context.Context, data TimelineData) insightpages.Time
 		if n == 0 {
 			continue
 		}
-		chips = append(chips, insightpages.FilterChip{
+		chips = append(chips, insightview.FilterChip{
 			Key: string(k), Label: kindLabel(ctx, k), Count: n, Selected: data.Kind == string(k),
 		})
 	}
 
-	return insightpages.TimelineView{
+	return insightview.TimelineView{
 		Range:    rangeView(ctx, data.Range),
 		Entries:  rows,
 		Chips:    chips,
@@ -75,7 +75,7 @@ func buildTimelineView(ctx context.Context, data TimelineData) insightpages.Time
 	}
 }
 
-func buildBodyView(ctx context.Context, data BodyData) (insightpages.BodyView, error) {
+func buildBodyView(ctx context.Context, data BodyData) (insightview.BodyView, error) {
 	loc := data.Range.Location()
 	labels := bucketLabels(ctx, data.Range)
 
@@ -99,7 +99,7 @@ func buildBodyView(ctx context.Context, data BodyData) (insightpages.BodyView, e
 	}
 	sleepHours := bucketedMean(data.Range, sleepPoints)
 
-	view := insightpages.BodyView{
+	view := insightview.BodyView{
 		Range:        rangeView(ctx, data.Range),
 		WaterChart:   viz.Bar("insights-body-water", i18n.T(ctx, "insights.body.chart.water"), labels, water),
 		SleepChart:   viz.SingleLine("insights-body-sleep", i18n.T(ctx, "insights.body.chart.sleep"), labels, sleepHours, nil, nil),
@@ -113,13 +113,13 @@ func buildBodyView(ctx context.Context, data BodyData) (insightpages.BodyView, e
 	}
 
 	if len(data.Habits) > 0 {
-		rows := make([]insightpages.HabitRow, 0, len(data.Habits))
+		rows := make([]insightview.HabitRow, 0, len(data.Habits))
 		for _, st := range data.Habits {
 			rate := 0
 			if st.Scheduled > 0 {
 				rate = st.Kept * 100 / st.Scheduled
 			}
-			rows = append(rows, insightpages.HabitRow{
+			rows = append(rows, insightview.HabitRow{
 				Name: st.Habit.Name, Kept: st.Kept, Scheduled: st.Scheduled,
 				Streak: st.Streak, Rate: rate,
 			})
@@ -128,7 +128,7 @@ func buildBodyView(ctx context.Context, data BodyData) (insightpages.BodyView, e
 
 		gauge, err := option(viz.GaugeOptionJSON(i18n.T(ctx, "insights.body.chart.adherence"), habitAdherence(data.Habits)))
 		if err != nil {
-			return insightpages.BodyView{}, err
+			return insightview.BodyView{}, err
 		}
 		view.Habits = rows
 		view.HabitGauge = gauge
@@ -138,7 +138,7 @@ func buildBodyView(ctx context.Context, data BodyData) (insightpages.BodyView, e
 	return view, nil
 }
 
-func buildMindView(ctx context.Context, data MindData) (insightpages.MindView, error) {
+func buildMindView(ctx context.Context, data MindData) (insightview.MindView, error) {
 	loc := data.Range.Location()
 	buckets := data.Range.Buckets()
 	labels := bucketLabels(ctx, data.Range)
@@ -158,12 +158,12 @@ func buildMindView(ctx context.Context, data MindData) (insightpages.MindView, e
 
 	heatmap, err := option(viz.HeatmapJSON(i18n.T(ctx, "insights.mind.chart.mood"), cells))
 	if err != nil {
-		return insightpages.MindView{}, err
+		return insightview.MindView{}, err
 	}
 
 	avgMood, avgEnergy, rated := averageMoodEnergy(mood, energy)
 
-	return insightpages.MindView{
+	return insightview.MindView{
 		Range:        rangeView(ctx, data.Range),
 		MoodChart:    viz.MoodEnergyLine("insights-mind-mood", labels, mood, energy),
 		JournalChart: viz.Bar("insights-mind-journal", i18n.T(ctx, "insights.mind.chart.entries"), labels, journalCount),
@@ -177,7 +177,7 @@ func buildMindView(ctx context.Context, data MindData) (insightpages.MindView, e
 	}, nil
 }
 
-func buildProgressView(ctx context.Context, data ProgressData) (insightpages.ProgressView, error) {
+func buildProgressView(ctx context.Context, data ProgressData) (insightview.ProgressView, error) {
 	loc := data.Range.Location()
 	labels := bucketLabels(ctx, data.Range)
 
@@ -191,7 +191,7 @@ func buildProgressView(ctx context.Context, data ProgressData) (insightpages.Pro
 		active      int
 		progressSum int
 		progressN   int
-		rows        []insightpages.GoalRow
+		rows        []insightview.GoalRow
 	)
 	for _, g := range data.Active {
 		if !g.IsActive() {
@@ -203,7 +203,7 @@ func buildProgressView(ctx context.Context, data ProgressData) (insightpages.Pro
 			progressSum += pct
 			progressN++
 		}
-		rows = append(rows, insightpages.GoalRow{
+		rows = append(rows, insightview.GoalRow{
 			ID: g.ID.String(), Title: g.Title, Progress: pct, HasProgress: ok,
 			Deadline: g.Deadline(), Overdue: g.Overdue(),
 		})
@@ -213,7 +213,7 @@ func buildProgressView(ctx context.Context, data ProgressData) (insightpages.Pro
 	segments := goalStatusSegments(ctx, data.Active)
 	donut, err := option(viz.DonutOptionJSON(segments))
 	if err != nil {
-		return insightpages.ProgressView{}, err
+		return insightview.ProgressView{}, err
 	}
 
 	avg := 0
@@ -221,7 +221,7 @@ func buildProgressView(ctx context.Context, data ProgressData) (insightpages.Pro
 		avg = progressSum / progressN
 	}
 
-	return insightpages.ProgressView{
+	return insightview.ProgressView{
 		Range:       rangeView(ctx, data.Range),
 		Goals:       rows,
 		NotesChart:  viz.Bar("insights-progress-notes", i18n.T(ctx, "insights.progress.chart.updates"), labels, notes),
@@ -237,14 +237,14 @@ func buildProgressView(ctx context.Context, data ProgressData) (insightpages.Pro
 	}, nil
 }
 
-func buildTrainingView(ctx context.Context, data TrainingData) (insightpages.TrainingView, error) {
+func buildTrainingView(ctx context.Context, data TrainingData) (insightview.TrainingView, error) {
 	loc := data.Range.Location()
 	labels := bucketLabels(ctx, data.Range)
 	burnPoints := make([]point, 0, len(data.Sessions))
 
 	var (
 		totalSeconds int
-		rows         []insightpages.SessionRow
+		rows         []insightview.SessionRow
 	)
 	for _, sess := range data.Sessions {
 		if sess.EndedAt == nil {
@@ -264,7 +264,7 @@ func buildTrainingView(ctx context.Context, data TrainingData) (insightpages.Tra
 		totalSeconds += seconds
 
 		kcal := util.Val(sess.CaloriesBurned)
-		rows = append(rows, insightpages.SessionRow{
+		rows = append(rows, insightview.SessionRow{
 			Name: name, At: ended, Duration: formatDuration(seconds), Calories: kcal,
 		})
 	}
@@ -275,10 +275,10 @@ func buildTrainingView(ctx context.Context, data TrainingData) (insightpages.Tra
 	segments := sessionKindSegments(data.Sessions)
 	donut, err := option(viz.DonutOptionJSON(segments))
 	if err != nil {
-		return insightpages.TrainingView{}, err
+		return insightview.TrainingView{}, err
 	}
 
-	return insightpages.TrainingView{
+	return insightview.TrainingView{
 		Range:        rangeView(ctx, data.Range),
 		Sessions:     rows,
 		BurnChart:    viz.Bar("insights-training-burn", "kcal", labels, burn),
@@ -295,13 +295,13 @@ func buildTrainingView(ctx context.Context, data TrainingData) (insightpages.Tra
 	}, nil
 }
 
-func buildPlanAdherence(ctx context.Context, data TrainingData) insightpages.PlanAdherenceView {
+func buildPlanAdherence(ctx context.Context, data TrainingData) insightview.PlanAdherenceView {
 	if !data.HasPlan {
-		return insightpages.PlanAdherenceView{}
+		return insightview.PlanAdherenceView{}
 	}
 	week := workoutsummary.NewWeek(data.Week, data.Now)
 	week.Sentence = weekSentence(ctx, data.Week)
-	return insightpages.PlanAdherenceView{
+	return insightview.PlanAdherenceView{
 		HasPlan:  true,
 		Week:     week,
 		Done:     data.Adherence.Done,
@@ -426,13 +426,13 @@ func sessionName(sess activity.Session) string {
 	return sess.ActivityCode
 }
 
-func rangeView(ctx context.Context, rg timerange.Range) insightpages.RangeView {
+func rangeView(ctx context.Context, rg timerange.Range) insightview.RangeView {
 	all := timerange.All(rg.Location())
-	options := make([]insightpages.RangeOption, len(all))
+	options := make([]insightview.RangeOption, len(all))
 	for i, r := range all {
-		options[i] = insightpages.RangeOption{Key: r.Key, Label: rangeLabel(ctx, r), Selected: r.Key == rg.Key}
+		options[i] = insightview.RangeOption{Key: r.Key, Label: rangeLabel(ctx, r), Selected: r.Key == rg.Key}
 	}
-	return insightpages.RangeView{Key: rg.Key, Label: rangeLabel(ctx, rg), Options: options}
+	return insightview.RangeView{Key: rg.Key, Label: rangeLabel(ctx, rg), Options: options}
 }
 
 // rangeLabel names a range in the reader's language. A range with no selector
@@ -461,9 +461,9 @@ func translated(ctx context.Context, key, fallback string) string {
 }
 
 // deltaView mirrors the dashboard's rule: no prior window means no claim.
-func deltaView(current, prior float64) insightpages.DeltaView {
+func deltaView(current, prior float64) insightview.DeltaView {
 	if prior == 0 {
-		return insightpages.DeltaView{}
+		return insightview.DeltaView{}
 	}
 	pct := (current - prior) / prior * 100
 	dir := 0
@@ -473,7 +473,7 @@ func deltaView(current, prior float64) insightpages.DeltaView {
 	case current < prior:
 		dir = -1
 	}
-	return insightpages.DeltaView{Pct: pct, Direction: dir, HasPrior: true}
+	return insightview.DeltaView{Pct: pct, Direction: dir, HasPrior: true}
 }
 
 // option runs an ECharts builder and decodes it in one step, since every

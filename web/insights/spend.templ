@@ -9,33 +9,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui"
 )
 
-// SpendRow is one line of a cost breakdown.
-type SpendRow struct {
-	Label       string
-	Cost        string
-	Generations int64
-	Tokens      int64
-
-	// Pct is this row's share of the window's cost, for the inline bar. Zero
-	// across the board in a window that cost nothing, which is a real state
-	// now that transcription runs on the cluster's own service.
-	Pct int
-}
-
-// SpendView is the model-cost section.
-type SpendView struct {
-	Range RangeView
-
-	TotalCost   string
-	TotalTokens int64
-	Generations int64
-
-	Surfaces []SpendRow
-	Models   []SpendRow
-
-	HasData bool
-}
-
 templ Spend(user users.User, view SpendView) {
 	@page(i18n.T(ctx, "insights.spend.title"), "spend", "/app/insights/spend/body", user, view.Range) {
 		@SpendBody(view)

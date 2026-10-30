@@ -281,7 +281,7 @@ func (a *API) stats(c *echo.Context) error {
 	if err != nil {
 		return httpx.Fail(err, "Conversations could not be loaded.")
 	}
-	return c.JSON(http.StatusOK, CoachStats{ThreadCount: stats.ThreadCount, MessagesThisWeek: stats.MessagesThisWeek})
+	return c.JSON(http.StatusOK, stats)
 }
 
 // attachment redirects to a file a turn carried, for this account only.

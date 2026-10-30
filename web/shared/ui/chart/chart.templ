@@ -4,37 +4,6 @@ package chart
 
 import "github.com/NorthAIProject/north-client/web/shared/utils"
 
-type Variant string
-
-const (
-	VariantBar      Variant = "bar"
-	VariantLine     Variant = "line"
-	VariantPie      Variant = "pie"
-	VariantDoughnut Variant = "doughnut"
-	VariantRadar    Variant = "radar"
-)
-
-type Dataset struct {
-	Label           string      `json:"label"`
-	Data            []float64   `json:"data"`
-	BorderWidth     int         `json:"borderWidth,omitempty"`
-	BorderColor     interface{} `json:"borderColor,omitempty"`
-	BackgroundColor interface{} `json:"backgroundColor,omitempty"`
-	Tension         float64     `json:"tension,omitempty"`
-	Fill            bool        `json:"fill,omitempty"`
-	Stepped         bool        `json:"stepped,omitempty"`
-}
-
-type Options struct {
-	Responsive bool `json:"responsive,omitempty"`
-	Legend     bool `json:"legend,omitempty"`
-}
-
-type Data struct {
-	Labels   []string  `json:"labels"`
-	Datasets []Dataset `json:"datasets"`
-}
-
 type Config struct {
 	Type        Variant  `json:"type"`
 	Data        Data     `json:"data"`
@@ -56,28 +25,6 @@ type Config struct {
 type ScriptConfig struct {
 	RawConfig       map[string]any `json:"rawConfig,omitempty"`
 	GeneratedConfig *Config        `json:"generatedConfig,omitempty"`
-}
-
-type Props struct {
-	ID          string
-	Variant     Variant
-	Data        Data
-	Options     Options
-	RawConfig   map[string]any
-	ShowLegend  bool
-	ShowXAxis   bool
-	ShowYAxis   bool
-	ShowXLabels bool
-	ShowYLabels bool
-	ShowXGrid   bool
-	ShowYGrid   bool
-	Horizontal  bool
-	Stacked     bool
-	YMin        *float64
-	YMax        *float64
-	BeginAtZero *bool
-	Class       string
-	Attributes  templ.Attributes
 }
 
 templ Chart(props ...Props) {

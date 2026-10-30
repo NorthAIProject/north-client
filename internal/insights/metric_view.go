@@ -6,10 +6,10 @@ import (
 	"math"
 
 	"github.com/NorthAIProject/north-client/internal/insights/highlight"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 // steadyBand is how far a metric may move against the previous window before
@@ -17,7 +17,7 @@ import (
 // the honest reading of a number that wobbled.
 const steadyBand = 0.05
 
-func buildMetricView(ctx context.Context, data MetricData) (insightpages.MetricView, error) {
+func buildMetricView(ctx context.Context, data MetricData) (insightview.MetricView, error) {
 	m := data.Metric
 	label := metricLabel(ctx, m)
 	labels := bucketLabels(ctx, data.Range)
@@ -30,7 +30,7 @@ func buildMetricView(ctx context.Context, data MetricData) (insightpages.MetricV
 	current := aggregate(m, data.Points)
 	prior := aggregate(m, data.Prior)
 
-	view := insightpages.MetricView{
+	view := insightview.MetricView{
 		Range:     rangeView(ctx, data.Range),
 		Key:       m.Key,
 		Label:     label,
@@ -78,13 +78,13 @@ func aggregate(m metric, points []point) float64 {
 	return total
 }
 
-func trendView(ctx context.Context, m metric, current, prior float64, hasPrior bool) insightpages.TrendView {
+func trendView(ctx context.Context, m metric, current, prior float64, hasPrior bool) insightview.TrendView {
 	if !hasPrior || prior <= 0 {
-		return insightpages.TrendView{}
+		return insightview.TrendView{}
 	}
 
 	delta := (current - prior) / prior
-	out := insightpages.TrendView{Pct: math.Abs(delta) * 100, HasPrior: true}
+	out := insightview.TrendView{Pct: math.Abs(delta) * 100, HasPrior: true}
 
 	switch {
 	case math.Abs(delta) < steadyBand:
@@ -106,19 +106,19 @@ func trendView(ctx context.Context, m metric, current, prior float64, hasPrior b
 	return out
 }
 
-func comparisonView(ctx context.Context, m metric, current, prior float64, hasPrior bool) insightpages.ComparisonView {
+func comparisonView(ctx context.Context, m metric, current, prior float64, hasPrior bool) insightview.ComparisonView {
 	if !hasPrior {
-		return insightpages.ComparisonView{}
+		return insightview.ComparisonView{}
 	}
 
 	// Both bars are drawn against the larger of the two, so the longer one
 	// always fills and the shorter reads as its true fraction of it.
 	scale := math.Max(current, prior)
 	if scale <= 0 {
-		return insightpages.ComparisonView{}
+		return insightview.ComparisonView{}
 	}
 
-	return insightpages.ComparisonView{
+	return insightview.ComparisonView{
 		CurrentLabel: i18n.T(ctx, "insights.metric.compare.current"),
 		CurrentValue: readMetric(ctx, m, current),
 		CurrentPct:   int(math.Round(current / scale * 100)),
@@ -145,7 +145,7 @@ func metricComparisons(label string, current, prior float64, hasPrior bool) []hi
 //
 // The sentence is in ctx's language; a ctx with no reader reads English, which
 // is what the coach's context lines want.
-func usualView(ctx context.Context, m metric, u Usual) insightpages.UsualView {
+func usualView(ctx context.Context, m metric, u Usual) insightview.UsualView {
 	lowValue, highValue := usualBounds(u)
 	low, high := formatMetric(m, lowValue), formatMetric(m, highValue)
 	state := u.State
@@ -158,7 +158,7 @@ func usualView(ctx context.Context, m metric, u Usual) insightpages.UsualView {
 	case stat.Above, stat.Usual, stat.Below:
 		lead = i18n.T(ctx, "insights.usual."+state)
 	}
-	return insightpages.UsualView{
+	return insightview.UsualView{
 		Day: u.Latest.At, Latest: u.Latest.Value,
 		Mean: u.Baseline.Mean, SD: u.Baseline.SD, Low: low, High: high,
 		Days: u.Baseline.Days, Z: math.Round(u.Z*100) / 100, State: state,

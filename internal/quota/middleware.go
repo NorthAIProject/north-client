@@ -10,25 +10,9 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
-	quotapages "github.com/NorthAIProject/north-client/web/quota"
 )
 
-// Guard bounds a route by one action's budget.
-//
-// It is applied per route rather than per handler — `r.With(guard).Post(...)` —
-// so that reading a page never spends the budget for writing to it. A person
-// refreshing their report list should not be closer to being unable to generate
-// one.
-//
-// The refusal is rendered here rather than handed to each handler's own error
-// path because there is nothing route-specific about it: the answer is the same
-// sentence everywhere, and threading a new sentinel through six handlers to say
-// it would be more code for the same words.
-func (s *Service) Guard(action Action) func(http.Handler) http.Handler {
-	return s.guard(action, s.refuse)
-}
-
-// GuardJSON is Guard for the native app's API: the same budget and the same
+// GuardJSON is Guard (browser.go) for the native app's API: the same budget and the same
 // sentence, answered as the API's JSON error body instead of a page.
 func (s *Service) GuardJSON(action Action) func(http.Handler) http.Handler {
 	return s.guard(action, s.refuseJSON)
@@ -74,18 +58,6 @@ func (s *Service) guard(action Action, refuse refusal) func(http.Handler) http.H
 	}
 }
 
-// refuse writes the 429 and the panel that replaces whatever asked for the
-// work, in the reader's language.
-func (s *Service) refuse(w http.ResponseWriter, r *http.Request, action Action, decision Decision) {
-	w.Header().Set("Retry-After", strconv.Itoa(retrySeconds(decision)))
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusTooManyRequests)
-
-	if err := quotapages.RefusedFor(string(action), decision.RetryAfter).Render(r.Context(), w); err != nil {
-		s.log.Error("rendering the quota refusal failed", slog.Any("error", err))
-	}
-}
-
 // refuseJSON is refuse's 429 for the API, with the sentence as its message.
 // The native app shows the message verbatim, so it is translated here.
 //
@@ -98,7 +70,7 @@ func (s *Service) refuseJSON(w http.ResponseWriter, r *http.Request, action Acti
 	seconds := strconv.Itoa(retrySeconds(decision))
 	w.Header().Set("Retry-After", seconds)
 	httpx.WriteJSON(w, http.StatusTooManyRequests, httpx.ErrorBody{Error: httpx.ErrorDetail{
-		Message: i18n.Tf(ctx, "quota.api", quotapages.ActionLabel(ctx, string(action)), quotapages.DelayLabel(ctx, decision.RetryAfter)),
+		Message: i18n.Tf(ctx, "quota.api", actionLabel(ctx, string(action)), delayLabel(ctx, decision.RetryAfter)),
 		Code:    CodeExceeded,
 		Fields:  map[string]string{"action": string(action), "retryAfter": seconds},
 	}})

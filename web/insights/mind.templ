@@ -8,22 +8,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
-type MindView struct {
-	Range RangeView
-
-	MoodChart    chart.Props
-	JournalChart chart.Props
-	MoodHeatmap  map[string]any
-
-	CheckInCount int
-	JournalCount int
-	AvgMood      float64
-	AvgEnergy    float64
-
-	HasCheckIns bool
-	HasJournal  bool
-}
-
 templ Mind(user users.User, view MindView) {
 	@page(sectionTitle(ctx, "mind"), "mind", "/app/insights/mind/body", user, view.Range) {
 		@MindPanels(view)

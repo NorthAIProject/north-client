@@ -10,11 +10,11 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
+	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
-	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
 // API is the insights overview, the domain pages and metric detail for
@@ -371,14 +371,14 @@ func projectHealth(ctx context.Context, rows []HealthRow) HealthList {
 	return out
 }
 
-func projectUsual(v insightpages.UsualView) *UsualRange {
+func projectUsual(v insightview.UsualView) *UsualRange {
 	return &UsualRange{
 		Day: v.Day.Format(time.DateOnly), Latest: v.Latest, Mean: v.Mean, SD: v.SD,
 		Low: v.Low, High: v.High, Days: v.Days, Z: v.Z, State: v.State, Text: v.Text,
 	}
 }
 
-func projectSummary(v insightpages.SummaryView) Summary {
+func projectSummary(v insightview.SummaryView) Summary {
 	out := Summary{
 		Range: projectRange(v.Range), Scores: []Score{}, Pinned: []Pinned{},
 		Highlights: nonNil(v.Highlights), OnTrack: v.OnTrack, Judged: v.Judged, Empty: v.Empty,
@@ -416,7 +416,7 @@ func projectSummary(v insightpages.SummaryView) Summary {
 	return out
 }
 
-func projectMetric(v insightpages.MetricView) MetricDetail {
+func projectMetric(v insightview.MetricView) MetricDetail {
 	out := MetricDetail{
 		Range: projectRange(v.Range), Key: v.Key, Label: v.Label, Headline: v.Headline, Note: v.Note,
 		Chart: projectChart(v.Chart.Data),
@@ -437,7 +437,7 @@ func projectMetric(v insightpages.MetricView) MetricDetail {
 	return out
 }
 
-func projectRange(v insightpages.RangeView) Range {
+func projectRange(v insightview.RangeView) Range {
 	out := Range{Key: v.Key, Label: v.Label, Options: []RangeOption{}}
 	for _, o := range v.Options {
 		out.Options = append(out.Options, RangeOption{Key: o.Key, Label: o.Label})
@@ -445,7 +445,7 @@ func projectRange(v insightpages.RangeView) Range {
 	return out
 }
 
-func projectChart(d chart.Data) Chart {
+func projectChart(d viz.Data) Chart {
 	out := Chart{Labels: nonNil(d.Labels), Series: []ChartSeries{}}
 	for _, ds := range d.Datasets {
 		values := ds.Data

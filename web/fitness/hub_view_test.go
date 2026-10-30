@@ -68,30 +68,30 @@ func TestRecentTitleDropsTheIntensity(t *testing.T) {
 
 func TestTrendSkipsTodaysPartialZero(t *testing.T) {
 	day := func(d int) time.Time { return time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC) }
-	tr := Trend{Days: []TrendDay{{day(22), 5300}, {day(23), 3700}, {day(24), 6500}, {day(25), 0}}}
+	tr := Trend{Days: []TrendDay{{Day: day(22), Value: 5300}, {Day: day(23), Value: 3700}, {Day: day(24), Value: 6500}, {Day: day(25), Value: 0}}}
 
-	latest, ok := tr.latest()
+	latest, ok := latestReading(tr)
 	if !ok || latest.Value != 6500 {
 		t.Fatalf("latest = %+v", latest)
 	}
-	rows := tr.recentRows(5)
+	rows := recentRows(tr, 5)
 	if len(rows) != 3 || rows[0].Delta != 2800 || rows[1].Delta != -1600 || rows[2].HasDelta {
 		t.Fatalf("rows = %+v", rows)
 	}
-	if got := tr.perDay(); got != 5166.666666666667 {
+	if got := perDay(tr); got != 5166.666666666667 {
 		t.Fatalf("perDay = %v", got)
 	}
 }
 
 func TestBarHeightScalesAgainstTheBusiestDay(t *testing.T) {
 	w := WeekView{Bars: []WeekBar{{Minutes: 0}, {Minutes: 30}, {Minutes: 120}}}
-	if got := w.barHeight(w.Bars[2]); got != "100%" {
+	if got := barHeight(w, w.Bars[2]); got != "100%" {
 		t.Fatalf("top bar = %s", got)
 	}
-	if got := w.barHeight(w.Bars[1]); got != "25%" {
+	if got := barHeight(w, w.Bars[1]); got != "25%" {
 		t.Fatalf("quarter bar = %s", got)
 	}
-	if got := w.barHeight(w.Bars[0]); got != "6%" {
+	if got := barHeight(w, w.Bars[0]); got != "6%" {
 		t.Fatalf("empty bar = %s", got)
 	}
 }
