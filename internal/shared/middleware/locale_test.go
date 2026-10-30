@@ -49,7 +49,7 @@ func TestThePathIsCarriedForTheSwitcher(t *testing.T) {
 }
 
 // This is the ordering contract, asserted rather than trusted to a comment in
-// cmd/web. Locale can only guess; auth.Bearer overwrites the guess with the
+// cmd/api. Locale can only guess; auth.Bearer overwrites the guess with the
 // account's own setting. Mounted the other way round, a laptop's browser
 // settings would override what somebody chose in Khepri.
 func TestAnAccountSettingOverwritesTheGuess(t *testing.T) {

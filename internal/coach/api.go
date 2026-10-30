@@ -74,7 +74,7 @@ func (a *API) Register(g *echo.Group) {
 }
 
 // attachmentURL resolves a stored chat attachment, owned by userID, to a URL
-// the browser can load it from. Supplied by cmd/web from the media service,
+// the browser can load it from. Supplied by cmd/api from the media service,
 // so this package still does not import internal/media.
 type attachmentURL func(ctx context.Context, mediaID, userID uuid.UUID) (string, error)
 

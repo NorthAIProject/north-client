@@ -67,7 +67,7 @@ The MCP server builds its own coach with its own context sources, separate from
 the web application's. A source added to one and not the other produces exactly
 this: a coach that works but is less grounded through one door than the other.
 Compare the `NewContextBuilder` call in `cmd/mcp-server/main.go` against the one
-in `cmd/web/main.go`.
+in `cmd/api/main.go`.
 
 ## North's coach fails only when a specific provider is at the head of the chain
 

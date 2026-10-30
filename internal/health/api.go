@@ -18,7 +18,7 @@ import (
 const SourceAppleHealth = "apple_health"
 
 // maxSyncBytes bounds one sync from the phone, and matches the JSON group's
-// cap in cmd/web. The phone sends daily aggregates, a few kilobytes a sync;
+// cap in cmd/api. The phone sends daily aggregates, a few kilobytes a sync;
 // raw per-beat samples, which would need more, go to /ingest/health instead.
 const maxSyncBytes = 1 << 20
 

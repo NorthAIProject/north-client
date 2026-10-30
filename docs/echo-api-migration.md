@@ -81,11 +81,11 @@ replacement.
 | Panics             | `Recover`                             | `echox.New`                              |
 | Hardening headers  | `SecureWithConfig`                    | `echox.Secure` — same values as Traefik  |
 | Compression        | `GzipWithConfig`                      | `echox.Gzip` on `/api/v1`, skips SSE     |
-| Body size          | `BodyLimit`                           | each group in `cmd/web`                  |
+| Body size          | `BodyLimit`                           | each group in `cmd/api`                  |
 | CORS               | `CORSWithConfig`                      | `mcpauth.machineCORS` (OAuth endpoints)  |
 | Client address     | `ExtractIPFromXFFHeader` + `TrustIPRange` | `TrustedProxies.IPExtractor`, `echo.Config.IPExtractor` |
 | Rate limit buckets | `RateLimiterMemoryStore`              | `ratelimit.New` (also used by services)  |
-| Graceful shutdown  | `StartConfig.Start`                   | `echox.Serve` (`cmd/web`, `cmd/mcp-server`) |
+| Graceful shutdown  | `StartConfig.Start`                   | `echox.Serve` (`cmd/api`, `cmd/mcp-server`) |
 
 Two settings differ from Echo's defaults on purpose:
 
@@ -93,7 +93,7 @@ Two settings differ from Echo's defaults on purpose:
   every loopback, link-local and private peer, which on a cluster network is
   every pod.
 - A route that streams Server-Sent Events goes in `apiStreams`
-  (`cmd/web/api.go`) so gzip never wraps it; a test fails if an entry stops
+  (`cmd/api/api.go`) so gzip never wraps it; a test fails if an entry stops
   matching a route.
 
 ## Repositories and dependency injection
@@ -135,6 +135,6 @@ exists.
 3. `/mcp`, OAuth's machine half, health ingest and the Telegram webhook onto
    Echo groups with their own body limits.
 4. Repository interfaces in every service; one composition root shared by
-   `cmd/web` and `cmd/worker`.
+   `cmd/api` and `cmd/worker`.
 5. After `north-web-app` is live on Cloudflare: delete the browser app
    (`web/`, Templ, HTMX, CSRF, chi) and rename the binary to `cmd/api`.

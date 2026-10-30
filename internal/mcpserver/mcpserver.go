@@ -34,7 +34,7 @@ import (
 )
 
 // Services are the slices the tools call into. They are the same constructors
-// cmd/web uses; nothing here is built specially for MCP.
+// cmd/api uses; nothing here is built specially for MCP.
 type Services struct {
 	Users    *users.Service
 	Goals    *goals.Service
