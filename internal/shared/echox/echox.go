@@ -193,7 +193,22 @@ func RequestLogger(base *slog.Logger) echo.MiddlewareFunc {
 //
 // Server errors are logged with the request's logger. A reply already under
 // way cannot be replaced, so an error after that point is only logged.
+//
+// It runs once per request. RequestLogger hands the error here so the line it
+// writes has the final status, then returns the same error up the chain, and
+// Echo calls this again with it. By then the reply is committed — by this
+// handler — so without the mark every 4xx would also be logged as an error
+// after the reply started, and a stream that failed midway would be logged
+// twice.
+// errorHandledKey marks a request whose error ErrorHandler has answered.
+const errorHandledKey = "echox.errorHandled"
+
 func ErrorHandler(c *echo.Context, err error) {
+	if handled, _ := c.Get(errorHandledKey).(bool); handled {
+		return
+	}
+	c.Set(errorHandledKey, true)
+
 	ctx := c.Request().Context()
 	if resp, _ := echo.UnwrapResponse(c.Response()); resp != nil && resp.Committed {
 		if !errors.Is(err, context.Canceled) {
