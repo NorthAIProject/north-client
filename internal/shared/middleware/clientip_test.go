@@ -162,3 +162,55 @@ func TestParseAcceptsBareAddressesAndRejectsNonsense(t *testing.T) {
 		t.Error("a hostname was accepted; a bad config must be loud at boot")
 	}
 }
+
+// Behind Cloudflare the believable hop is the edge, shared by everyone that
+// edge serves; Cloudflare's own header names the caller.
+func TestACloudflareEdgeIsReadThroughToTheCaller(t *testing.T) {
+	t.Parallel()
+
+	trusted, _ := middleware.ParseTrustedProxies("10.42.0.0/16")
+
+	r := httptest.NewRequest("POST", "/login", nil)
+	r.RemoteAddr = "10.42.0.7:44001"
+	r.Header.Set("X-Forwarded-For", "172.68.103.231")
+	r.Header.Set("CF-Connecting-IP", "176.223.17.241")
+
+	if got := trusted.IPExtractor()(r); got != "176.223.17.241" {
+		t.Fatalf("IPExtractor = %q, want the address Cloudflare names", got)
+	}
+}
+
+// Anyone can send CF-Connecting-IP; only a request that came from the edge
+// carries Cloudflare's value.
+func TestCFConnectingIPFromAnywhereElseIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	trusted, _ := middleware.ParseTrustedProxies("10.42.0.0/16")
+
+	r := httptest.NewRequest("POST", "/login", nil)
+	r.RemoteAddr = "10.42.0.7:44001"
+	r.Header.Set("X-Forwarded-For", "203.0.113.9")
+	r.Header.Set("CF-Connecting-IP", "198.51.100.1")
+
+	if got := trusted.IPExtractor()(r); got != "203.0.113.9" {
+		t.Fatalf("IPExtractor = %q, want the hop, not the forged header", got)
+	}
+}
+
+func TestAnEdgeWithoutAUsableHeaderStaysTheEdge(t *testing.T) {
+	t.Parallel()
+
+	trusted, _ := middleware.ParseTrustedProxies("10.42.0.0/16")
+
+	for _, header := range []string{"", "not-an-address"} {
+		r := httptest.NewRequest("POST", "/login", nil)
+		r.RemoteAddr = "10.42.0.7:44001"
+		r.Header.Set("X-Forwarded-For", "2606:4700::1")
+		if header != "" {
+			r.Header.Set("CF-Connecting-IP", header)
+		}
+		if got := trusted.IPExtractor()(r); got != "2606:4700::1" {
+			t.Fatalf("CF-Connecting-IP %q: IPExtractor = %q, want the edge", header, got)
+		}
+	}
+}

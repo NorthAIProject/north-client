@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"net/netip"
 	"strings"
 
@@ -83,5 +84,70 @@ func (t TrustedProxies) IPExtractor() echo.IPExtractor {
 			Mask: net.CIDRMask(prefix.Bits(), prefix.Addr().BitLen()),
 		}))
 	}
-	return echo.ExtractIPFromXFFHeader(options...)
+	fromHeader := echo.ExtractIPFromXFFHeader(options...)
+	return func(r *http.Request) string {
+		return behindCloudflare(r, fromHeader(r))
+	}
+}
+
+// cloudflareEdge are the addresses Cloudflare's edge connects from, as published
+// at https://www.cloudflare.com/ips-v4 and /ips-v6 (read 2026-10-30). The list
+// changes rarely; an edge missing from it only means that edge's requests are
+// keyed on the edge, as every request was before this list existed.
+var cloudflareEdge = func() []netip.Prefix {
+	ranges := []string{
+		"173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
+		"141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
+		"197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+		"104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+		"2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32",
+		"2405:8100::/32", "2a06:98c0::/29", "2c0f:f248::/32",
+	}
+	out := make([]netip.Prefix, len(ranges))
+	for i, r := range ranges {
+		out[i] = netip.MustParsePrefix(r)
+	}
+	return out
+}()
+
+// behindCloudflare names the caller when the hop found above is Cloudflare's
+// edge rather than the caller.
+//
+// # Why
+//
+// kheprios.com is proxied by Cloudflare, so the earliest hop the walk can
+// believe is a Cloudflare edge, shared by everyone that edge serves. Every
+// address-keyed limiter would then count strangers together.
+//
+// # Why CF-Connecting-IP may be believed here and nowhere else
+//
+// Cloudflare sets CF-Connecting-IP on every request it proxies, overwriting
+// whatever the client sent, so a request that really arrived from the edge
+// carries Cloudflare's word for the caller. A request from anywhere else could
+// carry any value, which is why the header is read only when the hop is in
+// cloudflareEdge. For subrequests from this zone's own Worker (the web app's
+// server), Cloudflare takes the value from the X-Real-IP the Worker sets, which
+// is the browser's address; a Worker on another zone gets one shared address
+// (2a06:98c0:3600::103) and cannot choose it.
+func behindCloudflare(r *http.Request, hop string) string {
+	addr, err := netip.ParseAddr(hop)
+	if err != nil {
+		return hop
+	}
+	addr = addr.Unmap()
+	edge := false
+	for _, prefix := range cloudflareEdge {
+		if prefix.Contains(addr) {
+			edge = true
+			break
+		}
+	}
+	if !edge {
+		return hop
+	}
+	caller, err := netip.ParseAddr(strings.TrimSpace(r.Header.Get("CF-Connecting-IP")))
+	if err != nil {
+		return hop
+	}
+	return caller.Unmap().String()
 }

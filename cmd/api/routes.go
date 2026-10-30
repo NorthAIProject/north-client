@@ -555,11 +555,12 @@ func routes(
 	})
 
 	captureAPI := capture.NewAPI(captureSvc, connectionSvc, quotaSvc, slog.Default()).WithSessions(sessions)
-	// Keyed on the account only; auth.Throttle says why there is no address
-	// bucket.
+	// Keyed on the account and on the address; auth.Throttle says where the
+	// address comes from behind Cloudflare.
 	authAPI := auth.NewAPI(sessions).WithAuthService(authSvc, authMW).WithThrottle(auth.NewThrottle(auth.ThrottleConfig{
-		PerEmailPerMinute: cfg.AuthAttemptsPerEmailPerMinute,
-		TrustedProxies:    cfg.TrustedProxies,
+		PerEmailPerMinute:   cfg.AuthAttemptsPerEmailPerMinute,
+		PerAddressPerMinute: cfg.AuthAttemptsPerAddressPerMinute,
+		TrustedProxies:      cfg.TrustedProxies,
 	}, slog.Default()))
 
 	dashboardOpts := dashboard.Options{
