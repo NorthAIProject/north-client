@@ -156,6 +156,12 @@ type Config struct {
 	// bit; this answers rather more.
 	MetricsListenAddr string
 
+	// PprofListenAddr serves Go's runtime profiles for flame graphs; see
+	// internal/shared/profiling. Loopback by default, reached with a
+	// port-forward, and empty turns it off. Never public: a CPU profile costs
+	// the process the seconds it records, and a heap dump describes it.
+	PprofListenAddr string
+
 	// Transcription points at the speech-to-text service. Empty switches voice
 	// off, and both surfaces say so.
 	Transcription TranscriptionConfig
@@ -646,6 +652,7 @@ func Load() (*Config, error) {
 
 		MCPListenAddr:     optional("MCP_LISTEN_ADDR", "127.0.0.1:8093"),
 		MetricsListenAddr: optional("METRICS_LISTEN_ADDR", "127.0.0.1:9090"),
+		PprofListenAddr:   optional("PPROF_LISTEN_ADDR", "127.0.0.1:6060"),
 
 		// Named for the wire format rather than the vendor, matching Norviq's
 		// variables so one grep finds every app pointed at the same service.
