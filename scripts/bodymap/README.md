@@ -89,11 +89,9 @@ are no longer on disk — and:
 The run logs how much muscle sits outside the skin after each step; a jump there
 means the fit needs looking at before anything is committed.
 
-`scripts/bodymap/preview/` is a page that draws the file with the real viewer and
-nothing else around it (`serve.py` takes the viewer from the sibling
-`north-web-app` checkout's `static/assets`, or `WEB_ASSETS`), plus a headless-Chrome script for screenshots of both themes
-and sides (`SIDES=side` for the profile, `SHAPE=0.5` or `SHAPE=waist:1,hips:0.4`
-for a shaped figure). Use it to check a change.
+To look at a change, copy `body-map.glb` into the sibling `north-web-app` checkout's
+`static/assets/models/` and open the body figure there: the viewer is part of the
+web app now.
 
 ## Licence
 
