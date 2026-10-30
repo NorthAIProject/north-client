@@ -44,6 +44,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/decisions"
 	"github.com/NorthAIProject/north-client/internal/documents"
 	"github.com/NorthAIProject/north-client/internal/exercises"
+	"github.com/NorthAIProject/north-client/internal/exercises/art"
 	"github.com/NorthAIProject/north-client/internal/export"
 	"github.com/NorthAIProject/north-client/internal/fasting"
 	"github.com/NorthAIProject/north-client/internal/firstweek"
@@ -107,7 +108,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/weekly"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/xp"
-	"github.com/NorthAIProject/north-client/web/assets"
 )
 
 func routes(
@@ -1081,7 +1081,7 @@ func routes(
 		milestones:   milestones.NewAPI(milestoneSvc),
 		coach:        coachAPI,
 		voice:        voice.NewAPI(voiceSvc, quotaSvc),
-		exercises:    exercises.NewAPI(exerciseSvc, assets.Assets),
+		exercises:    exercises.NewAPI(exerciseSvc, art.Frames),
 		settings:     settings.NewAPI(settingsHandler),
 		vault:        vaultHandler,
 		training:     workouts.NewAPI(workoutSvc).WithRecaps(liftSvc).WithLoads(liftSvc),

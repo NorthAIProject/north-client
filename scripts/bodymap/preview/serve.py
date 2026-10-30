@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
-"""Serves index.html with the repository's web/assets/ mounted at /assets/,
-which is where viewer.js imports three.js and the model from. Run from the
-repository root: python3 scripts/bodymap/preview/serve.py [port]"""
+"""Serves index.html with north-web-app's static/assets/ (the sibling
+checkout, or WEB_ASSETS) mounted at /assets/, which is where viewer.js imports
+three.js from, and this repository's freshly built scripts/bodymap/body-map.glb
+at /assets/models/body-map.glb. Run from the repository root:
+python3 scripts/bodymap/preview/serve.py [port]"""
 import http.server
 import os
 import sys
 
 ROOT = os.getcwd()
 HERE = os.path.dirname(os.path.abspath(__file__))
+WEB_ASSETS = os.environ.get(
+    "WEB_ASSETS", os.path.join(ROOT, "..", "north-web-app", "static", "assets")
+)
+MODEL = os.path.join(ROOT, "scripts", "bodymap", "body-map.glb")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def translate_path(self, path):
         path = path.split("?", 1)[0]
+        if path == "/assets/models/body-map.glb":
+            return MODEL
         if path.startswith("/assets/"):
-            return os.path.join(ROOT, "web", path.lstrip("/"))
+            return os.path.join(WEB_ASSETS, path[len("/assets/"):])
         return os.path.join(HERE, path.lstrip("/") or "index.html")
 
     def end_headers(self):

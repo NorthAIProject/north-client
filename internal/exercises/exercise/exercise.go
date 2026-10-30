@@ -77,7 +77,7 @@ type Exercise struct {
 	Primary   []string
 	Secondary []string
 
-	// IllustrationSlug names the directory under web/assets/exercises holding
+	// IllustrationSlug names the directory under internal/exercises/art holding
 	// this movement's three pose frames, or is empty when there is no artwork
 	// for it.
 	//

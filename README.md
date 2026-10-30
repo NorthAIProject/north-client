@@ -180,32 +180,27 @@ North uses summarized activity data to provide intelligent coaching.
 ### Exercise illustrations
 
 The exercise catalog ships pose artwork: three frames per movement, covering
-302 of the catalog's exercises, under `web/assets/exercises`.
+302 of the catalog's exercises. The API embeds them from
+`internal/exercises/art` and returns each frame's path data with the exercise
+(`GET /api/v1/exercises/{slug}`), with the credit beside it.
 
 The art comes from [workout-guide](https://github.com/bryllim/workout-guide) by
 Bryl Lim, which builds on [Everkinetic](https://github.com/everkinetic/data).
 Both are licensed **CC BY-SA 4.0** — note that upstream's `LICENSE` covers its
 code and is MIT; the artwork is governed by its separate `LICENSE-ASSETS`.
 
-That licence requires visible credit wherever the art appears, which is what
-`web/shared/exerciseart.Credit()` renders. Any page calling `Frames()` must
-also call `Credit()`. The full attribution and the record of changes the
-licence obliges North to state live in `web/assets/exercises/NOTICE`.
+That licence requires visible credit wherever the art appears, which is why
+the API sends `art.credit` and every client must show it. The full attribution
+and the record of changes the licence obliges North to state live in
+`internal/exercises/art/NOTICE`.
 
-Two things about how it is stored, both easy to trip over:
-
-- **The files are `.svg.gz`, and templates ask for `.svg`.** `mountAssets` in
-  `cmd/api/main.go` bridges the two and sets `Content-Encoding: gzip`. Storing
-  them compressed is 14 MB off the binary and every image layer, and nothing
-  here mounts compression middleware, so it is also what keeps them from going
-  over the wire uncompressed.
-- **They are painted as CSS masks, not loaded as images.** The art is drawn
-  white on transparent, so an `<img>` would be invisible on the light theme.
-  A mask reads only the alpha channel and takes its colour from the page, so
-  one asset serves both themes and the files stay byte-identical to upstream.
+The frames are stored `.svg.gz`: 14 MB off the binary and every image layer.
+The web app serves its own plain `.svg` copies, plus the `loop.gif` animations
+Telegram links to, from `north-web-app/static/assets/exercises`; copy new
+frames there by hand (see `scripts/workout-guide-art`).
 
 No npm dependency is involved. `scripts/workout-guide-art` reads a shallow
-clone and regenerates both the assets and `migrations/20260827150000_exercise_illustrations.sql`; the upstream repo
+clone and regenerates both the frames and `migrations/20260827150000_exercise_illustrations.sql`; the upstream repo
 is never vendored.
 
 ---

@@ -11,10 +11,9 @@
 // Outputs, all committed:
 //
 //   - -glb:    the meshes for three.js — "shell" and one node per key —
-//     quantized (KHR_mesh_quantization), which the vendored loader reads
-//     without a decoder.
-//   - -figure: a generated Go file with front and back SVG outlines, the
-//     fallback when a browser has no WebGL. Skipped when empty.
+//     quantized (KHR_mesh_quantization), which three.js's loader reads
+//     without a decoder. north-web-app serves it; copy it there by hand
+//     (see README.md beside this file).
 //   - -usdz:   the muscles for RealityKit on iOS (needs macOS's usdcat and
 //     usdzip, both in /usr/bin). Skipped when empty.
 //   - -shell:  the skin and its shape keys for iOS, which builds the skin
@@ -51,9 +50,8 @@ import (
 
 func main() {
 	in := flag.String("in", "tools/model/body-source.glb", "source GLB with the skin and the muscle atlas")
-	musclesJS := flag.String("muscles", "web/assets/js/shared/muscle-viewer/muscles.js", "file holding MUSCLE_ALIASES")
-	outGLB := flag.String("glb", "web/assets/models/body-map.glb", "meshes for the web viewer")
-	outFigure := flag.String("figure", "web/shared/muscleviewer/figure_gen.go", "generated SVG outlines; skipped when empty")
+	musclesJS := flag.String("muscles", "tools/model/muscles.js", "file holding MUSCLE_ALIASES")
+	outGLB := flag.String("glb", "scripts/bodymap/body-map.glb", "meshes for the web viewer")
 	outUSDZ := flag.String("usdz", "", "muscle meshes for iOS; skipped when empty")
 	outShell := flag.String("shell", "", "skin mesh and shape keys for iOS; skipped when empty")
 	outIBL := flag.String("ibl", "", "studio light rig for iOS, as an equirectangular PNG; skipped when empty")
@@ -127,12 +125,6 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("wrote %s", *outBaseline)
-	if *outFigure != "" {
-		if err := writeFigure(*outFigure, shell, muscles); err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("wrote %s", *outFigure)
-	}
 	if *outUSDZ != "" {
 		// The skin goes to iOS in -shell instead.
 		if err := writeUSDZ(*outUSDZ, muscles); err != nil {
