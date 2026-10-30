@@ -82,8 +82,8 @@ human of ordinary proportions, and wrong otherwise.
 Matching total height is also why this fit is off in a way that matters: the atlas
 has no skull, so it gets stretched to the top of the head and every muscle sits about
 a tenth of the body too high. `scripts/bodymap` refits the atlas to the skin itself,
-so the figure is right even though this file is not. Check a change with the preview
-page in `scripts/bodymap/preview/`.
+so the figure is right even though this file is not. Check a change in the web app's
+body figure; see `scripts/bodymap/README.md`.
 
 The fit measures world-space bounds (`fit.mjs`), node transforms included, and the
 build fails if the fitted skin is not within 10% of the muscle height. Fitting against

@@ -33,7 +33,7 @@
 //	  -shell ../north-ios-app/khepri/khepri/Resources/BodyShell.bin \
 //	  -ibl ../north-ios-app/khepri/khepri/Resources/BodyStudio.png
 //
-// scripts/bodymap/preview is a page for looking at the result.
+// The web app draws the result; scripts/bodymap/README.md says how to look.
 package main
 
 import (
