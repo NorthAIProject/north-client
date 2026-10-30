@@ -355,3 +355,55 @@ func TestCaptureAPIDoesNotAcceptASessionCookie(t *testing.T) {
 		t.Fatalf("status = %d, want 401: a session cookie must not authenticate the capture API", rec.Code)
 	}
 }
+
+// The kubelet's probe. It reaches the database, so a pod that cannot is taken
+// out of rotation rather than left failing every request.
+func TestHealthzReportsTheDatabase(t *testing.T) {
+	handler := testRoutes(t)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if got, want := rec.Body.String(), `{"status":"ok","database":"ok"}`; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+}
+
+// The operator count exists only when a secret guards it, and answers only to
+// that secret.
+func TestInternalMetricsIsGuardedBySecret(t *testing.T) {
+	get := func(handler http.Handler, bearer string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/internal/metrics", nil)
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := get(testRoutes(t), "anything"); rec.Code != http.StatusNotFound {
+		t.Fatalf("without METRICS_SECRET: status = %d, want 404", rec.Code)
+	}
+
+	handler := testRoutesWith(t, func(cfg *config.Config) { cfg.MetricsSecret = "s3cret" })
+	if rec := get(handler, "wrong"); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong secret: status = %d, want 401", rec.Code)
+	}
+	rec := get(handler, "s3cret")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("right secret: status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if !strings.HasPrefix(rec.Body.String(), `{"users":`) {
+		t.Errorf("body = %q, want the user count", rec.Body.String())
+	}
+}

@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -18,7 +16,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/assets"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // The redirect target is validated by auth.SafeRedirect for the same reason the
@@ -83,24 +80,6 @@ func setAppearance(svc appearanceSetter) http.HandlerFunc {
 			next = "/"
 		}
 		http.Redirect(w, r, next, http.StatusSeeOther)
-	}
-}
-
-func healthz(pool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := pool.Ping(ctx); err != nil {
-			middleware.FromContext(r.Context()).Error("health check failed", slog.Any("error", err))
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = fmt.Fprint(w, `{"status":"unhealthy","database":"unreachable"}`)
-			return
-		}
-
-		_, _ = fmt.Fprint(w, `{"status":"ok","database":"ok"}`)
 	}
 }
 
