@@ -555,7 +555,12 @@ func routes(
 	})
 
 	captureAPI := capture.NewAPI(captureSvc, connectionSvc, quotaSvc, slog.Default()).WithSessions(sessions)
-	authAPI := auth.NewAPI(sessions).WithAuthService(authSvc, authMW)
+	// Keyed on the account only; auth.Throttle says why there is no address
+	// bucket.
+	authAPI := auth.NewAPI(sessions).WithAuthService(authSvc, authMW).WithThrottle(auth.NewThrottle(auth.ThrottleConfig{
+		PerEmailPerMinute: cfg.AuthAttemptsPerEmailPerMinute,
+		TrustedProxies:    cfg.TrustedProxies,
+	}, slog.Default()))
 
 	dashboardOpts := dashboard.Options{
 		CheckIns:      checkinSvc,

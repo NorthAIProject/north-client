@@ -1,66 +1,35 @@
 package auth_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
-	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
-func guarded(t *testing.T, cfg auth.ThrottleConfig) http.Handler {
-	t.Helper()
-	reached := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-	return auth.NewThrottle(cfg, nil).Guard(reached)
-}
-
-func attempt(h http.Handler, remote, email string) int {
-	body := url.Values{"email": {email}, "password": {"whatever"}}.Encode()
-	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+func attempt(t *auth.Throttle, remote, email string) bool {
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
 	r.RemoteAddr = remote
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-	return w.Code
+	return t.AllowAccount(r, email)
 }
 
-func TestGuessingFromOneAddressIsRefused(t *testing.T) {
-	t.Parallel()
-
-	h := guarded(t, auth.ThrottleConfig{PerMinute: 3, PerEmailPerMinute: 100})
-
-	for i := range 3 {
-		// A different email each time, so only the address bucket is spent.
-		if code := attempt(h, "203.0.113.9:5000", "person"+string(rune('a'+i))+"@north.test"); code != http.StatusOK {
-			t.Fatalf("attempt %d was refused with %d while the budget still covered it", i+1, code)
-		}
-	}
-
-	if code := attempt(h, "203.0.113.9:5000", "another@north.test"); code != http.StatusTooManyRequests {
-		t.Fatalf("the 4th attempt returned %d, want 429", code)
-	}
-}
-
-// The reason the email bucket exists: an address limit alone lets a botnet
-// spread one account's guesses across many hosts and never meet a bound.
+// The reason the bucket is keyed on the account: web sign-ins all arrive from
+// the Worker's address, and a botnet spreads one account's guesses across many.
 func TestGuessingOneAccountFromManyAddressesIsRefused(t *testing.T) {
 	t.Parallel()
 
-	h := guarded(t, auth.ThrottleConfig{PerMinute: 1000, PerEmailPerMinute: 3})
+	th := auth.NewThrottle(auth.ThrottleConfig{PerEmailPerMinute: 3}, nil)
 
 	for i := range 3 {
-		if code := attempt(h, "203.0.113."+string(rune('1'+i))+":5000", "victim@north.test"); code != http.StatusOK {
-			t.Fatalf("attempt %d refused with %d", i+1, code)
+		if !attempt(th, "203.0.113."+string(rune('1'+i))+":5000", "victim@north.test") {
+			t.Fatalf("attempt %d refused while the budget still covered it", i+1)
 		}
 	}
 
-	if code := attempt(h, "198.51.100.77:5000", "victim@north.test"); code != http.StatusTooManyRequests {
-		t.Fatalf("a 4th address guessing the same account returned %d, want 429", code)
+	if attempt(th, "198.51.100.77:5000", "victim@north.test") {
+		t.Fatal("a 4th address guessing the same account was let through")
 	}
 }
 
@@ -68,116 +37,46 @@ func TestGuessingOneAccountFromManyAddressesIsRefused(t *testing.T) {
 func TestTheEmailBucketIgnoresCase(t *testing.T) {
 	t.Parallel()
 
-	h := guarded(t, auth.ThrottleConfig{PerMinute: 1000, PerEmailPerMinute: 2})
+	th := auth.NewThrottle(auth.ThrottleConfig{PerEmailPerMinute: 2}, nil)
 
-	attempt(h, "203.0.113.1:5000", "victim@north.test")
-	attempt(h, "203.0.113.2:5000", " VICTIM@North.Test ")
+	attempt(th, "203.0.113.1:5000", "victim@north.test")
+	attempt(th, "203.0.113.2:5000", " VICTIM@North.Test ")
 
-	if code := attempt(h, "203.0.113.3:5000", "Victim@north.test"); code != http.StatusTooManyRequests {
-		t.Fatalf("a respelled address got a fresh budget: %d", code)
+	if attempt(th, "203.0.113.3:5000", "Victim@north.test") {
+		t.Fatal("a respelled address got a fresh budget")
 	}
 }
 
-func TestOneCallerBeingRefusedLeavesEveryoneElseAlone(t *testing.T) {
+// Every web sign-in shares one address, so one account being guessed must not
+// lock anybody else out.
+func TestOneAccountBeingGuessedLeavesEveryoneElseAlone(t *testing.T) {
 	t.Parallel()
 
-	h := guarded(t, auth.ThrottleConfig{PerMinute: 2, PerEmailPerMinute: 100})
+	th := auth.NewThrottle(auth.ThrottleConfig{PerEmailPerMinute: 2}, nil)
+	const worker = "[2a06:98c0:3600::103]:443"
 
 	for range 3 {
-		attempt(h, "203.0.113.9:5000", "noisy@north.test")
+		attempt(th, worker, "victim@north.test")
 	}
-	if code := attempt(h, "203.0.113.9:5000", "noisy@north.test"); code != http.StatusTooManyRequests {
-		t.Fatalf("setup failed: the noisy caller was not exhausted, got %d", code)
+	if attempt(th, worker, "victim@north.test") {
+		t.Fatal("setup failed: the guessed account was not exhausted")
 	}
 
-	if code := attempt(h, "198.51.100.4:5000", "quiet@north.test"); code != http.StatusOK {
-		t.Fatalf("an unrelated caller was refused with %d", code)
+	if !attempt(th, worker, "someone@north.test") {
+		t.Fatal("an unrelated account from the same address was refused")
 	}
 }
 
-// Without a trusted-proxy list every request behind an ingress shares one
-// bucket, so the first few callers spend the budget for everybody. This is the
-// failure the whole clientip change exists to prevent.
-func TestBehindAProxyCallersAreBoundedSeparately(t *testing.T) {
+// A request with no email — passkeys, Google — has no account to key on.
+func TestAnAttemptWithoutAnEmailPasses(t *testing.T) {
 	t.Parallel()
 
-	trusted, err := middleware.ParseTrustedProxies("10.42.0.0/16")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-
-	h := guarded(t, auth.ThrottleConfig{PerMinute: 2, PerEmailPerMinute: 100, TrustedProxies: trusted})
-
-	send := func(caller, email string) int {
-		body := url.Values{"email": {email}}.Encode()
-		r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
-		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.Header.Set("X-Forwarded-For", caller)
-		r.RemoteAddr = "10.42.0.7:44001"
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-		return w.Code
-	}
+	th := auth.NewThrottle(auth.ThrottleConfig{PerEmailPerMinute: 1}, nil)
 
 	for range 3 {
-		send("198.51.100.1", "a@north.test")
-	}
-	if code := send("198.51.100.1", "a@north.test"); code != http.StatusTooManyRequests {
-		t.Fatalf("the noisy caller was not bounded: %d", code)
-	}
-
-	if code := send("198.51.100.2", "b@north.test"); code != http.StatusOK {
-		t.Fatalf("a second caller behind the same proxy was refused with %d — the limiter is keyed on the proxy", code)
-	}
-}
-
-// A refusal has to tell a script when to come back, or it comes back immediately.
-func TestARefusalCarriesRetryAfter(t *testing.T) {
-	t.Parallel()
-
-	h := guarded(t, auth.ThrottleConfig{PerMinute: 1, PerEmailPerMinute: 100})
-
-	attempt(h, "203.0.113.9:5000", "a@north.test")
-
-	body := url.Values{"email": {"a@north.test"}}.Encode()
-	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.RemoteAddr = "203.0.113.9:5000"
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-
-	if w.Code != http.StatusTooManyRequests {
-		t.Fatalf("code = %d", w.Code)
-	}
-	if w.Header().Get("Retry-After") == "" {
-		t.Error("no Retry-After on a 429")
-	}
-}
-
-// A request with no email — the passkey endpoints post JSON — must still pass
-// the address bucket and must not be refused for having no account to key on.
-func TestARequestWithoutAnEmailIsStillBoundedByAddress(t *testing.T) {
-	t.Parallel()
-
-	h := guarded(t, auth.ThrottleConfig{PerMinute: 2, PerEmailPerMinute: 1})
-
-	send := func() int {
-		r := httptest.NewRequest(http.MethodPost, "/auth/passkey/login/begin", strings.NewReader(`{}`))
-		r.Header.Set("Content-Type", "application/json")
-		r.RemoteAddr = "203.0.113.9:5000"
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-		return w.Code
-	}
-
-	if code := send(); code != http.StatusOK {
-		t.Fatalf("first passkey call refused with %d", code)
-	}
-	if code := send(); code != http.StatusOK {
-		t.Fatalf("second passkey call refused with %d; the email bucket should not apply", code)
-	}
-	if code := send(); code != http.StatusTooManyRequests {
-		t.Fatalf("third passkey call returned %d, want 429 from the address bucket", code)
+		if !attempt(th, "203.0.113.9:5000", "  ") {
+			t.Fatal("an attempt with no email was refused")
+		}
 	}
 }
 
@@ -186,11 +85,45 @@ func TestANilThrottlePassesEverythingThrough(t *testing.T) {
 	t.Parallel()
 
 	var nilThrottle *auth.Throttle
-	h := nilThrottle.Guard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	for range 10 {
+		if !attempt(nilThrottle, "203.0.113.9:5000", "a@north.test") {
+			t.Fatal("a nil throttle refused")
+		}
+	}
+}
 
-	if code := attempt(h, "203.0.113.9:5000", "a@north.test"); code != http.StatusOK {
-		t.Fatalf("code = %d", code)
+// The routes refuse before the service is reached: the service here is empty
+// and would panic if called. The refusal is the API's JSON error, with a
+// Retry-After so a script knows when to come back.
+func TestTheCredentialRoutesRefuseAnExhaustedAccount(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ path, body string }{
+		{"/auth/login", `{"email":"victim@north.test","password":"guess"}`},
+		{"/auth/signup", `{"email":"victim@north.test","password":"guess","passwordConfirmation":"guess"}`},
+		{"/auth/forgot-password", `{"email":"victim@north.test"}`},
+	} {
+		th := auth.NewThrottle(auth.ThrottleConfig{PerEmailPerMinute: 1}, nil)
+		attempt(th, "203.0.113.9:5000", "victim@north.test")
+
+		api := auth.NewAPI(nil).WithAuthService(&auth.Service{}, &auth.Middleware{}).WithThrottle(th)
+		rec := postJSON(t, publicRouter(api), tc.path, tc.body)
+
+		if rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("%s: code = %d, want 429; body %s", tc.path, rec.Code, rec.Body)
+		}
+		if rec.Header().Get("Retry-After") == "" {
+			t.Errorf("%s: no Retry-After on a 429", tc.path)
+		}
+		// The web app shows error.message to the person; anything else and it
+		// falls back to the status text.
+		var envelope struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil || envelope.Error.Message == "" {
+			t.Errorf("%s: body %s is not the API's JSON error envelope", tc.path, rec.Body)
+		}
 	}
 }

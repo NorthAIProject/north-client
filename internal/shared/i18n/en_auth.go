@@ -56,6 +56,7 @@ var englishAuth = map[string]string{
 	"auth.err.form":               "That form could not be read. Please try again.",
 	"auth.err.signup":             "Something went wrong creating your account. Please try again.",
 	"auth.err.credentials":        "Email or password is incorrect.",
+	"auth.err.throttled":          "Too many attempts on this account. Wait a minute and try again.",
 	"auth.err.signin":             "Something went wrong signing you in. Please try again.",
 	"auth.err.generic":            "Something went wrong. Please try again.",
 	"auth.err.mismatch":           "Passwords do not match.",

@@ -50,6 +50,7 @@ var portugueseEuropeanAuth = map[string]string{
 	"auth.err.form":               "Não foi possível ler o formulário. Tenta outra vez.",
 	"auth.err.signup":             "Algo correu mal ao criar a tua conta. Tenta outra vez.",
 	"auth.err.credentials":        "O email ou a palavra-passe estão incorretos.",
+	"auth.err.throttled":          "Demasiadas tentativas nesta conta. Aguarde um minuto e tente novamente.",
 	"auth.err.signin":             "Algo correu mal ao iniciar sessão. Tenta outra vez.",
 	"auth.err.generic":            "Algo correu mal. Tenta outra vez.",
 	"auth.err.mismatch":           "As palavras-passe não coincidem.",

@@ -46,10 +46,8 @@ type Config struct {
 	// /app/ops/moderation and get a push for every new report. Not a secret.
 	OperatorUserIDs []uuid.UUID
 
-	// AuthAttemptsPerMinute bounds sign-in, sign-up and password-reset attempts
-	// from one address; AuthAttemptsPerEmailPerMinute bounds them against one
-	// account from every address at once.
-	AuthAttemptsPerMinute         int
+	// AuthAttemptsPerEmailPerMinute bounds sign-in, sign-up and password-reset
+	// attempts against one account from every address at once.
 	AuthAttemptsPerEmailPerMinute int
 
 	DatabaseURL string
@@ -769,12 +767,6 @@ func Load() (*Config, error) {
 	// Zero means the auth package's own default, the same contract
 	// MCP_REQUESTS_PER_MINUTE has: the number belongs beside the code that
 	// enforces it, not here.
-	authRate, err := intValue("AUTH_ATTEMPTS_PER_MINUTE", 0)
-	if err != nil {
-		problems = append(problems, err.Error())
-	}
-	cfg.AuthAttemptsPerMinute = authRate
-
 	authEmailRate, err := intValue("AUTH_ATTEMPTS_PER_EMAIL_PER_MINUTE", 0)
 	if err != nil {
 		problems = append(problems, err.Error())

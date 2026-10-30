@@ -27,6 +27,7 @@ type API struct {
 	sessions SessionResolver
 	service  *Service
 	mw       *Middleware
+	throttle *Throttle
 }
 
 func NewAPI(sessions SessionResolver) *API {
@@ -39,6 +40,19 @@ func (a *API) WithAuthService(service *Service, mw *Middleware) *API {
 	a.service = service
 	a.mw = mw
 	return a
+}
+
+// WithThrottle bounds sign-in, sign-up and password-reset attempts against
+// one account. Nil leaves them unbounded, which is the test wiring.
+func (a *API) WithThrottle(t *Throttle) *API {
+	a.throttle = t
+	return a
+}
+
+// throttled answers an attempt the account's allowance has no room for.
+func throttled(c *echo.Context) error {
+	c.Response().Header().Set("Retry-After", "60")
+	return httpx.Fail(httpx.ErrRateLimited, i18n.T(c.Request().Context(), "auth.err.throttled"))
 }
 
 // RegisterPublic registers the credential routes relative to /api/v1. They
@@ -133,6 +147,9 @@ func (a *API) signup(c *echo.Context) error {
 	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 64 << 10}, i18n.T(ctx, "auth.api.body.signup")); err != nil {
 		return err
 	}
+	if !a.throttle.AllowAccount(c.Request(), req.Email) {
+		return throttled(c)
+	}
 
 	user, token, err := a.service.Signup(ctx, SignupInput{
 		Email:                req.Email,
@@ -159,6 +176,9 @@ func (a *API) login(c *echo.Context) error {
 	var req LoginRequest
 	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 64 << 10}, i18n.T(ctx, "auth.api.body.login")); err != nil {
 		return err
+	}
+	if !a.throttle.AllowAccount(c.Request(), req.Email) {
+		return throttled(c)
 	}
 
 	user, token, err := a.service.Login(ctx, LoginInput(req), a.mw.RequestMetadata(r))
@@ -224,6 +244,9 @@ func (a *API) forgotPassword(c *echo.Context) error {
 	var req ForgotPasswordRequest
 	if err := echox.BindJSON(c, &req, httpx.ReadOptions{MaxBytes: 16 << 10}, i18n.T(ctx, "auth.api.body.email")); err != nil {
 		return err
+	}
+	if !a.throttle.AllowAccount(c.Request(), req.Email) {
+		return throttled(c)
 	}
 	if err := a.service.RequestPasswordReset(ctx, req.Email); err != nil {
 		return authError(c, err, i18n.T(ctx, "auth.api.reset"))
