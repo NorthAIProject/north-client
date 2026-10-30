@@ -14,27 +14,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 )
 
-// RangeOption is one choice in the period selector.
-type RangeOption struct {
-	Key      string
-	Label    string
-	Selected bool
-}
-
-type RangeView struct {
-	Key     string
-	Label   string
-	Options []RangeOption
-}
-
-// DeltaView is a change against the previous window of equal length.
-// HasPrior false renders nothing at all, rather than a fabricated gain.
-type DeltaView struct {
-	Pct       float64
-	Direction int
-	HasPrior  bool
-}
-
 // section names the insights page being viewed, for the sub-nav. Its label is
 // the catalogue's "insights.section.<Key>", which the summary's rings share.
 type section struct {

@@ -3,7 +3,6 @@ package insights
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -12,94 +11,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
 )
-
-// SessionRow is one completed activity session.
-type SessionRow struct {
-	Name     string
-	At       time.Time
-	Duration string
-	Calories float64
-}
-
-type TrainingView struct {
-	Range RangeView
-
-	Sessions  []SessionRow
-	BurnChart chart.Props
-	KindDonut map[string]any
-
-	Calories     float64
-	Delta        DeltaView
-	SessionCount int
-	TotalTime    string
-
-	HasDonut    bool
-	HasSessions bool
-
-	Lifting LiftingView
-
-	// Plan is the training plan over the window; zero without one.
-	Plan PlanAdherenceView
-	// Recap is the latest finished workout in the window; nil before one.
-	Recap *workoutsummary.Recap
-}
-
-// PlanAdherenceView is the plan against what was done: this week day by day,
-// and the window as a count.
-type PlanAdherenceView struct {
-	HasPlan bool
-	Week    workoutsummary.Week
-
-	Done     int
-	Planned  int
-	Sentence string
-}
-
-// Rate is the window's plan days done, as a percentage.
-func (p PlanAdherenceView) Rate() string {
-	if p.Planned == 0 {
-		return "—"
-	}
-	return fmt.Sprintf("%d%%", p.Done*100/p.Planned)
-}
-
-// LiftingView is what the logged sets add up to.
-type LiftingView struct {
-	HasSets     bool
-	Volume      string
-	Delta       DeltaView
-	Sets        int
-	Workouts    int
-	HasWeekly   bool
-	WeeklyChart chart.Props
-	Exercises   []LiftExerciseRow
-	Records     []LiftRecordRow
-	Muscles     []MuscleRow
-}
-
-type LiftExerciseRow struct {
-	Name   string
-	Sets   int
-	Best   string
-	E1RM   string
-	Volume string
-	// Change is the estimated max's movement across the window, in kg.
-	Change float64
-}
-
-type LiftRecordRow struct {
-	Exercise string
-	Lift     string
-	E1RM     string
-	Gain     string
-	On       string
-}
-
-type MuscleRow struct {
-	Name string
-	Sets int
-	Pct  int
-}
 
 templ Training(user users.User, view TrainingView) {
 	@page(sectionTitle(ctx, "training"), "training", "/app/insights/training/body", user, view.Range) {

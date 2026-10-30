@@ -8,6 +8,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/stats"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
@@ -58,7 +59,7 @@ func TestStatsPanelsRender(t *testing.T) {
 		}
 	}
 
-	eatingHTML := renderString(t, insightpages.NutritionBody(insightpages.NutritionView{
+	eatingHTML := renderString(t, insightpages.NutritionBody(insightview.NutritionView{
 		HasData: true,
 		Eating:  buildEatingView(context.Background(), stat.Eating([]stat.FoodEntry{{At: *at(2, 22), Date: day(2), Label: "Pizza", Kcal: 900}}, 2000, 150, 80, 21)),
 	}))

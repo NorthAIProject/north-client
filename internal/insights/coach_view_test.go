@@ -7,10 +7,10 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 )
 
-func mustCoachView(t *testing.T, data CoachData) insightpages.CoachView {
+func mustCoachView(t *testing.T, data CoachData) insightview.CoachView {
 	t.Helper()
 	view, err := buildCoachView(context.Background(), data)
 	if err != nil {

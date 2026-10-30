@@ -8,32 +8,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
-// NutritionView is the nutrition section.
-type NutritionView struct {
-	Range RangeView
-
-	AvgCalories string
-	AvgProtein  string
-	DaysLogged  int
-	Entries     int
-
-	// Goal figures are empty for somebody who has not run the calculator.
-	// Their intake is still charted; it is simply not judged against
-	// anything, because there is nothing to judge it against.
-	HasGoal      bool
-	GoalCalories string
-	GoalProtein  string
-
-	CaloriesChart chart.Props
-	MacroSplit    map[string]any
-	HasSplit      bool
-
-	Highlights []string
-	HasData    bool
-
-	Eating EatingView
-}
-
 templ Nutrition(user users.User, view NutritionView) {
 	@page(sectionTitle(ctx, "nutrition"), "nutrition", "/app/insights/nutrition/body", user, view.Range) {
 		@NutritionBody(view)

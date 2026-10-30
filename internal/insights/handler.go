@@ -13,6 +13,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/awards/award"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
@@ -398,18 +399,18 @@ func (h *Handler) metricBody(w http.ResponseWriter, r *http.Request) {
 
 // metricView loads and builds the view both metric handlers render, reporting
 // whether it already answered the request with an error.
-func (h *Handler) metricView(w http.ResponseWriter, r *http.Request) (insightpages.MetricView, bool) {
+func (h *Handler) metricView(w http.ResponseWriter, r *http.Request) (insightview.MetricView, bool) {
 	user, rg := h.context(r)
 
 	data, err := h.svc.Metric(r.Context(), user, rg, chi.URLParam(r, "key"))
 	if err != nil {
 		h.fail(w, r, err)
-		return insightpages.MetricView{}, false
+		return insightview.MetricView{}, false
 	}
 	view, err := buildMetricView(r.Context(), data)
 	if err != nil {
 		h.fail(w, r, err)
-		return insightpages.MetricView{}, false
+		return insightview.MetricView{}, false
 	}
 	return view, true
 }

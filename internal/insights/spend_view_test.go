@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/spend"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
-func mustSpendView(t *testing.T, data SpendData) insightpages.SpendView {
+func mustSpendView(t *testing.T, data SpendData) insightview.SpendView {
 	t.Helper()
 	view, err := buildSpendView(context.Background(), data)
 	if err != nil {

@@ -1,42 +1,11 @@
 package insights
 
 import (
-	"time"
-
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/icon"
 )
-
-// EntryRow is one row of the full activity feed.
-type EntryRow struct {
-	Kind   string
-	Label  string
-	At     time.Time
-	Title  string
-	Detail string
-	Href   string
-	Icon   string
-}
-
-// FilterChip narrows the feed to one kind. Count is shown so an empty result
-// is obviously a filter and not a missing record.
-type FilterChip struct {
-	Key      string
-	Label    string
-	Count    int
-	Selected bool
-}
-
-type TimelineView struct {
-	Range   RangeView
-	Entries []EntryRow
-	Chips   []FilterChip
-
-	// Overflow marks a window with more rows than one page holds.
-	Overflow bool
-}
 
 templ Timeline(user users.User, view TimelineView) {
 	@page(sectionTitle(ctx, "timeline"), "timeline", "/app/insights/timeline/body", user, view.Range) {

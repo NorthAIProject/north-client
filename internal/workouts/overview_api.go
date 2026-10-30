@@ -12,7 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
-	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
+	"github.com/NorthAIProject/north-client/internal/workouts/workoutsummary"
 )
 
 // WithRecaps lets GET /training/overview carry this week's latest workout.

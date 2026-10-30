@@ -1,9 +1,9 @@
-// Package workoutsummary renders a finished workout and a plan's week — the
-// parts the plan page and Insights → Training both show.
+// Package workoutsummary shapes a finished workout, a plan's week and the
+// muscle map — the parts the plan page and Insights → Training both show, in
+// the browser and over the API.
 //
-// A shared package rather than one page importing the other's templates, for
-// the reason web/shared/exerciserow gives: web/workouts owns the plan page,
-// web/insights owns Insights, and neither should reach into the other.
+// The cards that draw them are in web/shared/workoutsummary. The data lives
+// here so the API can build the same views without importing the templates.
 package workoutsummary
 
 import (
@@ -18,7 +18,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
-	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
 // Recap is one finished workout as the card draws it.
@@ -42,7 +41,7 @@ type Recap struct {
 
 	Exercises []ExerciseRow
 	// Chart is this session's volume per exercise beside last time's.
-	Chart    chart.Props
+	Chart    viz.Props
 	HasChart bool
 }
 
@@ -137,10 +136,10 @@ func (r Recap) WhenIn(ctx context.Context) string {
 // ChartIn is the chart with its series named in the reader's language. The
 // datasets are copied: Recap is a value, and two renders must not share one
 // translated slice.
-func (r Recap) ChartIn(ctx context.Context) chart.Props {
+func (r Recap) ChartIn(ctx context.Context) viz.Props {
 	out := r.Chart
 	keys := []string{"layout.recap.series.now", "layout.recap.series.before"}
-	out.Data.Datasets = append([]chart.Dataset(nil), r.Chart.Data.Datasets...)
+	out.Data.Datasets = append([]viz.Dataset(nil), r.Chart.Data.Datasets...)
 	for i := range out.Data.Datasets {
 		if i < len(keys) {
 			out.Data.Datasets[i].Label = i18n.T(ctx, keys[i])

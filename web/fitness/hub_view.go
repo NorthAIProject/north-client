@@ -10,59 +10,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
-	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
-// WeekBar is one day of the weekly strip.
-type WeekBar struct {
-	Label   string
-	Minutes float64
-	IsToday bool
-}
-
-// WeekView is the "this week" card: three totals over a strip of days.
-type WeekView struct {
-	Bars       []WeekBar
-	Sessions   int
-	Minutes    float64
-	DistanceKm float64
-	Calories   float64
-}
-
-// RecentRow is one completed session in the recent list.
-type RecentRow struct {
-	Name       string
-	Category   string
-	Code       string
-	Source     string
-	EndedAt    time.Time
-	Duration   time.Duration
-	DistanceKm float64
-	Calories   float64
-}
-
-// TrendDay is one day of a device metric.
-type TrendDay struct {
-	Day   time.Time
-	Value float64
-}
-
-// Trend is a device metric card: a chart and the days behind it, oldest first.
-type Trend struct {
-	Chart chart.Props
-	Days  []TrendDay
-}
-
-// Weight is the latest weigh-in and its change from the one before.
-type Weight struct {
-	Kg       float64
-	DeltaKg  float64
-	HasDelta bool
-	At       time.Time
-}
-
 // maxMinutes is the tallest bar, so the others are drawn against it.
-func (w WeekView) maxMinutes() float64 {
+func maxMinutes(w WeekView) float64 {
 	var top float64
 	for _, b := range w.Bars {
 		top = math.Max(top, b.Minutes)
@@ -73,8 +24,8 @@ func (w WeekView) maxMinutes() float64 {
 // barHeight is a bar's height as a CSS percentage of the strip. A day with any
 // activity is never shorter than a sliver, so ten minutes beside a two-hour
 // ride still reads as "something happened".
-func (w WeekView) barHeight(b WeekBar) string {
-	top := w.maxMinutes()
+func barHeight(w WeekView, b WeekBar) string {
+	top := maxMinutes(w)
 	if top <= 0 || b.Minutes <= 0 {
 		return "6%"
 	}
@@ -82,9 +33,9 @@ func (w WeekView) barHeight(b WeekBar) string {
 	return fmt.Sprintf("%.0f%%", pct)
 }
 
-func (w WeekView) hasActivity() bool { return w.Sessions > 0 }
+func hasActivity(w WeekView) bool { return w.Sessions > 0 }
 
-func (w WeekView) avgMinutesPerDay() string {
+func avgMinutesPerDay(w WeekView) string {
 	if len(w.Bars) == 0 {
 		return "0"
 	}
@@ -199,9 +150,10 @@ func ago(ctx context.Context, t time.Time, now time.Time) string {
 	}
 }
 
-// latest is the newest day with a reading. Today's steps are usually still
-// counting, so a trailing zero is skipped rather than shown as the headline.
-func (t Trend) latest() (TrendDay, bool) {
+// latestReading is the newest day with a reading. Today's steps are usually
+// still counting, so a trailing zero is skipped rather than shown as the
+// headline.
+func latestReading(t Trend) (TrendDay, bool) {
 	for i := len(t.Days) - 1; i >= 0; i-- {
 		if t.Days[i].Value > 0 {
 			return t.Days[i], true
@@ -211,7 +163,7 @@ func (t Trend) latest() (TrendDay, bool) {
 }
 
 // perDay is the mean over days that have a reading.
-func (t Trend) perDay() float64 {
+func perDay(t Trend) float64 {
 	var sum float64
 	var n int
 	for _, d := range t.Days {
@@ -226,8 +178,8 @@ func (t Trend) perDay() float64 {
 	return sum / float64(n)
 }
 
-func (t Trend) first() TrendDay { return t.Days[0] }
-func (t Trend) last() TrendDay  { return t.Days[len(t.Days)-1] }
+func firstDay(t Trend) TrendDay { return t.Days[0] }
+func lastDay(t Trend) TrendDay  { return t.Days[len(t.Days)-1] }
 
 // TrendRow is one day in a trend's list, with its change from the day before.
 type TrendRow struct {
@@ -239,7 +191,7 @@ type TrendRow struct {
 
 // recentRows is the last few days with a reading, newest first, each with its
 // change from the reading before it.
-func (t Trend) recentRows(limit int) []TrendRow {
+func recentRows(t Trend, limit int) []TrendRow {
 	var withData []TrendDay
 	for _, d := range t.Days {
 		if d.Value > 0 {

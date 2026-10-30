@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	summary "github.com/NorthAIProject/north-client/internal/workouts/workoutsummary"
 	"github.com/NorthAIProject/north-client/web/shared/muscleviewer"
 	"github.com/NorthAIProject/north-client/web/shared/ui/card"
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
@@ -15,7 +16,7 @@ import (
 // RecapCard is a finished workout: the sentence first, then the four numbers,
 // then each exercise's volume against last time. The page must include
 // ui.ChartScripts.
-templ RecapCard(r Recap) {
+templ RecapCard(r summary.Recap) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface", Attributes: templ.Attributes{"data-testid": "workout-recap"}}) {
 		@card.Header() {
 			<div class="flex items-baseline justify-between gap-3">
@@ -57,9 +58,9 @@ templ RecapCard(r Recap) {
 									<span>· { i18n.Tf(ctx, "layout.recap.est", e.E1RM) }</span>
 								}
 								if e.HasChange && e.Change > 0 {
-									<span class="text-signal">{ ChangeLabel(ctx, e.Change) }</span>
+									<span class="text-signal">{ summary.ChangeLabel(ctx, e.Change) }</span>
 								} else if e.HasChange && e.Change < 0 {
-									<span>{ ChangeLabel(ctx, e.Change) }</span>
+									<span>{ summary.ChangeLabel(ctx, e.Change) }</span>
 								}
 							</span>
 						</li>
@@ -79,7 +80,7 @@ templ tile(label, value string) {
 
 // WeekStrip is the plan's days this week, each done or still open, with the
 // count as a sentence and a bar.
-templ WeekStrip(w Week) {
+templ WeekStrip(w summary.Week) {
 	<div class="space-y-3" data-testid="plan-week">
 		<div class="flex items-baseline justify-between gap-3">
 			<p class="text-sm font-medium">{ w.Sentence }</p>
@@ -112,7 +113,7 @@ templ WeekStrip(w Week) {
 	</div>
 }
 
-func weekDayLabel(ctx context.Context, d WeekDay) string {
+func weekDayLabel(ctx context.Context, d summary.WeekDay) string {
 	day := i18n.Date(ctx, d.Date, "Mon")
 	switch {
 	case d.Done:
@@ -128,7 +129,7 @@ func weekDayLabel(ctx context.Context, d WeekDay) string {
 
 // ReadinessCard is the body lit from logged sets: still tired, recovering,
 // trained this week. The page must include muscleviewer.Script.
-templ ReadinessCard(r Readiness) {
+templ ReadinessCard(r summary.Readiness) {
 	@card.Card(card.Props{Class: "border-hairline bg-surface", Attributes: templ.Attributes{"data-testid": "muscle-readiness"}}) {
 		@card.Header() {
 			<div class="flex items-baseline justify-between gap-3">
@@ -171,7 +172,7 @@ templ legendSwatch(color, label string) {
 }
 
 // staleList reads "Quads · 25 days, Calves · 18 days".
-func staleList(ctx context.Context, stale []StaleMuscle) string {
+func staleList(ctx context.Context, stale []summary.StaleMuscle) string {
 	parts := make([]string, 0, len(stale))
 	for _, m := range stale {
 		parts = append(parts, i18n.Tf(ctx, "layout.readiness.stale.days", m.Name, m.Days))

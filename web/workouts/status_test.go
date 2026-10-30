@@ -11,7 +11,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
-	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
+	"github.com/NorthAIProject/north-client/internal/workouts/workoutsummary"
 )
 
 // A finished day has to read as finished on the web the same way it does on

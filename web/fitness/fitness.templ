@@ -6,10 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
-	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/shared/durfmt"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -48,51 +45,9 @@ func tiles() []layout.Destination {
 	return out
 }
 
-// Instruments holds the plan and nutrition state the side rail reads.
-type Instruments struct {
-	PlanID          uuid.UUID
-	NextSession     *plan.PlanDay
-	DoneToday       *plan.PlanDay
-	HasMealProgress bool
-	MealProgress    *meals.Progress
-}
-
-// HubData is everything the fitness hub renders.
-type HubData struct {
-	StravaStatus strava.Status
-	Instruments  Instruments
-	Notice       string
-
-	Week   WeekView
-	Recent []RecentRow
-
-	// Steps and VO2 are nil unless a device has pushed that metric; the page
-	// leaves the card out rather than drawing a flat line of zeros.
-	Steps *Trend
-	VO2   *Trend
-
-	Weight *Weight
-
-	// Strength and Cardio are the last 30 days; nil leaves the card out.
-	Strength *StrengthView
-	Cardio   *CardioView
-
-	// DeviceReadings is the last week from a wearable or phone, already
-	// rendered as sentences by internal/health. Empty is the normal state.
-	DeviceReadings    []string
-	HasDeviceReadings bool
-
-	Location *time.Location
-	Now      time.Time
-}
-
-func (d HubData) HasPlan() bool {
-	return d.Instruments.PlanID != uuid.Nil
-}
-
 // activitiesHref is where "see all" goes: the Strava view when there is one to
 // show, the activity timer's history otherwise.
-func (d HubData) activitiesHref() string {
+func activitiesHref(d HubData) string {
 	if d.StravaStatus.Connected {
 		return "/app/fitness/activities"
 	}
@@ -181,7 +136,7 @@ templ weekCard(data HubData) {
 	@panel() {
 		@panelHeading(i18n.T(ctx, "fitness.week.label"))
 		<div class="grid grid-cols-3 gap-2 px-5 pt-4 text-center">
-			@weekStat(fmt.Sprintf("%.0f", data.Week.Minutes), i18n.T(ctx, "fitness.week.active"), i18n.Tf(ctx, "fitness.week.perday", data.Week.avgMinutesPerDay()))
+			@weekStat(fmt.Sprintf("%.0f", data.Week.Minutes), i18n.T(ctx, "fitness.week.active"), i18n.Tf(ctx, "fitness.week.perday", avgMinutesPerDay(data.Week)))
 			@weekStat(compact(ctx, data.Week.Calories), i18n.T(ctx, "fitness.week.burned"), "")
 			@weekStat(oneDecimal(ctx, data.Week.DistanceKm), "km", sessionsLabel(ctx, data.Week.Sessions))
 		</div>
@@ -194,7 +149,7 @@ templ weekCard(data HubData) {
 					<div class="flex h-full flex-1 items-end" title={ i18n.Tf(ctx, "fitness.week.bar", barLabel(ctx, b.Label), fmt.Sprintf("%.0f", b.Minutes)) }>
 						<div
 							class={ "w-full rounded-md transition-colors", templ.KV("bg-signal", b.Minutes > 0), templ.KV("bg-muted", b.Minutes <= 0) }
-							style={ "height: " + data.Week.barHeight(b) }
+							style={ "height: " + barHeight(data.Week, b) }
 						></div>
 					</div>
 				}
@@ -208,7 +163,7 @@ templ weekCard(data HubData) {
 				}
 			</div>
 		</div>
-		<a href={ templ.SafeURL(data.activitiesHref()) } class="border-hairline text-muted-foreground hover:text-foreground flex items-center justify-between border-t px-5 py-3 text-xs transition-colors">
+		<a href={ templ.SafeURL(activitiesHref(data)) } class="border-hairline text-muted-foreground hover:text-foreground flex items-center justify-between border-t px-5 py-3 text-xs transition-colors">
 			<span>{ weekSource(ctx, data) }</span>
 			@icon.ChevronRight(icon.Props{Class: "size-4"})
 		</a>
@@ -241,7 +196,7 @@ func weekSource(ctx context.Context, data HubData) string {
 		return i18n.Tf(ctx, "fitness.source.synced", ago(ctx, *s.LastSyncedAt, data.Now))
 	case s.Connected:
 		return i18n.T(ctx, "fitness.source.waiting")
-	case data.Week.hasActivity():
+	case hasActivity(data.Week):
 		return i18n.T(ctx, "fitness.source.tracked")
 	default:
 		return i18n.T(ctx, "fitness.source.none")
@@ -252,7 +207,7 @@ templ recentCard(data HubData) {
 	@panel() {
 		@panelHeading(i18n.T(ctx, "fitness.recent.label")) {
 			if len(data.Recent) > 0 {
-				<a href={ templ.SafeURL(data.activitiesHref()) } class="text-muted-foreground hover:text-foreground text-xs">{ i18n.T(ctx, "fitness.recent.all") }</a>
+				<a href={ templ.SafeURL(activitiesHref(data)) } class="text-muted-foreground hover:text-foreground text-xs">{ i18n.T(ctx, "fitness.recent.all") }</a>
 			}
 		}
 		if len(data.Recent) == 0 {
@@ -313,7 +268,7 @@ templ bodyCard(data HubData) {
 
 templ stepsCard(t Trend, loc *time.Location) {
 	@panel() {
-		{{ latest, _ := t.latest() }}
+		{{ latest, _ := latestReading(t) }}
 		@panelHeading(i18n.T(ctx, "fitness.steps.label"))
 		<div class="flex items-end justify-between gap-4 px-5 pt-3">
 			<p class="text-3xl font-semibold tracking-tight tabular-nums">
@@ -321,16 +276,16 @@ templ stepsCard(t Trend, loc *time.Location) {
 				<span class="text-muted-foreground text-sm font-normal">{ i18n.T(ctx, "fitness.steps.unit") }</span>
 			</p>
 			<div class="text-muted-foreground text-right text-xs tabular-nums">
-				<p>{ i18n.Tf(ctx, "fitness.week.perday", compact(ctx, t.perDay())) }</p>
+				<p>{ i18n.Tf(ctx, "fitness.week.perday", compact(ctx, perDay(t))) }</p>
 				<p>{ i18n.Date(ctx, latest.Day, "2 Jan") }</p>
 			</div>
 		</div>
 		<div class="px-3 pt-3">
 			@chart.Chart(t.Chart)
 		</div>
-		@trendAxis(i18n.Date(ctx, t.first().Day, "2 Jan"), i18n.Tf(ctx, "fitness.steps.days", len(t.Days)), i18n.Date(ctx, t.last().Day, "2 Jan"))
+		@trendAxis(i18n.Date(ctx, firstDay(t).Day, "2 Jan"), i18n.Tf(ctx, "fitness.steps.days", len(t.Days)), i18n.Date(ctx, lastDay(t).Day, "2 Jan"))
 		<ul class="border-hairline divide-hairline mx-5 mb-5 divide-y overflow-hidden rounded-lg border">
-			for _, row := range t.recentRows(5) {
+			for _, row := range recentRows(t, 5) {
 				<li class="flex items-center justify-between px-3 py-2.5">
 					<div>
 						<p class="text-sm font-medium tabular-nums">{ i18n.Tf(ctx, "fitness.steps.row", compact(ctx, row.Value)) }</p>
@@ -347,7 +302,7 @@ templ stepsCard(t Trend, loc *time.Location) {
 
 templ vo2Card(t Trend) {
 	@panel() {
-		{{ latest, _ := t.latest() }}
+		{{ latest, _ := latestReading(t) }}
 		@panelHeading(i18n.T(ctx, "fitness.vo2.label"))
 		<div class="flex items-end justify-between gap-4 px-5 pt-3">
 			<p class="text-3xl font-semibold tracking-tight tabular-nums">
@@ -363,7 +318,7 @@ templ vo2Card(t Trend) {
 			@chart.Chart(t.Chart)
 		</div>
 		<div class="pb-4">
-			@trendAxis(i18n.Date(ctx, t.first().Day, "2 Jan"), i18n.Tf(ctx, "fitness.vo2.readings", len(t.Days)), i18n.Date(ctx, t.last().Day, "2 Jan"))
+			@trendAxis(i18n.Date(ctx, firstDay(t).Day, "2 Jan"), i18n.Tf(ctx, "fitness.vo2.readings", len(t.Days)), i18n.Date(ctx, lastDay(t).Day, "2 Jan"))
 		</div>
 	}
 }
@@ -655,42 +610,6 @@ templ deviceCard(data HubData) {
 			</div>
 		</div>
 	}
-}
-
-// StrengthView is the month's lifting, from logged sets.
-type StrengthView struct {
-	Workouts  int
-	Sets      int
-	VolumeKg  float64
-	Exercises []StrengthRow
-	Record    *StrengthRecord
-}
-
-type StrengthRow struct {
-	Name     string
-	BestKg   float64
-	E1RMKg   float64
-	ChangeKg float64
-}
-
-type StrengthRecord struct {
-	Exercise string
-	WeightKg float64
-	Reps     int
-	E1RMKg   float64
-	On       time.Time
-}
-
-// CardioView is the month's runs, rides and walks.
-type CardioView struct {
-	Sessions        int
-	Minutes         int
-	DistanceKm      float64
-	Runs            int
-	BestPaceSeconds float64
-	Best5KSeconds   float64
-	LongestKm       float64
-	RestingHR       float64
 }
 
 func kg(ctx context.Context, v float64) string {

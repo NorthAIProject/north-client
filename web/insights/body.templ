@@ -11,37 +11,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/progress"
 )
 
-// HabitRow is one habit's adherence over the window.
-type HabitRow struct {
-	Name      string
-	Kept      int
-	Scheduled int
-	Streak    int
-	Rate      int
-}
-
-type BodyView struct {
-	Range RangeView
-
-	WaterChart   chart.Props
-	SleepChart   chart.Props
-	HabitGauge   map[string]any
-	Habits       []HabitRow
-	TotalWaterML int
-	Nights       int
-	AvgSleep     float64
-	AvgQuality   float64
-
-	// QualityCount is how many nights carried a rating. An average over two
-	// of nine nights is a different claim from an average over nine, and the
-	// page says which.
-	QualityCount int
-
-	HasWater  bool
-	HasSleep  bool
-	HasHabits bool
-}
-
 templ Body(user users.User, view BodyView) {
 	@page(sectionTitle(ctx, "body"), "body", "/app/insights/body/body", user, view.Range) {
 		@BodyPanels(view)

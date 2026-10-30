@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/NorthAIProject/north-client/internal/calculator"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/meals"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
-func mustNutritionView(t *testing.T, data NutritionData) insightpages.NutritionView {
+func mustNutritionView(t *testing.T, data NutritionData) insightview.NutritionView {
 	t.Helper()
 	view, err := buildNutritionView(context.Background(), data)
 	if err != nil {

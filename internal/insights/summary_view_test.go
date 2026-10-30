@@ -12,10 +12,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 // wellLogged is a week with something in every domain.
@@ -73,7 +73,7 @@ func quarterRange(t *testing.T) timerange.Range {
 	return timerange.Parse(timerange.KeyQuarter, loc)
 }
 
-func mustSummaryView(t *testing.T, data SummaryData) insightpages.SummaryView {
+func mustSummaryView(t *testing.T, data SummaryData) insightview.SummaryView {
 	t.Helper()
 	view, err := buildSummaryView(context.Background(), data)
 	if err != nil {
@@ -82,7 +82,7 @@ func mustSummaryView(t *testing.T, data SummaryData) insightpages.SummaryView {
 	return view
 }
 
-func find(t *testing.T, view insightpages.SummaryView, key string) insightpages.ScoreCard {
+func find(t *testing.T, view insightview.SummaryView, key string) insightview.ScoreCard {
 	t.Helper()
 	for _, s := range view.Scores {
 		if s.Key == key {
@@ -90,7 +90,7 @@ func find(t *testing.T, view insightpages.SummaryView, key string) insightpages.
 		}
 	}
 	t.Fatalf("no score card %q", key)
-	return insightpages.ScoreCard{}
+	return insightview.ScoreCard{}
 }
 
 func TestSummaryViewScoresEveryDomain(t *testing.T) {

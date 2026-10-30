@@ -8,9 +8,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/checkins"
 	"github.com/NorthAIProject/north-client/internal/dashboard"
 	"github.com/NorthAIProject/north-client/internal/hydration"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 func weekRange(t *testing.T) timerange.Range {
@@ -48,7 +48,7 @@ func TestTimelineViewChips(t *testing.T) {
 		t.Error("everything must not be selected while a kind filter is active")
 	}
 
-	var sleepChip insightpages.FilterChip
+	var sleepChip insightview.FilterChip
 	for _, c := range view.Chips {
 		if c.Key == string(dashboard.KindSleep) {
 			sleepChip = c

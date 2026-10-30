@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
-	"github.com/NorthAIProject/north-client/web/shared/workoutsummary"
+	"github.com/NorthAIProject/north-client/internal/workouts/workoutsummary"
 )
 
 func TestNewReadinessSortsMusclesIntoTiers(t *testing.T) {

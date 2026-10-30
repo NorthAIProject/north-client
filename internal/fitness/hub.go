@@ -10,6 +10,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
+	"github.com/NorthAIProject/north-client/internal/fitness/fitnessview"
 	"github.com/NorthAIProject/north-client/internal/fitness/strava"
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/lifts"
@@ -22,7 +23,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
-	fitnesspages "github.com/NorthAIProject/north-client/web/fitness"
 )
 
 const calorieWindow = 7
@@ -271,8 +271,8 @@ func (s *Service) loadDeviceTrends(ctx context.Context, user users.User, now tim
 	return nil
 }
 
-func buildView(snap Snapshot) fitnesspages.Instruments {
-	return fitnesspages.Instruments{
+func buildView(snap Snapshot) fitnessview.Instruments {
+	return fitnessview.Instruments{
 		PlanID:          snap.PlanID,
 		NextSession:     snap.NextSession,
 		DoneToday:       snap.DoneToday,
@@ -282,8 +282,8 @@ func buildView(snap Snapshot) fitnesspages.Instruments {
 }
 
 // buildHubData turns a snapshot into the page's view model.
-func buildHubData(snap Snapshot, loc *time.Location, now time.Time, notice string) fitnesspages.HubData {
-	data := fitnesspages.HubData{
+func buildHubData(snap Snapshot, loc *time.Location, now time.Time, notice string) fitnessview.HubData {
+	data := fitnessview.HubData{
 		StravaStatus:      snap.StravaStatus,
 		Instruments:       buildView(snap),
 		Notice:            notice,
@@ -299,7 +299,7 @@ func buildHubData(snap Snapshot, loc *time.Location, now time.Time, notice strin
 	data.Strength = strengthView(snap.Lifts)
 	data.Cardio = cardioView(snap.Cardio)
 	if snap.HasWeight {
-		data.Weight = &fitnesspages.Weight{
+		data.Weight = &fitnessview.Weight{
 			Kg:       snap.Weight.Kg,
 			DeltaKg:  snap.Weight.DeltaKg,
 			HasDelta: snap.Weight.HasDelta,
@@ -309,12 +309,12 @@ func buildHubData(snap Snapshot, loc *time.Location, now time.Time, notice strin
 	return data
 }
 
-func weekView(snap Snapshot) fitnesspages.WeekView {
-	bars := make([]fitnesspages.WeekBar, len(snap.Week.Days))
+func weekView(snap Snapshot) fitnessview.WeekView {
+	bars := make([]fitnessview.WeekBar, len(snap.Week.Days))
 	for i, d := range snap.Week.Days {
-		bars[i] = fitnesspages.WeekBar{Label: d.Label, Minutes: d.Minutes, IsToday: d.IsToday}
+		bars[i] = fitnessview.WeekBar{Label: d.Label, Minutes: d.Minutes, IsToday: d.IsToday}
 	}
-	return fitnesspages.WeekView{
+	return fitnessview.WeekView{
 		Bars:       bars,
 		Sessions:   snap.Week.Sessions,
 		Minutes:    snap.Week.Minutes,
@@ -323,10 +323,10 @@ func weekView(snap Snapshot) fitnesspages.WeekView {
 	}
 }
 
-func recentRows(sessions []RecentSession) []fitnesspages.RecentRow {
-	out := make([]fitnesspages.RecentRow, len(sessions))
+func recentRows(sessions []RecentSession) []fitnessview.RecentRow {
+	out := make([]fitnessview.RecentRow, len(sessions))
 	for i, s := range sessions {
-		out[i] = fitnesspages.RecentRow{
+		out[i] = fitnessview.RecentRow{
 			Name:       s.Name,
 			Category:   s.Category,
 			Code:       s.ActivityCode,
@@ -342,7 +342,7 @@ func recentRows(sessions []RecentSession) []fitnesspages.RecentRow {
 
 // trendView builds a device metric card, or nil when the series has no
 // reading at all, so the page leaves the card out.
-func trendView(id, colorVar string, series []DailyValue) *fitnesspages.Trend {
+func trendView(id, colorVar string, series []DailyValue) *fitnessview.Trend {
 	// Today is usually still counting and often empty; a line that dives to
 	// zero at its right edge reads as a collapse rather than "not synced yet".
 	for len(series) > 0 && series[len(series)-1].Value <= 0 {
@@ -351,17 +351,17 @@ func trendView(id, colorVar string, series []DailyValue) *fitnesspages.Trend {
 	var hasData bool
 	labels := make([]string, len(series))
 	values := make([]float64, len(series))
-	days := make([]fitnesspages.TrendDay, len(series))
+	days := make([]fitnessview.TrendDay, len(series))
 	for i, d := range series {
 		labels[i] = d.Day.Format("2 Jan")
 		values[i] = d.Value
-		days[i] = fitnesspages.TrendDay{Day: d.Day, Value: d.Value}
+		days[i] = fitnessview.TrendDay{Day: d.Day, Value: d.Value}
 		hasData = hasData || d.Value > 0
 	}
 	if !hasData {
 		return nil
 	}
-	return &fitnesspages.Trend{
+	return &fitnessview.Trend{
 		Chart: viz.AreaLine(id, labels, values, colorVar),
 		Days:  days,
 	}
@@ -411,11 +411,11 @@ func trailingDays(loc *time.Location, count int) []time.Time {
 
 // strengthView is the strength card: the month's lifting in a few lines.
 // Nil when nothing was lifted, so the card is left out rather than empty.
-func strengthView(st *lifts.Stats) *fitnesspages.StrengthView {
+func strengthView(st *lifts.Stats) *fitnessview.StrengthView {
 	if st == nil || len(st.Sets) == 0 {
 		return nil
 	}
-	view := &fitnesspages.StrengthView{
+	view := &fitnessview.StrengthView{
 		Workouts: lift.Workouts(st.Sets),
 		Sets:     len(st.Sets),
 		VolumeKg: st.VolumeKg(),
@@ -424,7 +424,7 @@ func strengthView(st *lifts.Stats) *fitnesspages.StrengthView {
 		if i == 4 {
 			break
 		}
-		row := fitnesspages.StrengthRow{Name: e.Name, BestKg: e.BestWeightKg, E1RMKg: e.BestE1RM}
+		row := fitnessview.StrengthRow{Name: e.Name, BestKg: e.BestWeightKg, E1RMKg: e.BestE1RM}
 		if n := len(e.Trend); n > 1 {
 			row.ChangeKg = util.RoundHalfUpToScale(e.Trend[n-1].Value-e.Trend[0].Value, 1)
 		}
@@ -432,7 +432,7 @@ func strengthView(st *lifts.Stats) *fitnesspages.StrengthView {
 	}
 	if len(st.Records) > 0 {
 		r := st.Records[0]
-		view.Record = &fitnesspages.StrengthRecord{
+		view.Record = &fitnessview.StrengthRecord{
 			Exercise: r.Set.ExerciseName, WeightKg: r.Set.WeightKg, Reps: r.Set.Reps, E1RMKg: r.E1RM, On: r.Set.LogDate,
 		}
 	}
@@ -440,11 +440,11 @@ func strengthView(st *lifts.Stats) *fitnesspages.StrengthView {
 }
 
 // cardioView is the cardio card. Nil with no sessions and no heart data.
-func cardioView(st *stats.CardioStats) *fitnesspages.CardioView {
+func cardioView(st *stats.CardioStats) *fitnessview.CardioView {
 	if st == nil || (st.Sessions == 0 && len(st.RestingHR) == 0) {
 		return nil
 	}
-	view := &fitnesspages.CardioView{
+	view := &fitnessview.CardioView{
 		Sessions: st.Sessions, Minutes: st.Seconds / 60, DistanceKm: st.DistanceKm,
 		Runs: st.Runs.Count, BestPaceSeconds: st.Runs.BestPace, Best5KSeconds: st.Runs.Best5K, LongestKm: st.Runs.LongestKm,
 	}

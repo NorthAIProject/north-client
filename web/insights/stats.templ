@@ -9,64 +9,6 @@ import (
 	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
 )
 
-// Row is a label and a value, for the small tables on the stats pages.
-type Row struct {
-	Label string
-	Value string
-	Note  string
-}
-
-// Bar is one horizontal bar: a label, a value, and its width in percent.
-type Bar struct {
-	Label string
-	Value string
-	Pct   int
-}
-
-type SleepView struct {
-	Range   RangeView
-	HasData bool
-	Tiles   []Row // headline numbers
-	Nights  chart.Props
-	// Stages is each stage's share of time asleep.
-	Stages   []Bar
-	Schedule []Row // bedtime, wake, consistency, weekday vs weekend
-	Extremes []Row // best and worst night
-}
-
-type CardioView struct {
-	Range   RangeView
-	HasData bool
-	Tiles       []Row
-	Weekly      chart.Props
-	WeeklyTitle string
-	Kinds       []Bar
-	Runs    []Row
-	HasRuns bool
-	Recent  []Row
-	Heart   []Row
-}
-
-type EatingView struct {
-	HasData bool
-	Tiles   []Row
-	Slots   []Bar
-	Foods   []Row
-	Notes   []Row
-}
-
-type PatternView struct {
-	Title  string
-	Detail string
-	A, B   Bar
-}
-
-type PatternsView struct {
-	Range    RangeView
-	Days     int
-	Findings []PatternView
-}
-
 templ Sleep(user users.User, view SleepView) {
 	@page(sectionTitle(ctx, "sleep"), "sleep", "/app/insights/sleep/body", user, view.Range) {
 		@SleepPanels(view)
