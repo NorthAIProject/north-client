@@ -1,10 +1,9 @@
 # Echo API migration
 
-The JSON API moves from chi to [Echo v5](https://echo.labstack.com/). The
-browser app (Templ + HTMX) stays on chi until the SvelteKit front end in
-`north-web-app` replaces it; then it is deleted, and this repository serves
-only the API. See `docs/web-frontend-separation-effort.md` for that second
-half.
+The JSON API moved from chi to [Echo v5](https://echo.labstack.com/). The
+browser app (Templ + HTMX, on chi) has since been replaced by the SvelteKit
+front end in `north-web-app` and deleted, so this repository serves only the
+API and chi is gone.
 
 ## Shape of the process
 
@@ -19,7 +18,8 @@ echox.Serve(ctx, srv)                 graceful shutdown on SIGTERM (echo.StartCo
     │   ├── bearer        BodyLimit(1 MiB) + auth.Bearer
     │   └── uploads       BodyLimit(media) + auth.Bearer
     ├── /mcp, /oauth (+ CORS), /ingest/health, /webhooks/telegram
-    └── RouteNotFound("/*") → chi browser app   until north-web-app ships
+    ├── /healthz, /internal/metrics (METRICS_SECRET)
+    └── anything else                           Echo's JSON 404
 ```
 
 ## Conventions for a feature API
@@ -64,8 +64,6 @@ Rules:
   started, errors are written as events, not returned.
 - Tests build the routes with `e := echo.New()` (or `echox.New`) and
   `api.Register(e.Group("/api/v1"))`, and serve with `e.ServeHTTP`.
-- The browser handlers in the same package (`handler.go`) stay on chi; only
-  `api*.go` and their tests move.
 - `goals` is the reference conversion: `internal/goals/api.go`.
 
 ## Echo's middleware, not ours
@@ -136,5 +134,5 @@ exists.
    Echo groups with their own body limits.
 4. Repository interfaces in every service; one composition root shared by
    `cmd/api` and `cmd/worker`.
-5. After `north-web-app` is live on Cloudflare: delete the browser app
-   (`web/`, Templ, HTMX, CSRF, chi) and rename the binary to `cmd/api`.
+5. Done: the browser app (`web/`, Templ, HTMX, CSRF, chi) is deleted and
+   `cmd/web` is `cmd/api`. The image still names the binary `/app/main`.
