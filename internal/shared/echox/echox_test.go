@@ -1,6 +1,7 @@
 package echox
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -239,5 +240,45 @@ func TestGzipCompressesLargeRepliesButNeverAStream(t *testing.T) {
 	}
 	if gzipped("/api/list", http.Header{"Accept": {"text/event-stream"}}) {
 		t.Error("a request for an event stream was compressed")
+	}
+}
+
+// RequestLogger answers an error and then returns it, so Echo hands the same
+// error to ErrorHandler twice. The second time must be silent: an ordinary
+// 401 is not an error after the reply started.
+func TestAHandledErrorIsAnsweredAndLoggedOnce(t *testing.T) {
+	t.Parallel()
+	var logs bytes.Buffer
+	e := New(Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))})
+	e.GET("/me", func(*echo.Context) error {
+		return httpx.Fail(apperr.ErrUnauthenticated, "A bearer token is required.")
+	})
+
+	rec, body := serve(t, e, http.MethodGet, "/me", nil)
+	if rec.Code != http.StatusUnauthorized || body.Error.Message != "A bearer token is required." {
+		t.Fatalf("status = %d, body = %+v", rec.Code, body)
+	}
+	if strings.Contains(logs.String(), "after the reply started") {
+		t.Fatalf("a 401 was logged as an error after the reply started:\n%s", logs.String())
+	}
+	if n := strings.Count(logs.String(), `"msg":"request"`); n != 1 {
+		t.Fatalf("%d request lines, want 1:\n%s", n, logs.String())
+	}
+}
+
+// A stream that fails after its first bytes still gets its one warning.
+func TestAnErrorAfterTheReplyStartedIsLoggedOnce(t *testing.T) {
+	t.Parallel()
+	var logs bytes.Buffer
+	e := New(Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))})
+	e.GET("/stream", func(c *echo.Context) error {
+		c.Response().WriteHeader(http.StatusOK)
+		_, _ = c.Response().Write([]byte("data: hi\n\n"))
+		return errors.New("model went away")
+	})
+
+	serve(t, e, http.MethodGet, "/stream", nil)
+	if n := strings.Count(logs.String(), "after the reply started"); n != 1 {
+		t.Fatalf("%d warnings, want 1:\n%s", n, logs.String())
 	}
 }
