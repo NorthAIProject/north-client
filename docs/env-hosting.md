@@ -497,6 +497,7 @@ env. See `docs/gateways.md` and `skills/north-connect/SKILL.md`.
 | `POSTHOG_API_KEY` | empty | **Required in production and in development.** Development fails the boot without it. Production starts with a no-op client, which is how a live site ships a silent empty dashboard — set the key |
 | `POSTHOG_HOST` | `https://us.i.posthog.com` | Leave unless the project is on EU cloud |
 | `METRICS_LISTEN_ADDR` | `127.0.0.1:9090` | Prometheus scrape. Empty turns the listener **and** the counters off. Do not publish it on the Ingress; `/healthz` is the public probe |
+| `PPROF_LISTEN_ADDR` | `127.0.0.1:6060` | Go runtime profiles. Leave on loopback and use `kubectl -n horus port-forward deploy/khepri-web 6060`, then `go tool pprof -http=:8081 'http://localhost:6060/debug/pprof/profile?seconds=30'` (View → Flame Graph). Empty turns it off. Never publish it |
 
 ---
 

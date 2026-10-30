@@ -77,6 +77,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
+	"github.com/NorthAIProject/north-client/internal/shared/profiling"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/soreness"
 	"github.com/NorthAIProject/north-client/internal/spend"
@@ -260,6 +261,10 @@ func run() error {
 			}
 		}()
 		defer func() { _ = metricsSrv.Close() }()
+	}
+
+	if cfg.PprofListenAddr != "" {
+		defer profiling.Start(cfg.PprofListenAddr, log)()
 	}
 
 	worker := jobs.NewWorker(queue, log).WithMetrics(metricsReg)
