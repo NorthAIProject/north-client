@@ -310,7 +310,7 @@ client.
   last path segment is the source. Body limit (8 MiB) and per-source
   throttling already exist there. One change: today it authenticates bearer
   tokens against `agent_connections` only (`Auth: connectionSvc` in
-  `cmd/web/main.go`). The app holds a session token, so the handler's
+  `cmd/api/main.go`). The app holds a session token, so the handler's
   `Authenticator` becomes a composite that tries the connection store first
   and the session store second. Two lines, no new token kind, and a bridge
   app configured with a connection token keeps working.
@@ -328,7 +328,7 @@ The HTML routes are thin (parse, validate, call service, render). The JSON
 routes are the same three lines with a different last one. They live **next to
 the HTML handler in the same slice** (`internal/goals/api.go` beside
 `internal/goals/handler.go`), share the service, and are mounted under
-`/api/v1` in `cmd/web/main.go`. No separate API package, because the slice is
+`/api/v1` in `cmd/api/main.go`. No separate API package, because the slice is
 the unit of ownership and a handler that lives away from its service drifts.
 
 Shared plumbing, once: `internal/shared/httpx` with `WriteJSON`, `ReadJSON`

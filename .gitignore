@@ -3,6 +3,7 @@
 # Compiled binaries (local and CI outputs)
 bin/
 /north-web
+/north-api
 /north-worker
 /north-mcp
 /main
@@ -13,9 +14,7 @@ bin/
 # `go build ./cmd/worker/` writes its output here, named after the package
 # directory rather than the names above. A 50 MB binary reached main this way
 # once; `git add -A` does not know the difference.
-#
-# Not `/web`: that is the templates directory. `go build ./cmd/web/` cannot
-# write there anyway, because the directory already exists.
+/api
 /worker
 /mcp-server
 

@@ -12,14 +12,14 @@ COPY . .
 
 # Build both static Linux binaries for the final image.
 #
-# The worker is a separate process, not a mode of the web binary: it owns the
+# The worker is a separate process, not a mode of the API binary: it owns the
 # job queue and the periodic sweeps (memory extraction, document indexing,
 # embeddings, nudges, reports). One image carries both so a deploy can never
-# run a worker built from a different commit than the web app.
+# run a worker built from a different commit than the API.
 #
 # Goose SQL is embedded via migrations.FS, so the runtime image needs no
 # separate migrations directory — `main migrate` applies the schema.
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/web
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -o worker ./cmd/worker
 
 # Runtime stage:

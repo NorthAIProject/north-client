@@ -66,7 +66,7 @@ jobs:
 
       - name: Build binaries
         run: |
-          go build -o /tmp/north-web ./cmd/web
+          go build -o /tmp/north-api ./cmd/api
           go build -o /tmp/north-worker ./cmd/worker
           go build -o /tmp/north-mcp ./cmd/mcp-server
 

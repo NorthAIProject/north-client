@@ -195,7 +195,7 @@ licence obliges North to state live in `web/assets/exercises/NOTICE`.
 Two things about how it is stored, both easy to trip over:
 
 - **The files are `.svg.gz`, and templates ask for `.svg`.** `mountAssets` in
-  `cmd/web/main.go` bridges the two and sets `Content-Encoding: gzip`. Storing
+  `cmd/api/main.go` bridges the two and sets `Content-Encoding: gzip`. Storing
   them compressed is 14 MB off the binary and every image layer, and nothing
   here mounts compression middleware, so it is also what keeps them from going
   over the wire uncompressed.
@@ -749,7 +749,7 @@ curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/deleteWebhook"
 ### 5. Check it before you trust it
 
 ```bash
-go run ./cmd/web telegram-check
+go run ./cmd/api telegram-check
 ```
 
 Read-only, so it is safe to run against production. It confirms the token

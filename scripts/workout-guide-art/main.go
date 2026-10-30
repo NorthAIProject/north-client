@@ -457,7 +457,7 @@ func muscles(sources []string, report *resolveReport) []string {
 //
 // The set is 24.7 MB of SVG raw and 10.0 MB gzipped, and it is embedded into
 // the binary — so this is 15 MB off every build and every image layer. It also
-// fixes the wire: cmd/web/main.go mounts no compression middleware, so raw
+// fixes the wire: cmd/api/main.go mounts no compression middleware, so raw
 // frames would go out uncompressed at ~28 KB each. mountAssets serves these
 // bytes verbatim under Content-Encoding: gzip.
 func writeFrames(source, assets string, entries []manifestEntry) (int, error) {

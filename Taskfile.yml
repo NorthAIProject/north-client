@@ -13,7 +13,7 @@ tasks:
     desc: Run the API server
     deps: [port:free]
     cmds:
-      - go run ./cmd/web
+      - go run ./cmd/api
 
   # Frees the dev port if a previous run left something behind. Runs before the
   # watcher rather than being something to remember: the whole problem with a

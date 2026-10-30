@@ -50,7 +50,7 @@ func (s *stubChatMedia) LoadChatAttachment(context.Context, uuid.UUID, uuid.UUID
 	return s.stored, nil
 }
 
-// attachmentRouter mounts the upload route as cmd/web does, with the bearer
+// attachmentRouter mounts the upload route as cmd/api does, with the bearer
 // check replaced by a fixed signed-in user.
 func attachmentRouter(h harness, store *stubChatMedia, as users.User) http.Handler {
 	e := echox.New(echox.Config{})

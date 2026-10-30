@@ -87,7 +87,7 @@ undo them:
 | --- | --- |
 | `mcpserver.Authenticator` is an interface | An OAuth token verifier is a third implementation next to `StaticAuthenticator` and `connections.Service`, not a change to `authenticate` |
 | Every auth failure is 401 with `WWW-Authenticate: Bearer realm="north-mcp"` | Phase 3 appends `resource_metadata=` to that header. A 403 would leave a client with nowhere to go |
-| `/mcp` is public, mounted outside the CSRF and session group | The `.well-known` endpoints need the same treatment, and `cmd/web/main.go` already has the group to put them in |
+| `/mcp` is public, mounted outside the CSRF and session group | The `.well-known` endpoints need the same treatment, and `cmd/api/main.go` already has the group to put them in |
 | No token→user cache | Short-lived access tokens make a stale cache a correctness bug rather than a performance one |
 | Rejections are byte-identical for unknown, revoked, and malformed | There is a test pinning this. A "helpful" message added during OAuth work would reintroduce enumeration |
 | Throttling is per account, not per token | One person's runaway agent must not throttle everyone. OAuth multiplies tokens per user, so this only matters more |

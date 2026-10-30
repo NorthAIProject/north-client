@@ -347,7 +347,7 @@ func (e EncryptionConfig) Sealer() (*secret.Sealer, error) {
 //
 // Optional, like Strava and Google: an empty APIKey in production just means
 // no events. Unlike them, an empty APIKey in development fails the boot —
-// see cmd/web/main.go — because a missing analytics key is a silent gap that
+// see cmd/api/main.go — because a missing analytics key is a silent gap that
 // only shows up as an empty dashboard, and every other optional integration
 // here at least reports its own absence somewhere a person will see it.
 type PostHogConfig struct {
@@ -1134,7 +1134,7 @@ func (c AIConfig) ChainSet() ai.ChainSet {
 
 // ProviderOptions renders the AI configuration as the registry's build input.
 //
-// It lives here rather than in each main so that cmd/web and cmd/worker cannot
+// It lives here rather than in each main so that cmd/api and cmd/worker cannot
 // drift apart — they previously repeated the same literal, and a provider added
 // to one but not the other would have failed only in whichever process happened
 // to need it.

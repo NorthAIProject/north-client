@@ -241,7 +241,7 @@ type ContextSource interface {
 ```
 
 A slice contributes by writing a `context_source.go` and being registered in the
-`coach.NewContextBuilder(...)` varargs in `cmd/web/main.go`. Rules worth knowing
+`coach.NewContextBuilder(...)` varargs in `cmd/api/main.go`. Rules worth knowing
 before writing one:
 
 - **Sources hand over prose, never structures.** Each domain type carries a
@@ -271,7 +271,7 @@ The checklist, in order:
 3. Build the slice: leaf domain package (`internal/<slice>/<thing>/<thing>.go`) with
    a `Summary()` method, then `repository.go`, `service.go`, `handler.go`. Handlers
    call their own service, never their own repository.
-4. Write a `context_source.go` and register it in `cmd/web/main.go`. Prefer an
+4. Write a `context_source.go` and register it in `cmd/api/main.go`. Prefer an
    existing `Context` heading over inventing one.
 5. Wire the UI. A new top-level page needs a `layout.BuildNav` entry; anything
    daily probably belongs on `/app/care` instead.

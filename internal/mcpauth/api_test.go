@@ -19,7 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
-// apiRouter mounts the consent API as cmd/web does: the public half bare, the
+// apiRouter mounts the consent API as cmd/api does: the public half bare, the
 // decision behind Bearer.
 func (h harness) apiRouter(t *testing.T) (http.Handler, *auth.SessionStore) {
 	t.Helper()

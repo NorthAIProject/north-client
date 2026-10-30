@@ -25,6 +25,7 @@ skills/
 tmp/
 bin/
 main
+api
 worker
 mcp-server
 templ

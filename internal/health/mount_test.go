@@ -13,7 +13,7 @@ import (
 )
 
 // The handler reads the provider out of the request path, so it only works
-// mounted behind something that strips the prefix first. cmd/web does that with
+// mounted behind something that strips the prefix first. cmd/api does that with
 // an Echo group plus http.StripPrefix; this pins that combination, because getting
 // it wrong files every reading under a source named "ingest" — or under nothing
 // at all — and the handler tests alone would not notice.
