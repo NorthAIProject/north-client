@@ -19,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
+	"github.com/NorthAIProject/north-client/internal/shared/profiling"
 	"github.com/NorthAIProject/north-client/internal/social/phone"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/joho/godotenv"
@@ -118,6 +119,10 @@ func run() error {
 			}
 		}()
 		defer func() { _ = metricsSrv.Close() }()
+	}
+
+	if cfg.PprofListenAddr != "" {
+		defer profiling.Start(cfg.PprofListenAddr, log)()
 	}
 
 	handler, runBackground := routes(cfg, pool, registry, storage, embedder, posthogClient, metricsReg)
