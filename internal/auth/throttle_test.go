@@ -12,7 +12,7 @@ import (
 func attempt(t *auth.Throttle, remote, email string) bool {
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
 	r.RemoteAddr = remote
-	return t.AllowAccount(r, email)
+	return t.Allow(r, email)
 }
 
 // The reason the bucket is keyed on the account: web sign-ins all arrive from
@@ -47,8 +47,7 @@ func TestTheEmailBucketIgnoresCase(t *testing.T) {
 	}
 }
 
-// Every web sign-in shares one address, so one account being guessed must not
-// lock anybody else out.
+// One account being guessed must not lock anybody else at the same address out.
 func TestOneAccountBeingGuessedLeavesEveryoneElseAlone(t *testing.T) {
 	t.Parallel()
 
@@ -125,5 +124,25 @@ func TestTheCredentialRoutesRefuseAnExhaustedAccount(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil || envelope.Error.Message == "" {
 			t.Errorf("%s: body %s is not the API's JSON error envelope", tc.path, rec.Body)
 		}
+	}
+}
+
+// One machine spraying a password across many accounts never meets any one
+// account's bucket; the address bucket is what bounds it.
+func TestSprayingManyAccountsFromOneAddressIsRefused(t *testing.T) {
+	t.Parallel()
+
+	th := auth.NewThrottle(auth.ThrottleConfig{PerAddressPerMinute: 3}, nil)
+
+	for i := range 3 {
+		if !attempt(th, "203.0.113.9:5000", "user"+string(rune('a'+i))+"@north.test") {
+			t.Fatalf("attempt %d refused while the address budget still covered it", i+1)
+		}
+	}
+	if attempt(th, "203.0.113.9:5000", "userz@north.test") {
+		t.Fatal("a 4th account from the same address was let through")
+	}
+	if !attempt(th, "198.51.100.7:5000", "userz@north.test") {
+		t.Fatal("another address was refused because the first spent its budget")
 	}
 }
