@@ -1,11 +1,9 @@
 .env
-web/assets/css/output.css
-web/assets/css/sources.generated.css
-*_templ.go
 
 # Compiled binaries (local and CI outputs)
 bin/
 /north-web
+/north-api
 /north-worker
 /north-mcp
 /main
@@ -16,25 +14,20 @@ bin/
 # `go build ./cmd/worker/` writes its output here, named after the package
 # directory rather than the names above. A 50 MB binary reached main this way
 # once; `git add -A` does not know the difference.
-#
-# Not `/web`: that is the templates directory. `go build ./cmd/web/` cannot
-# write there anyway, because the directory already exists.
+/api
 /worker
 /mcp-server
 
-# `go build ./cmd/...`-adjacent strays. `templ` is the templ CLI itself, which
-# `go tool templ` never writes here but a manual `go build` of the tool does —
-# 20 MB of Mach-O reached main that way.
+# `go build ./cmd/...`-adjacent strays. `templ` is the templ CLI the browser
+# app used to generate with; a manual `go build` of it wrote 20 MB of Mach-O
+# here once.
 /templ
 
 # tools/model is a build-time Node tool, run by hand and never deployed
 node_modules/
 package-lock.json
 
-# Go module vendoring, at the repository root only. Unanchored, this pattern
-# also matched web/assets/js/vendor — the committed third-party JavaScript —
-# so every file in there had to be force-added, and one that was not would go
-# missing with no error until a page tried to load it.
+# Go module vendoring, at the repository root only.
 /vendor/
-# Dev server binary built by the templ watcher.
+# Local scratch output.
 tmp/

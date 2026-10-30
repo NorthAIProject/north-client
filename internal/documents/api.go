@@ -19,6 +19,10 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 )
 
+// maxMultipartMemory bounds what an upload buffers in RAM before spilling to a
+// temporary file. The service enforces the real size limit.
+const maxMultipartMemory = 4 << 20 // 4 MiB
+
 // API is the knowledge library for native clients: the documents and notes
 // the coach can search, the search itself, and uploads from the phone. The
 // same service and the same quotas as the web /knowledge page.

@@ -27,6 +27,16 @@ type API struct {
 	recommend   *GoalRecommendationService
 }
 
+// HandlerOptions are the nutrition services the API reads through.
+type HandlerOptions struct {
+	Ingredients *IngredientService
+	Diets       *DietPreferenceService
+	Plans       *MealPlanService
+	FoodLog     *FoodLogService
+	Progress    *TrackMealProgressService
+	Recommend   *GoalRecommendationService
+}
+
 // NewAPI builds the routes from the web handler's options; register them
 // behind auth.Bearer.
 func NewAPI(opts HandlerOptions) *API {
@@ -669,11 +679,10 @@ func (a *API) logMealOptions(c *echo.Context) error {
 	if err != nil {
 		return httpx.Fail(localize(ctx, err), i18n.T(ctx, "nutrition.api.plans.load"))
 	}
-	out := LoggableMealList{Options: make([]LoggableMeal, 0, len(opts))}
-	for _, o := range opts {
-		out.Options = append(out.Options, LoggableMeal{ID: o.ID, Label: o.Label})
+	if opts == nil {
+		opts = []LoggableMeal{}
 	}
-	return c.JSON(http.StatusOK, out)
+	return c.JSON(http.StatusOK, LoggableMealList{Options: opts})
 }
 
 func (a *API) logIngredient(c *echo.Context) error {

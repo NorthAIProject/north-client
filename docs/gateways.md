@@ -22,7 +22,7 @@ category rather than a list:
    credential, and CSRF would reject every call with an HTML body the caller
    cannot read.
 2. **They mount outside the session group.** Each gets its own chi group in
-   `cmd/web/main.go`, with its own body cap sized to what it actually receives.
+   `cmd/api/main.go`, with its own body cap sized to what it actually receives.
 3. **They own no business logic.** A gateway translates and authenticates. The
    moment one starts deciding something, that decision belongs in a service.
 
@@ -140,7 +140,7 @@ real phone, against a bot that belongs to this project. Then update this table.
 The preflight. Read-only by default, safe against production:
 
 ```
-go run ./cmd/web telegram-check
+go run ./cmd/api telegram-check
 ```
 
 It answers three questions and then says what it has *not* proven, which is the

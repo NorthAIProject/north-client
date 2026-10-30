@@ -7,21 +7,21 @@ import (
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 // liftingExercises caps the exercise table: the long tail is one-off
 // accessories, and the page is about the main lifts.
 const liftingExercises = 8
 
-func buildLiftingView(ctx context.Context, st lifts.Stats) insightpages.LiftingView {
+func buildLiftingView(ctx context.Context, st lifts.Stats) insightview.LiftingView {
 	if len(st.Sets) == 0 {
-		return insightpages.LiftingView{}
+		return insightview.LiftingView{}
 	}
-	view := insightpages.LiftingView{
+	view := insightview.LiftingView{
 		HasSets:  true,
 		Volume:   formatKg(ctx, st.VolumeKg()),
 		Delta:    deltaView(st.VolumeKg(), st.PriorVolumeKg),
@@ -42,7 +42,7 @@ func buildLiftingView(ctx context.Context, st lifts.Stats) insightpages.LiftingV
 		if i == liftingExercises {
 			break
 		}
-		row := insightpages.LiftExerciseRow{
+		row := insightview.LiftExerciseRow{
 			Name: e.Name, Sets: e.Sets, Best: formatKg(ctx, e.BestWeightKg), E1RM: formatKg(ctx, e.BestE1RM), Volume: formatKg(ctx, e.VolumeKg),
 		}
 		if n := len(e.Trend); n > 1 {
@@ -52,7 +52,7 @@ func buildLiftingView(ctx context.Context, st lifts.Stats) insightpages.LiftingV
 	}
 
 	for _, r := range st.Records {
-		view.Records = append(view.Records, insightpages.LiftRecordRow{
+		view.Records = append(view.Records, insightview.LiftRecordRow{
 			Exercise: r.Set.ExerciseName,
 			Lift:     fmt.Sprintf("%s × %d", formatKg(ctx, r.Set.WeightKg), r.Set.Reps),
 			E1RM:     formatKg(ctx, r.E1RM),
@@ -66,7 +66,7 @@ func buildLiftingView(ctx context.Context, st lifts.Stats) insightpages.LiftingV
 		most = max(most, m.Sets)
 	}
 	for _, m := range st.Muscles {
-		view.Muscles = append(view.Muscles, insightpages.MuscleRow{
+		view.Muscles = append(view.Muscles, insightview.MuscleRow{
 			Name: muscleLabel(ctx, m.Muscle), Sets: m.Sets, Pct: m.Sets * 100 / most,
 		})
 	}

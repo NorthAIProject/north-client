@@ -5,7 +5,7 @@ package plan
 // Exercise.Primary/Secondary/Stabilizers.
 //
 // Adding a key touches, in this order:
-//  1. MUSCLE_ALIASES in web/assets/js/shared/muscle-viewer/muscles.js — the
+//  1. MUSCLE_ALIASES in tools/model/muscles.js — the
 //     atlas mesh names that become the key's patch of skin when
 //     scripts/bodymap rebuilds body-map.glb.
 //  2. MUSCLE_INFO in the same file — the display name and description.

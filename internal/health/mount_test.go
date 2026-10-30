@@ -7,24 +7,27 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/health"
 )
 
 // The handler reads the provider out of the request path, so it only works
-// mounted behind something that strips the prefix first. cmd/web does that with
-// chi.Mount plus http.StripPrefix; this pins that combination, because getting
+// mounted behind something that strips the prefix first. cmd/api does that with
+// an Echo group plus http.StripPrefix; this pins that combination, because getting
 // it wrong files every reading under a source named "ingest" — or under nothing
 // at all — and the handler tests alone would not notice.
 func TestMountedBehindAPrefixTheSourceStillResolves(t *testing.T) {
 	svc, user := newService(t)
 
-	r := chi.NewRouter()
-	r.Mount("/ingest/health", http.StripPrefix("/ingest/health", health.NewHandler(health.HandlerConfig{
+	ingest := echo.WrapHandler(http.StripPrefix("/ingest/health", health.NewHandler(health.HandlerConfig{
 		Service: svc,
 		Auth:    stubAuth{token: "nk_testtoken", user: user},
 	})))
+	r := echo.New()
+	g := r.Group("/ingest/health")
+	g.Any("", ingest)
+	g.Any("/*", ingest)
 
 	req := httptest.NewRequest(http.MethodPost, "/ingest/health/apple_health", strings.NewReader(
 		`{"readings":[{"metric":"steps","value":8000,"unit":"count","started_at":"2026-08-15T02:00:00Z"}]}`))

@@ -124,9 +124,7 @@ func SetCookie(w http.ResponseWriter, r *http.Request, a Appearance) {
 
 type appearanceKey struct{}
 
-// WithAppearance carries the appearance to render for this request. Set by
-// middleware.Appearance for everybody, then again by auth.LoadUser once the
-// account is known.
+// WithAppearance carries the appearance to render for this request.
 func WithAppearance(ctx context.Context, a Appearance) context.Context {
 	return context.WithValue(ctx, appearanceKey{}, a)
 }

@@ -48,37 +48,11 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Install Tailwind CSS
-        run: |
-          # -f: fail on HTTP errors (without it a 404 HTML page becomes "binary").
-          # Install to $HOME/bin so we never need root on the runner.
-          mkdir -p "$HOME/bin"
-          curl -fsSL \
-            "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-linux-x64" \
-            -o "$HOME/bin/tailwindcss"
-          chmod +x "$HOME/bin/tailwindcss"
-          echo "$HOME/bin" >> "$GITHUB_PATH"
-          "$HOME/bin/tailwindcss" --help >/dev/null
-          echo "tailwindcss ready: $("$HOME/bin/tailwindcss" --help 2>&1 | head -1 || true)"
-
-      - name: Generate templates
-        run: go tool templ generate
-
-      # Generated code is gitignored (*_templ.go). Building CSS before Go
-      # compile is required: web/assets embeds the css/ directory, so a missing
-      # output.css fails the build rather than shipping an unstyled app.
-      - name: Build frontend assets
-        run: bash scripts/build-css.sh
-
-      # Same format gate as .githooks/pre-commit: gofumpt -w ., then restore
-      # the templUI Lucide dumps that fight gofumpt's alignment rules.
+      # Same format gate as .githooks/pre-commit: gofumpt -w .
       # Lint is a separate job below; the pre-commit hook runs both.
       - name: Check formatting (gofumpt)
         run: |
           go tool gofumpt -w .
-          git checkout -- \
-            web/shared/ui/icon/icon_data.go \
-            web/shared/ui/icon/icon_defs.go
           if ! git diff --exit-code -- '*.go'; then
             echo "Go files need gofumpt -w . (run: go tool gofumpt -w .)"
             exit 1
@@ -92,7 +66,7 @@ jobs:
 
       - name: Build binaries
         run: |
-          go build -o /tmp/north-web ./cmd/web
+          go build -o /tmp/north-api ./cmd/api
           go build -o /tmp/north-worker ./cmd/worker
           go build -o /tmp/north-mcp ./cmd/mcp-server
 
@@ -124,22 +98,6 @@ jobs:
           # the log shows restoring and hitting independently of this.
           cache-dependency-path: go.sum
 
-      - name: Install Tailwind CSS
-        run: |
-          mkdir -p "$HOME/bin"
-          curl -fsSL \
-            "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-linux-x64" \
-            -o "$HOME/bin/tailwindcss"
-          chmod +x "$HOME/bin/tailwindcss"
-          echo "$HOME/bin" >> "$GITHUB_PATH"
-          "$HOME/bin/tailwindcss" --help >/dev/null
-
-      - name: Generate templates
-        run: GOFLAGS=-mod=mod go tool templ generate
-
-      - name: Build frontend assets
-        run: bash scripts/build-css.sh
-
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -152,8 +110,8 @@ jobs:
           # directive means raising this too.
           #
           # Not v2.13.0: it bundles staticcheck v0.8.0-rc.1, whose new nilness
-          # dataflow analysis never converges on templ-generated page functions
-          # once they carry a few hundred i18n.T calls. The job printed
+          # dataflow analysis never converged on the templ-generated page
+          # functions this repository used to carry. The job printed
           # "0 issues." only when the 45-minute timeout cut it off
           # (dominikh/go-tools#1735, golangci/golangci-lint#6732). v2.13.2
           # bundles the fixed v0.8.1, and a cold run of this module is seconds.

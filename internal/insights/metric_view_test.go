@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 )
 
 func metricData(t *testing.T, key string, current, prior []float64) MetricData {
@@ -122,7 +122,7 @@ func TestMetricViewChartsEveryBucket(t *testing.T) {
 	}
 }
 
-func mustMetricView(t *testing.T, data MetricData) insightpages.MetricView {
+func mustMetricView(t *testing.T, data MetricData) insightview.MetricView {
 	t.Helper()
 	view, err := buildMetricView(context.Background(), data)
 	if err != nil {

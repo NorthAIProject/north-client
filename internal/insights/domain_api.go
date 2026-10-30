@@ -9,12 +9,12 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
 	"github.com/NorthAIProject/north-client/internal/users"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 // The domain pages behind the overview, one route each, projected from the
@@ -391,7 +391,7 @@ func (a *API) spend(c *echo.Context) error {
 	return c.JSON(http.StatusOK, projectSpend(view))
 }
 
-func projectTimeline(v insightpages.TimelineView) InsightsTimeline {
+func projectTimeline(v insightview.TimelineView) InsightsTimeline {
 	out := InsightsTimeline{
 		Range: projectRange(v.Range), Entries: []TimelineEntry{}, Filters: []TimelineFilter{}, Overflow: v.Overflow,
 	}
@@ -406,7 +406,7 @@ func projectTimeline(v insightpages.TimelineView) InsightsTimeline {
 	return out
 }
 
-func projectBody(v insightpages.BodyView, adherence int) InsightsBody {
+func projectBody(v insightview.BodyView, adherence int) InsightsBody {
 	out := InsightsBody{
 		Range: projectRange(v.Range), Water: projectChart(v.WaterChart.Data), Sleep: projectChart(v.SleepChart.Data),
 		Adherence: adherence, Habits: []HabitStat{}, TotalWaterML: v.TotalWaterML, Nights: v.Nights,
@@ -421,7 +421,7 @@ func projectBody(v insightpages.BodyView, adherence int) InsightsBody {
 
 // projectMind takes mood and energy as numbers because the web draws them from
 // a raw chart config that leaves gaps as nulls, which no typed series holds.
-func projectMind(v insightpages.MindView, labels []string, mood, energy []int) InsightsMind {
+func projectMind(v insightview.MindView, labels []string, mood, energy []int) InsightsMind {
 	return InsightsMind{
 		Range: projectRange(v.Range), Labels: nonNil(labels), Mood: nonNilInts(mood), Energy: nonNilInts(energy),
 		Journal: projectChart(v.JournalChart.Data), CheckInCount: v.CheckInCount, JournalCount: v.JournalCount,
@@ -429,7 +429,7 @@ func projectMind(v insightpages.MindView, labels []string, mood, energy []int) I
 	}
 }
 
-func projectProgress(v insightpages.ProgressView, statuses []viz.DonutSegment) InsightsProgress {
+func projectProgress(v insightview.ProgressView, statuses []viz.DonutSegment) InsightsProgress {
 	out := InsightsProgress{
 		Range: projectRange(v.Range), Goals: []GoalProgress{}, Notes: projectChart(v.NotesChart.Data),
 		Statuses: projectSegments(statuses), ActiveCount: v.ActiveCount, AvgProgress: v.AvgProgress,
@@ -443,7 +443,7 @@ func projectProgress(v insightpages.ProgressView, statuses []viz.DonutSegment) I
 	return out
 }
 
-func projectTraining(v insightpages.TrainingView, kinds []viz.DonutSegment) InsightsTraining {
+func projectTraining(v insightview.TrainingView, kinds []viz.DonutSegment) InsightsTraining {
 	out := InsightsTraining{
 		Range: projectRange(v.Range), Sessions: []TrainingSession{}, Burn: projectChart(v.BurnChart.Data),
 		Kinds: projectSegments(kinds), Calories: v.Calories,
@@ -457,7 +457,7 @@ func projectTraining(v insightpages.TrainingView, kinds []viz.DonutSegment) Insi
 	return out
 }
 
-func projectLifting(v insightpages.LiftingView) TrainingLifting {
+func projectLifting(v insightview.LiftingView) TrainingLifting {
 	out := TrainingLifting{
 		HasSets: v.HasSets, Volume: v.Volume, Sets: v.Sets, Workouts: v.Workouts,
 		Delta:     Delta{Direction: v.Delta.Direction, Pct: v.Delta.Pct, HasPrior: v.Delta.HasPrior},
@@ -478,7 +478,7 @@ func projectLifting(v insightpages.LiftingView) TrainingLifting {
 	return out
 }
 
-func projectEating(v insightpages.EatingView) NutritionEating {
+func projectEating(v insightview.EatingView) NutritionEating {
 	return NutritionEating{
 		HasData: v.HasData, Tiles: projectRows(v.Tiles), Slots: projectBars(v.Slots),
 		Foods: projectRows(v.Foods), Notes: projectRows(v.Notes),
@@ -509,7 +509,7 @@ func projectRecap(data TrainingData) *lifts.LiftRecapView {
 	return util.Ptr(lifts.ProjectRecap(data.Recap))
 }
 
-func projectNutrition(v insightpages.NutritionView, macros []viz.DonutSegment) InsightsNutrition {
+func projectNutrition(v insightview.NutritionView, macros []viz.DonutSegment) InsightsNutrition {
 	return InsightsNutrition{
 		Range: projectRange(v.Range), AvgCalories: v.AvgCalories, AvgProtein: v.AvgProtein,
 		DaysLogged: v.DaysLogged, Entries: v.Entries, HasGoal: v.HasGoal,
@@ -519,7 +519,7 @@ func projectNutrition(v insightpages.NutritionView, macros []viz.DonutSegment) I
 	}
 }
 
-func projectCoach(v insightpages.CoachView) InsightsCoach {
+func projectCoach(v insightview.CoachView) InsightsCoach {
 	return InsightsCoach{
 		Range: projectRange(v.Range), Turns: v.Turns, YourMessages: v.YourMessages, CoachReplies: v.CoachReplies,
 		HasRatings: v.HasRatings, HelpfulRate: v.HelpfulRate, Rated: v.Rated,
@@ -527,14 +527,14 @@ func projectCoach(v insightpages.CoachView) InsightsCoach {
 	}
 }
 
-func projectSpend(v insightpages.SpendView) InsightsSpend {
+func projectSpend(v insightview.SpendView) InsightsSpend {
 	return InsightsSpend{
 		Range: projectRange(v.Range), TotalCost: v.TotalCost, TotalTokens: v.TotalTokens, Generations: v.Generations,
 		Surfaces: projectSpendLines(v.Surfaces), Models: projectSpendLines(v.Models), HasData: v.HasData,
 	}
 }
 
-func projectSpendLines(rows []insightpages.SpendRow) []SpendLine {
+func projectSpendLines(rows []insightview.SpendRow) []SpendLine {
 	out := []SpendLine{}
 	for _, r := range rows {
 		out = append(out, SpendLine{Label: r.Label, Cost: r.Cost, Generations: r.Generations, Tokens: r.Tokens, Pct: r.Pct})

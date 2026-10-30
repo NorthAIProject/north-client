@@ -5,12 +5,12 @@ import (
 	"math"
 
 	"github.com/NorthAIProject/north-client/internal/insights/highlight"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
-func buildCoachView(ctx context.Context, data CoachData) (insightpages.CoachView, error) {
+func buildCoachView(ctx context.Context, data CoachData) (insightview.CoachView, error) {
 	loc := data.Range.Location()
 	labels := bucketLabels(ctx, data.Range)
 
@@ -41,7 +41,7 @@ func buildCoachView(ctx context.Context, data CoachData) (insightpages.CoachView
 		}
 	}
 
-	view := insightpages.CoachView{
+	view := insightview.CoachView{
 		Range:        rangeView(ctx, data.Range),
 		Turns:        len(yours) + len(theirs),
 		YourMessages: len(yours),

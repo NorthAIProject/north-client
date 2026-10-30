@@ -15,7 +15,6 @@
 .claude
 .cursor
 .cursorrules
-.templui.json
 .posthog-wizard-cache
 skills/
 
@@ -26,6 +25,7 @@ skills/
 tmp/
 bin/
 main
+api
 worker
 mcp-server
 templ
@@ -38,17 +38,9 @@ node_modules/
 package-lock.json
 tools/
 
-# Generated inside the image by scripts/build-css.sh and `templ generate`.
-# Copying a host-built copy in would mask a broken build step.
-web/assets/css/output.css
-web/assets/css/sources.generated.css
-**/*_templ.go
-
 # Docs and infra config. Deployment manifests live in LuminaVaultInfra;
 # charts/ and terraform/ here hold only a .gitkeep.
 docs/
-# Except the medal catalog: web/shared/medal embeds it (docs/medals/medals.go).
-!docs/medals/
 charts/
 terraform/
 *.md

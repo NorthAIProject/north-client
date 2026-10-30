@@ -194,6 +194,6 @@ type EditableTransport interface {
 }
 
 // artworkCredit is the attribution CC BY-SA 4.0 requires on the exercise
-// illustrations. See web/assets/exercises/NOTICE — the licence obligation is
+// illustrations. See internal/exercises/art/NOTICE — the licence obligation is
 // the reason this string is not optional and not shortenable.
 const artworkCredit = "Illustration: Bryl Lim / Everkinetic, CC BY-SA 4.0"

@@ -9,8 +9,8 @@ import (
 )
 
 // The web viewer lights the figure with a studio of five glowing panels
-// (createStudioEnvironment in web/assets/js/shared/muscle-viewer/viewer.js,
-// which is the source of truth; keep this table the same). iOS cannot run
+// (createStudioEnvironment in north-web-app's muscle viewer, which is the
+// source of truth; keep this table the same). iOS cannot run
 // that code, so the same rig is rendered here into an equirectangular image
 // for RealityKit's ImageBasedLightComponent. One light rig, two renderers.
 

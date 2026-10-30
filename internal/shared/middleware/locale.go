@@ -18,8 +18,8 @@ var pathKey = ctxValue[string]{key: "request_path"}
 // Locale puts a language on every request, including the ones with nobody
 // signed in.
 //
-// It must be mounted BEFORE auth.LoadUser, not after. This middleware can only
-// guess — from an explicit cookie, then from Accept-Language — and LoadUser
+// It must be mounted BEFORE auth.Bearer, not after. This middleware can only
+// guess — from an explicit cookie, then from Accept-Language — and Bearer
 // overwrites that guess with the account's own setting the moment it resolves a
 // session. Mounted the other way round, a signed-in user reading Khepri in
 // Spanish would be served Portuguese by their laptop's browser settings.

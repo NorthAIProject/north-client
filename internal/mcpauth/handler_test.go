@@ -19,7 +19,7 @@ func discardLog() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// machineRouter mounts the machine-facing endpoints the way cmd/web does.
+// machineRouter mounts the machine-facing endpoints the way cmd/api does.
 func (h harness) machineRouter(t *testing.T) http.Handler {
 	t.Helper()
 	e := echox.New(echox.Config{Logger: discardLog()})

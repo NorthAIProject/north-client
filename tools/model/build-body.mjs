@@ -44,7 +44,7 @@ import { assertFit, skinTransform, unionBounds } from "./fit.mjs";
 // restating it here is the whole reason muscles.js exists as its own module: a mesh
 // this script drops is a mesh the viewer can never light up, so the two must agree
 // by construction rather than by review.
-import { MUSCLE_ALIASES, resolveKey } from "../../web/assets/js/shared/muscle-viewer/muscles.js";
+import { MUSCLE_ALIASES, resolveKey } from "./muscles.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");

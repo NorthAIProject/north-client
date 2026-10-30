@@ -3,11 +3,11 @@ package insights
 import (
 	"context"
 
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/spend"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
-func buildSpendView(ctx context.Context, data SpendData) (insightpages.SpendView, error) {
+func buildSpendView(ctx context.Context, data SpendData) (insightview.SpendView, error) {
 	var totalCost, totalTokens, generations int64
 	for _, s := range data.Surfaces {
 		totalCost += s.CostMicros
@@ -15,7 +15,7 @@ func buildSpendView(ctx context.Context, data SpendData) (insightpages.SpendView
 		generations += s.Generations
 	}
 
-	view := insightpages.SpendView{
+	view := insightview.SpendView{
 		Range:       rangeView(ctx, data.Range),
 		TotalCost:   euros(totalCost),
 		TotalTokens: totalTokens,
@@ -24,7 +24,7 @@ func buildSpendView(ctx context.Context, data SpendData) (insightpages.SpendView
 	}
 
 	for _, s := range data.Surfaces {
-		view.Surfaces = append(view.Surfaces, insightpages.SpendRow{
+		view.Surfaces = append(view.Surfaces, insightview.SpendRow{
 			Label:       surfaceLabel(ctx, s.Surface),
 			Cost:        euros(s.CostMicros),
 			Generations: s.Generations,
@@ -33,7 +33,7 @@ func buildSpendView(ctx context.Context, data SpendData) (insightpages.SpendView
 		})
 	}
 	for _, m := range data.Models {
-		view.Models = append(view.Models, insightpages.SpendRow{
+		view.Models = append(view.Models, insightview.SpendRow{
 			Label:       modelLabel(m),
 			Cost:        euros(m.CostMicros),
 			Generations: m.Generations,

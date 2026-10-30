@@ -20,7 +20,9 @@ It combines:
 - MCP integrations
 - Multi-platform messaging
 
-The application is **SSR-first**, written in Go, and designed around a clean layered architecture.
+This repository is North's API, written in Go and designed around a clean layered architecture. It serves JSON under `/api/v1`, plus MCP, OAuth, health ingest and the messaging webhooks, and renders no pages.
+
+The web app lives in the `north-web-app` repository (SvelteKit) and the iOS app in `north-ios-app`. Both talk to `/api/v1`.
 
 ---
 
@@ -159,7 +161,7 @@ Responsibilities:
 - validate request
 - authenticate user
 - call service
-- render template
+- write the JSON response
 
 Nothing more.
 
@@ -201,7 +203,7 @@ The domain layer should remain independent of:
 
 - SQL
 - HTTP
-- HTML
+- JSON
 - AI Providers
 
 ---
@@ -261,7 +263,6 @@ Never embed prompts inside:
 
 - handlers
 - repositories
-- templates
 
 Prompts should be:
 
@@ -380,94 +381,6 @@ Examples:
 - Fitbit
 
 The CoachService consumes summaries—not raw API responses.
-
----
-
-# Templates
-
-North uses Templ.
-
-Guidelines:
-
-- small components
-- reusable layouts
-- readable HTML
-- semantic structure
-
-Avoid giant template files.
-
-## Use the component library
-
-North vendors templUI under `web/shared/ui/`.
-
-**If a templUI component exists for what you are building, use it.**
-
-Do not hand-roll a `<button>`, `<input>`, card, dialog, table, or any other
-element that the library already provides — even when raw HTML would be shorter.
-
-Reasons:
-
-- one place to restyle the whole application
-- consistent focus, disabled, and error states
-- accessibility already handled
-
-Before writing markup, look in `web/shared/ui/`.
-
-Components that ship JavaScript expose a `Script()` template guarded by a
-`templ.OnceHandle`. Include it on any page that uses the component; it renders
-only once regardless of how many times it is called.
-
-Hand-rolling is allowed only when no component fits, and the reason belongs in a
-comment next to the markup.
-
-Plain elements and Tailwind remain correct for page scaffolding — layout
-containers, grids, spacing — where there is no component and no behaviour.
-
----
-
-# HTMX
-
-Prefer HTMX over JavaScript.
-
-Most interactions should be implemented using:
-
-- forms
-- partial rendering
-- SSE
-- HTMX swaps
-
----
-
-# Alpine.js
-
-Use Alpine only for local UI state.
-
-Examples:
-
-- modal visibility
-- dropdowns
-- tabs
-- form helpers
-
-Business logic belongs on the server.
-
----
-
-# JavaScript
-
-Less JavaScript is better.
-
-Avoid introducing frontend frameworks.
-
-If HTMX solves the problem, use HTMX.
-
----
-
-# CSS
-
-Use Tailwind.
-
-Avoid custom CSS unless there is a compelling reason.
 
 ---
 
@@ -602,7 +515,6 @@ Always consider:
 
 - Authentication
 - Authorization
-- CSRF
 - XSS
 - SQL Injection
 - Rate limiting

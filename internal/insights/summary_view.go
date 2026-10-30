@@ -8,11 +8,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/NorthAIProject/north-client/internal/insights/highlight"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/insights/score"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 // domain names a scored area for the summary: which catalogue key names it,
@@ -60,14 +60,14 @@ const onTrackFrom = 70
 const maxHighlights = 3
 
 // buildSummaryView assembles the rings, the pinned cards and the counts.
-func buildSummaryView(ctx context.Context, data SummaryData) (insightpages.SummaryView, error) {
+func buildSummaryView(ctx context.Context, data SummaryData) (insightview.SummaryView, error) {
 	scores := summaryScores(data)
 
-	view := insightpages.SummaryView{Range: rangeView(ctx, data.Range)}
+	view := insightview.SummaryView{Range: rangeView(ctx, data.Range)}
 	for i, d := range domains {
 		card, err := scoreCard(ctx, d, scores[i])
 		if err != nil {
-			return insightpages.SummaryView{}, err
+			return insightview.SummaryView{}, err
 		}
 		view.Scores = append(view.Scores, card)
 
@@ -98,13 +98,13 @@ func metricHref(key string) string { return "/app/insights/metric/" + key }
 
 // pinnedCards is the headline number from each domain that has one, with the
 // shape of the window beside it.
-func pinnedCards(ctx context.Context, data SummaryData) []insightpages.PinnedCard {
+func pinnedCards(ctx context.Context, data SummaryData) []insightview.PinnedCard {
 	loc := data.Range.Location()
 	labels := bucketLabels(ctx, data.Range)
-	var out []insightpages.PinnedCard
+	var out []insightview.PinnedCard
 
 	if total, points := hydrationSeries(data, loc); total > 0 {
-		out = append(out, insightpages.PinnedCard{
+		out = append(out, insightview.PinnedCard{
 			Label: i18n.T(ctx, "insights.pinned.water"), Icon: "droplet", Href: metricHref("water"),
 			Value:    formatLitres(ctx, total),
 			Note:     i18n.Tf(ctx, "insights.pinned.water.note", len(data.Body.Hydration)),
@@ -115,7 +115,7 @@ func pinnedCards(ctx context.Context, data SummaryData) []insightpages.PinnedCar
 
 	if n := len(data.Body.Nights); n > 0 {
 		nightly := bucketedMean(data.Range, sleepPoints(data, loc))
-		out = append(out, insightpages.PinnedCard{
+		out = append(out, insightview.PinnedCard{
 			Label: i18n.T(ctx, "insights.pinned.sleep"), Icon: "moon", Href: metricHref("sleep"),
 			Value:    formatHours(data.Body.SleepTrend.AverageMinutes),
 			Note:     i18n.Tf(ctx, "insights.pinned.sleep.note", n),
@@ -125,7 +125,7 @@ func pinnedCards(ctx context.Context, data SummaryData) []insightpages.PinnedCar
 	}
 
 	if n := len(data.Mind.CheckIns); n > 0 {
-		out = append(out, insightpages.PinnedCard{
+		out = append(out, insightview.PinnedCard{
 			Label: i18n.T(ctx, "insights.pinned.checkins"), Icon: "smile", Href: metricHref("checkins"),
 			Value:    fmt.Sprintf("%d", n),
 			Note:     i18n.Tf(ctx, "insights.pinned.checkins.note", data.Progress.Streak),
@@ -135,7 +135,7 @@ func pinnedCards(ctx context.Context, data SummaryData) []insightpages.PinnedCar
 	}
 
 	if n := len(data.Training.Sessions); n > 0 {
-		out = append(out, insightpages.PinnedCard{
+		out = append(out, insightview.PinnedCard{
 			Label: i18n.T(ctx, "insights.pinned.training"), Icon: "dumbbell", Href: metricHref("sessions"),
 			Value:    fmt.Sprintf("%d", n),
 			Note:     formatKcalSummary(data.Training.Calories),
@@ -167,9 +167,9 @@ func summaryScores(data SummaryData) []score.Score {
 	}
 }
 
-func scoreCard(ctx context.Context, d domain, s score.Score) (insightpages.ScoreCard, error) {
+func scoreCard(ctx context.Context, d domain, s score.Score) (insightview.ScoreCard, error) {
 	label := d.Label(ctx)
-	card := insightpages.ScoreCard{
+	card := insightview.ScoreCard{
 		Key:      d.Key,
 		Label:    label,
 		Icon:     d.Icon,
@@ -181,7 +181,7 @@ func scoreCard(ctx context.Context, d domain, s score.Score) (insightpages.Score
 	}
 
 	for _, c := range s.Components {
-		card.Components = append(card.Components, insightpages.ComponentRow{
+		card.Components = append(card.Components, insightview.ComponentRow{
 			Label:  componentLabel(ctx, c.Key),
 			Earned: c.Earned,
 			Weight: c.Weight,
@@ -200,7 +200,7 @@ func scoreCard(ctx context.Context, d domain, s score.Score) (insightpages.Score
 	if s.HasData {
 		opt, err := option(viz.GaugeOptionJSON(label, s.Points))
 		if err != nil {
-			return insightpages.ScoreCard{}, err
+			return insightview.ScoreCard{}, err
 		}
 		card.Option = opt
 	}
@@ -347,7 +347,7 @@ const maxDayRows = 31
 
 // dayTable lists the window one day at a time, the way the activity view lists
 // a week: a mark per metric per day, and a dash where nothing was logged.
-func dayTable(ctx context.Context, data SummaryData) ([]insightpages.DayRow, bool) {
+func dayTable(ctx context.Context, data SummaryData) ([]insightview.DayRow, bool) {
 	if data.Range.Grain != timerange.GrainDay {
 		return nil, false
 	}
@@ -361,11 +361,11 @@ func dayTable(ctx context.Context, data SummaryData) ([]insightpages.DayRow, boo
 	_, water := hydrationSeries(data, loc)
 	checkIns := checkInPoints(data, loc)
 
-	rows := make([]insightpages.DayRow, len(buckets))
+	rows := make([]insightview.DayRow, len(buckets))
 	for i, b := range buckets {
-		rows[i] = insightpages.DayRow{
+		rows[i] = insightview.DayRow{
 			Label: bucketLabel(ctx, data.Range, b),
-			Cells: []insightpages.DayCell{
+			Cells: []insightview.DayCell{
 				{Label: i18n.T(ctx, "insights.days.sleep"), Value: i18n.Decimal(ctx, sleep[i], 1) + "h", Filled: sleep[i] > 0},
 				{Label: i18n.T(ctx, "insights.days.water"), Value: formatLitres(ctx, int(water[i])), Filled: water[i] > 0},
 				{Label: i18n.T(ctx, "insights.days.checkin"), Value: i18n.T(ctx, "insights.days.yes"), Filled: checkIns[i] > 0},

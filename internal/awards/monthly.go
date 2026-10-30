@@ -249,17 +249,6 @@ func (s *Service) UnseenMonthly(ctx context.Context, userID uuid.UUID) ([]Monthl
 	return s.repo.UnseenMonthlyMedals(ctx, userID)
 }
 
-// holdsMonthly is ErrValidation unless the person holds the medal of month key.
-func (s *Service) holdsMonthly(ctx context.Context, userID uuid.UUID, key string) error {
-	if _, err := s.repo.MonthlyMetAt(ctx, userID, key); err != nil {
-		if isNotFound(err) {
-			return apperr.ErrValidation
-		}
-		return fmt.Errorf("awards: monthly held: %w", err)
-	}
-	return nil
-}
-
 // MarkMonthlySeen records that the person was shown the medal of month key. It
 // is ErrNotFound unless they hold it; a repeat is fine.
 func (s *Service) MarkMonthlySeen(ctx context.Context, userID uuid.UUID, key string) error {

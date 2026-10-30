@@ -6,10 +6,10 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 // The sleep, cardio and patterns pages as the web shows them: the same view
@@ -122,7 +122,7 @@ func (a *API) patternsPage(c *echo.Context) error {
 	return c.JSON(http.StatusOK, projectPatterns(buildPatternsView(ctx, rg, days, found)))
 }
 
-func projectSleep(v insightpages.SleepView) InsightsSleep {
+func projectSleep(v insightview.SleepView) InsightsSleep {
 	return InsightsSleep{
 		Range: projectRange(v.Range), HasData: v.HasData, Tiles: projectRows(v.Tiles),
 		Nights: projectChart(v.Nights.Data), Stages: projectBars(v.Stages),
@@ -130,7 +130,7 @@ func projectSleep(v insightpages.SleepView) InsightsSleep {
 	}
 }
 
-func projectCardio(v insightpages.CardioView) InsightsCardio {
+func projectCardio(v insightview.CardioView) InsightsCardio {
 	return InsightsCardio{
 		Range: projectRange(v.Range), HasData: v.HasData, Tiles: projectRows(v.Tiles),
 		Weekly: projectChart(v.Weekly.Data), WeeklyTitle: v.WeeklyTitle, Kinds: projectBars(v.Kinds),
@@ -138,7 +138,7 @@ func projectCardio(v insightpages.CardioView) InsightsCardio {
 	}
 }
 
-func projectPatterns(v insightpages.PatternsView) InsightsPatterns {
+func projectPatterns(v insightview.PatternsView) InsightsPatterns {
 	out := InsightsPatterns{Range: projectRange(v.Range), Days: v.Days, Findings: []InsightsPattern{}}
 	for _, f := range v.Findings {
 		out.Findings = append(out.Findings, InsightsPattern{Title: f.Title, Detail: f.Detail, A: projectBar(f.A), B: projectBar(f.B)})
@@ -146,7 +146,7 @@ func projectPatterns(v insightpages.PatternsView) InsightsPatterns {
 	return out
 }
 
-func projectRows(rows []insightpages.Row) []StatsRow {
+func projectRows(rows []insightview.Row) []StatsRow {
 	out := []StatsRow{}
 	for _, r := range rows {
 		out = append(out, StatsRow{Label: r.Label, Value: r.Value, Note: r.Note})
@@ -154,7 +154,7 @@ func projectRows(rows []insightpages.Row) []StatsRow {
 	return out
 }
 
-func projectBars(bars []insightpages.Bar) []StatsBar {
+func projectBars(bars []insightview.Bar) []StatsBar {
 	out := []StatsBar{}
 	for _, b := range bars {
 		out = append(out, projectBar(b))
@@ -162,6 +162,6 @@ func projectBars(bars []insightpages.Bar) []StatsBar {
 	return out
 }
 
-func projectBar(b insightpages.Bar) StatsBar {
+func projectBar(b insightview.Bar) StatsBar {
 	return StatsBar{Label: b.Label, Value: b.Value, Pct: b.Pct}
 }

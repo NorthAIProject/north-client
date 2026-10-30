@@ -11,10 +11,9 @@ import (
 // comment describes a two-file sync checklist; these tests are what stops the
 // checklist from being the only thing enforcing it.
 //
-// The tables live apart from viewer.js because the asset builds read them too:
-// tools/model/build-body.mjs keeps these atlas meshes, and scripts/bodymap
-// turns them into the figure's skin regions.
-const musclesJS = "../../../web/assets/js/shared/muscle-viewer/muscles.js"
+// The asset builds read the tables: tools/model/build-body.mjs keeps these
+// atlas meshes, and scripts/bodymap turns them into the figure's skin regions.
+const musclesJS = "../../../tools/model/muscles.js"
 
 func TestEveryMuscleGroupIsKnownToTheViewer(t *testing.T) {
 	t.Parallel()

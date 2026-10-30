@@ -2,6 +2,7 @@ package lifts
 
 import (
 	"bytes"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -23,6 +24,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 )
+
+// MaxImportBytes caps a Hevy export. Years of training are a few megabytes.
+const MaxImportBytes = 10 << 20
 
 // API is lifting for native clients: a set logged as it is done, the last
 // workout's numbers to start from, and the stats.
@@ -531,4 +535,22 @@ func days(values []lift.DayValue) []LiftDayValue {
 		out[i] = LiftDayValue{Date: v.Day.Format(time.DateOnly), Value: v.Value}
 	}
 	return out
+}
+
+// formFile reads the upload the CSRF middleware has already parsed, or
+// names the catalogue key of what is wrong with it.
+func formFile(r *http.Request) ([]byte, string) {
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		return nil, "lifts.err.nofile"
+	}
+	defer func() { _ = file.Close() }()
+	data, err := io.ReadAll(io.LimitReader(file, MaxImportBytes+1))
+	if err != nil {
+		return nil, "lifts.err.upload"
+	}
+	if len(data) > MaxImportBytes {
+		return nil, "lifts.err.toolarge"
+	}
+	return data, ""
 }

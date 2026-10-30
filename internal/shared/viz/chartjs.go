@@ -1,20 +1,16 @@
 package viz
 
-import (
-	"github.com/NorthAIProject/north-client/web/shared/ui/chart"
-)
-
 // MoodEnergyLine builds a dual-line Chart.js config with y-axis 1–5.
-func MoodEnergyLine(id string, labels []string, mood, energy []int) chart.Props {
+func MoodEnergyLine(id string, labels []string, mood, energy []int) Props {
 	moodData := nullableSeries(mood)
 	energyData := nullableSeries(energy)
 	yMin := 1.0
 	yMax := 5.0
 	beginZero := false
 
-	return chart.Props{
+	return Props{
 		ID:      id,
-		Variant: chart.VariantLine,
+		Variant: VariantLine,
 		Class:   "min-h-48 w-full",
 		RawConfig: map[string]any{
 			"type": "line",
@@ -65,15 +61,15 @@ func MoodEnergyLine(id string, labels []string, mood, energy []int) chart.Props 
 }
 
 // SingleLine builds one series with optional y bounds.
-func SingleLine(id, label string, labels []string, values []float64, yMin, yMax *float64) chart.Props {
+func SingleLine(id, label string, labels []string, values []float64, yMin, yMax *float64) Props {
 	beginZero := yMin == nil
-	return chart.Props{
+	return Props{
 		ID:      id,
-		Variant: chart.VariantLine,
+		Variant: VariantLine,
 		Class:   "min-h-48 w-full",
-		Data: chart.Data{
+		Data: Data{
 			Labels: labels,
-			Datasets: []chart.Dataset{
+			Datasets: []Dataset{
 				{
 					Label:           label,
 					Data:            values,
@@ -97,15 +93,15 @@ func SingleLine(id, label string, labels []string, values []float64, yMin, yMax 
 }
 
 // Bar renders vertical bars.
-func Bar(id, datasetLabel string, labels []string, totals []float64) chart.Props {
+func Bar(id, datasetLabel string, labels []string, totals []float64) Props {
 	beginZero := true
-	return chart.Props{
+	return Props{
 		ID:      id,
-		Variant: chart.VariantBar,
+		Variant: VariantBar,
 		Class:   "min-h-48 w-full",
-		Data: chart.Data{
+		Data: Data{
 			Labels: labels,
-			Datasets: []chart.Dataset{
+			Datasets: []Dataset{
 				{
 					Label:           datasetLabel,
 					Data:            totals,
@@ -140,15 +136,15 @@ func nullableSeries(values []int) []any {
 //
 // Everything Bar shows and this does not — axes, grid, legend — would repeat
 // the card's own headline and leave the bars too short to read.
-func Sparkline(id string, labels []string, values []float64) chart.Props {
+func Sparkline(id string, labels []string, values []float64) Props {
 	beginZero := true
-	return chart.Props{
+	return Props{
 		ID:      id,
-		Variant: chart.VariantBar,
+		Variant: VariantBar,
 		Class:   "h-12 w-full",
-		Data: chart.Data{
+		Data: Data{
 			Labels: labels,
-			Datasets: []chart.Dataset{
+			Datasets: []Dataset{
 				{
 					Label:           "",
 					Data:            values,
@@ -186,12 +182,12 @@ var barSeriesColours = []string{
 // Grouped rather than stacked: the question these charts answer is how two
 // runs compare bar by bar, and a stack answers how they sum, which is a
 // different question and hides the smaller of the two.
-func GroupedBar(id string, labels []string, series []BarSeries) chart.Props {
+func GroupedBar(id string, labels []string, series []BarSeries) Props {
 	beginZero := true
 
-	datasets := make([]chart.Dataset, 0, len(series))
+	datasets := make([]Dataset, 0, len(series))
 	for i, s := range series {
-		datasets = append(datasets, chart.Dataset{
+		datasets = append(datasets, Dataset{
 			Label:           s.Label,
 			Data:            s.Values,
 			BorderWidth:     0,
@@ -199,11 +195,11 @@ func GroupedBar(id string, labels []string, series []BarSeries) chart.Props {
 		})
 	}
 
-	return chart.Props{
+	return Props{
 		ID:          id,
-		Variant:     chart.VariantBar,
+		Variant:     VariantBar,
 		Class:       "min-h-48 w-full",
-		Data:        chart.Data{Labels: labels, Datasets: datasets},
+		Data:        Data{Labels: labels, Datasets: datasets},
 		ShowLegend:  true,
 		ShowXGrid:   false,
 		ShowYGrid:   true,
@@ -217,15 +213,15 @@ func GroupedBar(id string, labels []string, series []BarSeries) chart.Props {
 // headline number and date range are already printed around it.
 //
 // The colour is a CSS custom property so the line follows the theme.
-func AreaLine(id string, labels []string, values []float64, colorVar string) chart.Props {
+func AreaLine(id string, labels []string, values []float64, colorVar string) Props {
 	beginZero := false
-	return chart.Props{
+	return Props{
 		ID:      id,
-		Variant: chart.VariantLine,
+		Variant: VariantLine,
 		Class:   "h-28 w-full",
-		Data: chart.Data{
+		Data: Data{
 			Labels: labels,
-			Datasets: []chart.Dataset{
+			Datasets: []Dataset{
 				{
 					Label:           "",
 					Data:            values,
@@ -248,7 +244,7 @@ func AreaLine(id string, labels []string, values []float64, colorVar string) cha
 
 // StackedBar draws several named series stacked into one bar per label, for a
 // chart whose question is what each bar was made of.
-func StackedBar(id string, labels []string, series []BarSeries) chart.Props {
+func StackedBar(id string, labels []string, series []BarSeries) Props {
 	p := GroupedBar(id, labels, series)
 	p.Stacked = true
 	p.ShowYGrid = false

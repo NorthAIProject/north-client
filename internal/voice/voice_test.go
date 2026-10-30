@@ -89,8 +89,7 @@ func TestWavReachesTheRecogniserAsWav(t *testing.T) {
 	}
 }
 
-// Every container a browser records, as the recorder in web/assets/js/shared
-// can send it. Moved here from quick capture when its recorder became the
+// Every container a browser records, as the web app's recorder can send it. Moved here from quick capture when its recorder became the
 // shared dictation button: the sniff is this package's, so the table is too.
 func TestEveryContainerABrowserRecordsReachesTheRecogniserAsItself(t *testing.T) {
 	cases := map[string]struct {

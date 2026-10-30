@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
@@ -23,17 +22,6 @@ func TestReplyShape(t *testing.T) {
 		Kind: checkinreply.KindPattern,
 		Text: "You sleep 4 or 5 and your energy follows. Worth guarding tonight's bedtime.",
 	})
-}
-
-func serve(t *testing.T, f fixture, method, path string, routes func(chi.Router)) *httptest.ResponseRecorder {
-	t.Helper()
-	r := chi.NewRouter()
-	routes(r)
-	req := httptest.NewRequest(method, path, nil)
-	req = req.WithContext(auth.ContextWithUser(req.Context(), f.user))
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	return w
 }
 
 func serveAPI(t *testing.T, f fixture, method, path string, register func(*echo.Group)) *httptest.ResponseRecorder {
@@ -67,23 +55,5 @@ func TestAPIAnswersANoteOrNothing(t *testing.T) {
 	f.writer.err = errors.New("down")
 	if w := serveAPI(t, f, http.MethodPost, "/check-ins/today/reply", api.Register); w.Code != http.StatusNoContent {
 		t.Fatalf("model down: %d, want 204", w.Code)
-	}
-}
-
-// htmx does not swap a 204, so the page route answers 200 with an empty body
-// when there is no note, or the placeholder would stay forever.
-func TestPageSlotIsEmptyRatherThan204(t *testing.T) {
-	f := setup(t)
-	h := checkinreply.NewHandler(f.svc)
-
-	w := serve(t, f, http.MethodGet, "/check-ins/today/reply", h.Routes)
-	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "" {
-		t.Fatalf("no check-in: %d %q, want 200 and empty", w.Code, w.Body)
-	}
-
-	f.checkIn(t, checkins.Input{Mood: 3, Energy: 2})
-	w = serve(t, f, http.MethodGet, "/check-ins/today/reply", h.Routes)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), f.writer.text) {
-		t.Fatalf("with a note: %d %s", w.Code, w.Body)
 	}
 }

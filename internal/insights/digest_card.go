@@ -3,8 +3,8 @@ package insights
 import (
 	"fmt"
 
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/rasterize"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 // digestCard turns the page's own view into the picture a digest carries.
@@ -12,7 +12,7 @@ import (
 // Built from the SummaryView rather than from the data, for the same reason
 // the digest's words are: the card and the page must say the same thing, and
 // the only way to be sure of that is for both to read the same view.
-func digestCard(view insightpages.SummaryView) rasterize.Card {
+func digestCard(view insightview.SummaryView) rasterize.Card {
 	card := rasterize.Card{Title: view.Range.Label}
 
 	if view.Judged > 0 {

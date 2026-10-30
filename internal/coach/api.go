@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -38,6 +39,21 @@ type API struct {
 	attachmentURL attachmentURL
 }
 
+// chatMedia is the slice of media the chat needs: store a photo or a document
+// someone attached, and load one back by id, for this account only.
+//
+// The answer is the attachment as the turn stores it. Named in terms of
+// conversations so this package does not import internal/media, which already
+// implements a ContextSource and would close a cycle.
+type chatMedia interface {
+	StoreChatAttachment(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (conversations.Attachment, error)
+	LoadChatAttachment(ctx context.Context, id, userID uuid.UUID) (conversations.Attachment, error)
+}
+
+// maxChatUpload is slightly above an 8 MB photo or document so a just-over
+// file is rejected by the media service, not by a bare multipart parse.
+const maxChatUpload = (8 << 20) + (1 << 20)
+
 // NewAPI builds the routes; register them behind auth.Bearer.
 func NewAPI(svc *Service, quotas *quota.Service, media chatMedia) *API {
 	return &API{svc: svc, quotas: quotas, media: media}
@@ -58,7 +74,7 @@ func (a *API) Register(g *echo.Group) {
 }
 
 // attachmentURL resolves a stored chat attachment, owned by userID, to a URL
-// the browser can load it from. Supplied by cmd/web from the media service,
+// the browser can load it from. Supplied by cmd/api from the media service,
 // so this package still does not import internal/media.
 type attachmentURL func(ctx context.Context, mediaID, userID uuid.UUID) (string, error)
 
@@ -281,7 +297,7 @@ func (a *API) stats(c *echo.Context) error {
 	if err != nil {
 		return httpx.Fail(err, "Conversations could not be loaded.")
 	}
-	return c.JSON(http.StatusOK, CoachStats{ThreadCount: stats.ThreadCount, MessagesThisWeek: stats.MessagesThisWeek})
+	return c.JSON(http.StatusOK, stats)
 }
 
 // attachment redirects to a file a turn carried, for this account only.
@@ -665,4 +681,33 @@ func projectApproval(p PendingCall) *Approval {
 		out.Calls = append(out.Calls, item)
 	}
 	return out
+}
+
+// friendly turns an internal error into something worth showing a user.
+func friendly(err error) string {
+	switch {
+	case apperr.Is(err, apperr.ErrUnavailable):
+		return "The coach is busy right now. Try again in a moment."
+	case apperr.Is(err, apperr.ErrForbidden):
+		return "Khepri cannot reach its AI provider. Check the server configuration."
+	case apperr.Is(err, apperr.ErrConflict):
+		return "This reflection has ended."
+	default:
+		return "Something went wrong while writing that reply."
+	}
+}
+
+// quotaMessage says a refusal out loud, in the same voice friendly uses.
+//
+// It names a wait rather than a limit, because the number a person needs is
+// when they can carry on — not how the bound was configured.
+func quotaMessage(decision quota.Decision) string {
+	switch {
+	case decision.RetryAfter < time.Minute:
+		return "You have reached your coach message limit. Try again in less than a minute."
+	case decision.RetryAfter < time.Hour:
+		return fmt.Sprintf("You have reached your coach message limit. Try again in %d minutes.", int(decision.RetryAfter.Minutes()))
+	default:
+		return "You have reached your coach message limit. Try again in about an hour."
+	}
 }

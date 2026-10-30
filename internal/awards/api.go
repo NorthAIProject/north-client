@@ -4,13 +4,36 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
+
+// Person is whose awards page this is, as far as the viewer may know.
+type Person struct {
+	ID     uuid.UUID
+	Name   string
+	Handle string
+	Self   bool
+	// Shared is whether the person lets followers see their awards. The
+	// owner's own is always true.
+	Shared bool
+}
+
+// People resolves handles. It lives in profiles, which already knows about
+// blocks and sharing; awards cannot import it back.
+type People interface {
+	// Person is ErrNotFound for an unknown handle or a block either way,
+	// the same as the profile page.
+	Person(ctx context.Context, viewer users.User, handle string) (Person, error)
+	// HandleOf is the person's handle, empty when they have none.
+	HandleOf(ctx context.Context, userID uuid.UUID) (string, error)
+}
 
 // API is the caller's own badges for native clients. Register behind
 // auth.Bearer.

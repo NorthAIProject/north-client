@@ -5,7 +5,7 @@ info:
   description: |
     JSON API for North's native clients. The iOS app generates its client from
     this file (swift-openapi-generator), so this file is the contract: a route
-    under /api/v1 that is not described here fails cmd/web's contract test.
+    under /api/v1 that is not described here fails cmd/api's contract test.
 
     Authentication, by route group:
     - `/auth/*` sign-in routes take no credentials and return a session token.

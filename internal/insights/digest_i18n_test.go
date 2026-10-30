@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/users"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
 // localizedSummaryView builds the view the way digestView does for a user who
 // reads tag: under that user's locale.
-func localizedSummaryView(t *testing.T, tag string, data SummaryData) insightpages.SummaryView {
+func localizedSummaryView(t *testing.T, tag string, data SummaryData) insightview.SummaryView {
 	t.Helper()
 	ctx := digestContext(context.Background(), users.User{Locale: users.Locale(tag)})
 	view, err := buildSummaryView(ctx, data)

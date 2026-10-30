@@ -12,12 +12,11 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
-// Bearer authenticates native-client requests by the session token in the
+// Bearer authenticates API requests by the session token in the
 // Authorization header and puts the user in the request context, where
-// UserFrom and MustUser find it exactly as they do behind the cookie
-// middleware. It never reads the session cookie: a JSON route reachable by
-// cookie would be reachable cross-site without the CSRF check the browser
-// routes get.
+// UserFrom and MustUser find it. It never reads a cookie: a JSON route
+// reachable by cookie would be reachable cross-site, and nothing here checks
+// for CSRF.
 //
 // Failures are JSON, never a redirect to the login page.
 func Bearer(sessions SessionResolver) echo.MiddlewareFunc {
@@ -37,8 +36,8 @@ func Bearer(sessions SessionResolver) echo.MiddlewareFunc {
 				return httpx.Fail(errors.Join(apperr.ErrUnavailable, err), "Something went wrong.")
 			}
 
-			// The account's language, as LoadUser does for the browser: the
-			// coach, reports and error messages answer in it.
+			// The account's language: the coach, reports and error messages
+			// answer in it.
 			ctx := ContextWithUser(r.Context(), session.User)
 			ctx = i18n.WithLocale(ctx, string(session.User.Locale))
 			c.SetRequest(r.WithContext(ctx))

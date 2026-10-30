@@ -20,6 +20,13 @@ import (
 // ErrorBody, and finishing returns a session token instead of setting a
 // cookie.
 
+// maxCeremonyBytes bounds a passkey ceremony body.
+//
+// The bound is new: this decoder used to read an unbounded body, which the
+// shared reader made visible by asking for the cap explicitly. A WebAuthn
+// ceremony is a few kilobytes of base64url, so 64 KiB is generous.
+const maxCeremonyBytes = 64 << 10
+
 // PasskeyRegisterBeginRequest starts creating an account with a passkey.
 type PasskeyRegisterBeginRequest struct {
 	Email       string `json:"email"`

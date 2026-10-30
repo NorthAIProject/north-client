@@ -22,55 +22,14 @@ North should become a persistent thinking partner that exists across multiple in
 
 The architecture follows a few fundamental principles.
 
-## Server First
+## The API Is the Server
 
-North is built as a Server-Side Rendered application.
+This repository is North's API. It serves JSON under `/api/v1`, plus MCP,
+OAuth, health ingest and the messaging webhooks. It renders no pages.
 
-Reasons:
-
-- Fast initial page loads
-- Excellent SEO
-- Minimal JavaScript
-- Simpler architecture
-- Easier maintenance
-- Better accessibility
-- Easier debugging
-
-Client-side rendering should only be introduced when it provides a measurable benefit.
-
----
-
-## Progressive Enhancement
-
-The stack is intentionally simple.
-
-```
-Go
-
-↓
-
-Templ
-
-↓
-
-Tailwind
-
-↓
-
-HTMX
-
-↓
-
-Alpine
-
-↓
-
-Minimal JavaScript
-```
-
-JavaScript is not the application.
-
-The server is.
+The web app lives in the `north-web-app` repository (SvelteKit) and the iOS app
+in `north-ios-app`. Both are clients of `/api/v1`, and neither owns business
+logic.
 
 ---
 
@@ -80,12 +39,12 @@ Every interface is simply another way of talking to the same application.
 
 Examples:
 
-- Web
+- Web (north-web-app, over `/api/v1`)
+- iOS (over `/api/v1`)
 - Telegram
 - Discord
 - WhatsApp
 - MCP
-- Native Mobile (future)
 
 No interface owns business logic.
 
@@ -154,8 +113,7 @@ Never build business logic around provider-specific features.
 Responsible for:
 
 - HTTP
-- Templates
-- HTMX
+- JSON
 - SSE
 - Authentication
 - Validation
@@ -620,7 +578,6 @@ Reasons:
 
 - Simple
 - Native browser support
-- Excellent for SSR
 - Lower complexity than WebSockets
 
 ---
@@ -654,7 +611,7 @@ A slice owns one business capability end to end:
 ```
 internal/<feature>/
 
-    handler.go      parse, validate, authenticate, call service, render
+    api.go          parse, validate, authenticate, call service, write JSON
     service.go      business logic
     repository.go   persistence
     db/queries.sql  sqlc input
@@ -673,7 +630,7 @@ internal/shared/
     database/    pgxpool construction
     errors/      sentinel errors mapped to HTTP status in one place
     httpx/       JSON in, JSON out, and that error mapping applied once
-    middleware/  request id, logging, recover, CSRF, RequireAuth
+    middleware/  request id, logging, recover, client IP, locale
     types/       types shared by more than one slice
 ```
 
@@ -681,7 +638,7 @@ Full tree:
 
 ```
 cmd/
-    web/
+    api/
     worker/
     mcp-server/
 
@@ -703,15 +660,6 @@ internal/
     messaging/
     config/
     shared/
-
-web/
-    shared/layout/
-    shared/ui/
-    auth/
-    chat/
-    workouts/
-    landing/
-    assets/
 
 migrations/
 terraform/
@@ -775,23 +723,6 @@ Infrastructure is managed using Terraform.
 
 ---
 
-## Why Templ?
-
-- Type-safe
-- Readable
-- Excellent SSR support
-- Strong Go integration
-
----
-
-## Why HTMX?
-
-- Minimal JavaScript
-- Progressive enhancement
-- Excellent fit for SSR
-
----
-
 ## Why SSE?
 
 - Simpler than WebSockets
@@ -821,7 +752,7 @@ Infrastructure is managed using Terraform.
 
 North is expected to evolve into multiple deployable services:
 
-- Web
+- API
 - Workers
 - MCP Server
 - OCR

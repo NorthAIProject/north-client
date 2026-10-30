@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	"github.com/NorthAIProject/north-client/internal/insights/highlight"
+	"github.com/NorthAIProject/north-client/internal/insights/insightview"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/viz"
-	insightpages "github.com/NorthAIProject/north-client/web/insights"
 )
 
-func buildNutritionView(ctx context.Context, data NutritionData) (insightpages.NutritionView, error) {
+func buildNutritionView(ctx context.Context, data NutritionData) (insightview.NutritionView, error) {
 	loc := data.Range.Location()
 	labels := bucketLabels(ctx, data.Range)
 
@@ -27,7 +27,7 @@ func buildNutritionView(ctx context.Context, data NutritionData) (insightpages.N
 	// unreadable beside a goal line.
 	series := bucketedMean(data.Range, kcal)
 
-	view := insightpages.NutritionView{
+	view := insightview.NutritionView{
 		Range:         rangeView(ctx, data.Range),
 		DaysLogged:    len(data.Days),
 		Entries:       data.Entries,
@@ -51,7 +51,7 @@ func buildNutritionView(ctx context.Context, data NutritionData) (insightpages.N
 	segments := macroSegments(ctx, data.Days)
 	split, err := option(viz.DonutOptionJSON(segments))
 	if err != nil {
-		return insightpages.NutritionView{}, err
+		return insightview.NutritionView{}, err
 	}
 	view.MacroSplit = split
 	view.HasSplit = hasGrams(segments)
