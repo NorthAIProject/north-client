@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/spend"
@@ -212,36 +211,5 @@ func TestTheTranscribeEndpoint(t *testing.T) {
 				t.Errorf("surface = %q, want %q", tc.transcriber.sawSurface, tc.wantSurface)
 			}
 		})
-	}
-}
-
-// The templates read availability from the context the middleware sets, and a
-// page rendered without it must offer the typed path only.
-func TestAdvertiseTellsThePagesWhetherToOfferAMicrophone(t *testing.T) {
-	cases := map[string]struct {
-		transcriber ai.Transcriber
-		want        bool
-	}{
-		"a deployment that can listen": {&stubTranscriber{}, true},
-		"one that cannot":              {nil, false},
-	}
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			h := voice.NewHandler(voice.NewService(voice.Options{Transcriber: tc.transcriber}), nil)
-
-			var saw bool
-			next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-				saw = voice.DictationAvailable(r.Context())
-			})
-			h.Advertise(next).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/app", nil))
-
-			if saw != tc.want {
-				t.Fatalf("available = %v, want %v", saw, tc.want)
-			}
-		})
-	}
-
-	if voice.DictationAvailable(context.Background()) {
-		t.Fatal("a context the middleware never saw claims dictation")
 	}
 }

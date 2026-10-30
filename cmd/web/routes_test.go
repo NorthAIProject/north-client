@@ -14,8 +14,10 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/fake"
+	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/config"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 // stubStorage satisfies media.Storage without a bucket. Nothing in these tests
@@ -166,145 +168,6 @@ func TestMCPEndpointIgnoresASessionCookie(t *testing.T) {
 	}
 }
 
-// The rest of the site must still be behind CSRF. Without this, a change that
-// "fixed" the test above by dropping the middleware entirely would pass.
-func TestTheSiteIsStillBehindCSRF(t *testing.T) {
-	handler := testRoutes(t)
-
-	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("email=a@b.test&password=x"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("POST /login without a CSRF token = %d, want 403", rec.Code)
-	}
-}
-
-// The install URLs must stay public. A browser fetches the manifest and the
-// service worker before anyone is signed in, and a 302 to /login is how
-// "Add to Home Screen" silently fails.
-func TestManifestIsPublicAndStandalone(t *testing.T) {
-	handler := testRoutes(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/manifest+json") {
-		t.Errorf("Content-Type = %q, want application/manifest+json", ct)
-	}
-
-	var m map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
-		t.Fatalf("manifest: %v", err)
-	}
-	if m["display"] != "standalone" {
-		t.Errorf("display = %v, want standalone", m["display"])
-	}
-}
-
-func TestServiceWorkerIsPublic(t *testing.T) {
-	handler := testRoutes(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "javascript") {
-		t.Errorf("Content-Type = %q, want javascript", ct)
-	}
-	if !strings.Contains(rec.Body.String(), `addEventListener("fetch"`) {
-		t.Error("service worker has no fetch handler")
-	}
-}
-
-// Deleting an account is the most destructive thing this site can do, so the
-// guards in front of it are worth pinning here rather than trusting the mount
-// point to stay where it is. An anonymous, tokenless POST must never reach the
-// handler; in a browser both failure modes would look like an ordinary
-// redirect, and neither would show up in a package-level test of the handler.
-func TestDeletingAnAccountIsBehindAuthAndCSRF(t *testing.T) {
-	handler := testRoutes(t)
-
-	req := httptest.NewRequest(http.MethodPost, "/app/settings/account/delete",
-		strings.NewReader("confirm_email=someone@north.test"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	// 403 from CSRF or 303 to the login page both mean it was stopped. What
-	// must not happen is the handler running.
-	if rec.Code != http.StatusForbidden && rec.Code != http.StatusSeeOther {
-		t.Fatalf("anonymous POST to the account delete = %d, want it turned away", rec.Code)
-	}
-}
-
-// The export moved off /knowledge when it grew to cover the whole account, so
-// the new path has to be mounted and behind authentication.
-//
-// Only the presence of the new route is asserted, not the absence of the old
-// one: RequireAuth wraps the whole /app group and answers a signed-out request
-// before chi ever decides whether the path matches, so every /app URL — real or
-// invented — redirects identically. There is nothing here to tell them apart.
-func TestTheExportLivesUnderSettings(t *testing.T) {
-	handler := testRoutes(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/app/settings/export.zip", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("GET /app/settings/export.zip signed out = %d, want a 303 to the login page", rec.Code)
-	}
-}
-
-// The offline page has to be reachable signed out. The worker precaches it
-// before anyone logs in, and a 302 to /login cached under that URL would show
-// the login page as North's offline screen.
-func TestOfflinePageIsPublic(t *testing.T) {
-	handler := testRoutes(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/offline.html", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
-		t.Errorf("Content-Type = %q, want text/html", ct)
-	}
-	if !strings.Contains(rec.Body.String(), "You're offline") {
-		t.Error("offline page does not say it is the offline page")
-	}
-}
-
-// The base layout's icon links cover browsers. This covers everything else that
-// asks for /favicon.ico directly and would otherwise get North's 404 page.
-func TestFaviconIcoRedirectsToTheBrandIcon(t *testing.T) {
-	handler := testRoutes(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusMovedPermanently {
-		t.Fatalf("status = %d, want 301", rec.Code)
-	}
-	if loc := rec.Header().Get("Location"); loc != "/assets/brand/favicon.svg" {
-		t.Errorf("Location = %q, want /assets/brand/favicon.svg", loc)
-	}
-}
-
 // The capture API is the fourth endpoint that must sit outside CSRF and the
 // session middleware, for the same reason as /mcp and /ingest/health: the
 // caller holds a bearer token, not a cookie, and there is no form to carry a
@@ -356,6 +219,42 @@ func TestCaptureAPIDoesNotAcceptASessionCookie(t *testing.T) {
 	}
 }
 
+// signIn creates an account and returns the session cookie for it.
+//
+// Through the auth service rather than the signup endpoint: these tests are
+// about where routes are mounted, and driving a signup to reach them would fail
+// for reasons that have nothing to do with that.
+func signIn(t *testing.T, pool *pgxpool.Pool) *http.Cookie {
+	t.Helper()
+
+	userSvc := users.NewService(users.NewRepository(pool))
+	sessions := auth.NewSessionStore(pool, time.Hour)
+	svc := auth.NewService(userSvc, sessions, auth.ServiceOptions{
+		BaseURL: "http://north.test",
+	})
+
+	user, token, err := svc.Signup(t.Context(), auth.SignupInput{
+		Email:                "ada@north.test",
+		DisplayName:          "Ada",
+		Password:             "correct-horse-battery-staple",
+		PasswordConfirmation: "correct-horse-battery-staple",
+		Timezone:             "UTC",
+	}, auth.Metadata{})
+	if err != nil {
+		t.Fatalf("sign in: %v", err)
+	}
+
+	// A fresh account still needs onboarding, and RequireOnboarded sends it to
+	// /app/onboarding before any app route is reached — which is a redirect,
+	// not a refusal, and would make every assertion below pass for the wrong
+	// reason.
+	if _, err := userSvc.MarkOnboarded(t.Context(), user.ID); err != nil {
+		t.Fatalf("mark onboarded: %v", err)
+	}
+
+	return &http.Cookie{Name: "north_session", Value: token}
+}
+
 // The kubelet's probe. It reaches the database, so a pod that cannot is taken
 // out of rotation rather than left failing every request.
 func TestHealthzReportsTheDatabase(t *testing.T) {
@@ -405,5 +304,29 @@ func TestInternalMetricsIsGuardedBySecret(t *testing.T) {
 	}
 	if !strings.HasPrefix(rec.Body.String(), `{"users":`) {
 		t.Errorf("body = %q, want the user count", rec.Body.String())
+	}
+}
+
+// Nothing outside the machine routes is served here any more: the pages
+// belong to the web app. A path nobody routes is the API's JSON 404, not a
+// page.
+func TestAnUnknownPathIsAJSONNotFound(t *testing.T) {
+	handler := testRoutes(t)
+
+	for _, path := range []string{"/", "/app", "/login", "/api/v1/no-such-thing"} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, rec.Code)
+		}
+		var body struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil || body.Error.Message == "" {
+			t.Errorf("GET %s: body is not the JSON error shape (%v)", path, err)
+		}
 	}
 }

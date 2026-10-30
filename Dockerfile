@@ -1,6 +1,5 @@
 # Build stage:
-# We install everything we need here, build the CSS, generate templ code,
-# and compile the app binary.
+# We download the modules and compile the app binaries.
 FROM golang:1.27.3 AS build
 WORKDIR /app
 
@@ -10,27 +9,6 @@ RUN go mod download
 
 # Copy the rest of the project files.
 COPY . .
-
-# Install tools needed during the build.
-RUN apt-get update && apt-get install -y wget ca-certificates && rm -rf /var/lib/apt/lists/*
-
-# Download the Tailwind standalone binary for the current CPU architecture.
-RUN arch="$(dpkg --print-architecture)" && \
-    case "$arch" in \
-      amd64) tailwind_arch="x64" ;; \
-      arm64) tailwind_arch="arm64" ;; \
-      *) echo "unsupported architecture: $arch" && exit 1 ;; \
-    esac && \
-    wget -O /usr/local/bin/tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-linux-${tailwind_arch}" && \
-    chmod +x /usr/local/bin/tailwindcss
-
-# Build CSS via the same script CI uses so local/CI/image stay aligned.
-# build-css.sh downloads the templui module so its component sources are
-# available to Tailwind even on a cold module cache.
-RUN bash scripts/build-css.sh
-
-# Generate Go files from .templ files.
-RUN go tool templ generate
 
 # Build both static Linux binaries for the final image.
 #

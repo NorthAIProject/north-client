@@ -49,7 +49,7 @@ func TestThePathIsCarriedForTheSwitcher(t *testing.T) {
 }
 
 // This is the ordering contract, asserted rather than trusted to a comment in
-// cmd/web. Locale can only guess; auth.LoadUser overwrites the guess with the
+// cmd/web. Locale can only guess; auth.Bearer overwrites the guess with the
 // account's own setting. Mounted the other way round, a laptop's browser
 // settings would override what somebody chose in Khepri.
 func TestAnAccountSettingOverwritesTheGuess(t *testing.T) {
@@ -61,7 +61,7 @@ func TestAnAccountSettingOverwritesTheGuess(t *testing.T) {
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		afterGuess = i18n.LocaleFrom(r.Context())
 
-		// Standing in for auth.LoadUser, which does exactly this once it has
+		// Standing in for auth.Bearer, which does exactly this once it has
 		// resolved a session.
 		ctx := i18n.WithLocale(r.Context(), "es")
 		afterAccount = i18n.LocaleFrom(ctx)

@@ -32,9 +32,6 @@ func (a *API) WithHub(svc *Service) *API {
 	return a
 }
 
-// Hub is the service behind the hub page, for wiring the API.
-func (h *Handler) Hub() *Service { return h.svc }
-
 // dateOnly is how a calendar day crosses the wire: the person's local day,
 // with no zone to misread it in.
 const dateOnly = "2006-01-02"

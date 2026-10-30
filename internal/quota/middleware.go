@@ -12,8 +12,16 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 )
 
-// GuardJSON is Guard (browser.go) for the native app's API: the same budget and the same
-// sentence, answered as the API's JSON error body instead of a page.
+// GuardJSON bounds a route by one action's budget, answered as the API's JSON
+// error body.
+//
+// It is applied per route rather than per handler, so that reading never
+// spends the budget for writing. A person refreshing their report list should
+// not be closer to being unable to generate one.
+//
+// The refusal is written here rather than handed to each handler's own error
+// path because there is nothing route-specific about it: the answer is the same
+// sentence everywhere.
 func (s *Service) GuardJSON(action Action) func(http.Handler) http.Handler {
 	return s.guard(action, s.refuseJSON)
 }
@@ -58,13 +66,13 @@ func (s *Service) guard(action Action, refuse refusal) func(http.Handler) http.H
 	}
 }
 
-// refuseJSON is refuse's 429 for the API, with the sentence as its message.
-// The native app shows the message verbatim, so it is translated here.
+// refuseJSON writes the 429, with the sentence as its message, in the
+// reader's language. The native app shows the message verbatim, so it is
+// translated here.
 //
 // Code and fields carry the raw action and wait as well, so a web client can
-// draw the same panel the cookie-session pages swap in (web/quota.Refused)
-// rather than only the one sentence. Fields here are not form errors: a
-// client keys on the code first.
+// draw its own refusal panel rather than only the one sentence. Fields here
+// are not form errors: a client keys on the code first.
 func (s *Service) refuseJSON(w http.ResponseWriter, r *http.Request, action Action, decision Decision) {
 	ctx := r.Context()
 	seconds := strconv.Itoa(retrySeconds(decision))

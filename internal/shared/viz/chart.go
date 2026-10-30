@@ -1,13 +1,7 @@
 package viz
 
-import "github.com/a-h/templ"
-
-// The Chart.js chart description the builders in this package return.
-//
-// These were declared beside the templUI chart component in
-// web/shared/ui/chart, which re-exports them under their old names. They live
-// here so the JSON API, which embeds Props in several of its views, does not
-// import the browser templates to describe a chart.
+// The Chart.js chart description the builders in this package return. The
+// JSON API embeds Props in several of its views.
 
 // Variant is a Chart.js chart type.
 type Variant string
@@ -65,5 +59,5 @@ type Props struct {
 	YMax        *float64
 	BeginAtZero *bool
 	Class       string
-	Attributes  templ.Attributes
+	Attributes  map[string]any
 }
