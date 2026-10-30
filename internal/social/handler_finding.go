@@ -16,11 +16,6 @@ import (
 	socialpages "github.com/NorthAIProject/north-client/web/social"
 )
 
-// FacebookWebCallbackPath is where Facebook returns a connection begun on
-// the Friends page. It must be registered in the Meta app as a Valid OAuth
-// Redirect URI, next to FacebookNativeCallbackPath.
-const FacebookWebCallbackPath = "/app/friends/facebook/callback"
-
 const (
 	facebookStateCookie = "north_facebook_oauth"
 	facebookCookiePath  = "/app/friends/facebook"

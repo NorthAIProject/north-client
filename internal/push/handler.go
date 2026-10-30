@@ -13,10 +13,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
-// A subscription serialises to a few hundred bytes. Anything near this is not
-// one.
-const maxRequestBytes = 8 << 10
-
 type Handler struct {
 	svc *Service
 }
@@ -33,15 +29,6 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Routes(r chi.Router) {
 	r.Post("/push/subscriptions", h.subscribe)
 	r.Delete("/push/subscriptions", h.unsubscribe)
-}
-
-// subscriptionJSON is PushSubscription.toJSON() as the browser emits it.
-type subscriptionJSON struct {
-	Endpoint string `json:"endpoint"`
-	Keys     struct {
-		P256dh string `json:"p256dh"`
-		Auth   string `json:"auth"`
-	} `json:"keys"`
 }
 
 func (h *Handler) subscribe(w http.ResponseWriter, r *http.Request) {

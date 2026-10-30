@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -22,9 +21,6 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	pages "github.com/NorthAIProject/north-client/web/lifts"
 )
-
-// MaxImportBytes caps a Hevy export. Years of training are a few megabytes.
-const MaxImportBytes = 10 << 20
 
 // Handler is the web's set logger and Hevy import. Must be behind
 // RequireAuth.
@@ -198,24 +194,6 @@ func (h *Handler) importUpload(w http.ResponseWriter, r *http.Request) {
 
 func imported(res ImportResult) *pages.Imported {
 	return &pages.Imported{Workouts: res.Workouts, Duplicates: res.Duplicates, Sets: res.Sets, Skipped: res.Skipped, Unmatched: res.Unmatched}
-}
-
-// formFile reads the upload the CSRF middleware has already parsed, or
-// names the catalogue key of what is wrong with it.
-func formFile(r *http.Request) ([]byte, string) {
-	file, _, err := r.FormFile("file")
-	if err != nil {
-		return nil, "lifts.err.nofile"
-	}
-	defer func() { _ = file.Close() }()
-	data, err := io.ReadAll(io.LimitReader(file, MaxImportBytes+1))
-	if err != nil {
-		return nil, "lifts.err.upload"
-	}
-	if len(data) > MaxImportBytes {
-		return nil, "lifts.err.toolarge"
-	}
-	return data, ""
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, what string, err error) {

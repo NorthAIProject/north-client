@@ -445,13 +445,6 @@ func writePasskeyError(w http.ResponseWriter, r *http.Request, err error) {
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(r.Context(), "auth.err.passkey.generic")})
 }
 
-// maxCeremonyBytes bounds a passkey ceremony body.
-//
-// The bound is new: this decoder used to read an unbounded body, which the
-// shared reader made visible by asking for the cap explicitly. A WebAuthn
-// ceremony is a few kilobytes of base64url, so 64 KiB is generous.
-const maxCeremonyBytes = 64 << 10
-
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	return httpx.ReadJSON(w, r, dst, httpx.ReadOptions{MaxBytes: maxCeremonyBytes})
 }

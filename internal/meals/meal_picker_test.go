@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
-	nutritionpages "github.com/NorthAIProject/north-client/web/nutrition"
 )
 
 func pickerDay(wd time.Weekday, meals ...meal.Meal) meal.Day {
@@ -19,7 +18,7 @@ func pickerMeal(name, label string, alternatives ...meal.Meal) meal.Meal {
 	return meal.Meal{ID: uuid.New(), Name: name, OptionLabel: label, Alternatives: alternatives}
 }
 
-func pickerLabels(opts []nutritionpages.MealOption) []string {
+func pickerLabels(opts []LoggableMeal) []string {
 	out := make([]string, 0, len(opts))
 	for _, o := range opts {
 		out = append(out, o.Label)

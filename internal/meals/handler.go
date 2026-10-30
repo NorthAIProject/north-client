@@ -25,15 +25,6 @@ type Handler struct {
 	recommend   *GoalRecommendationService
 }
 
-type HandlerOptions struct {
-	Ingredients *IngredientService
-	Diets       *DietPreferenceService
-	Plans       *MealPlanService
-	FoodLog     *FoodLogService
-	Progress    *TrackMealProgressService
-	Recommend   *GoalRecommendationService
-}
-
 func NewHandler(opts HandlerOptions) *Handler {
 	return &Handler{
 		ingredients: opts.Ingredients, diets: opts.Diets, plans: opts.Plans,

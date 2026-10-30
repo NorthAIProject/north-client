@@ -17,6 +17,11 @@ import (
 // handler calls, so both front ends apply the same rules. None of them sets a
 // cookie; the front end keeps the OAuth state in its own.
 
+// FacebookWebCallbackPath is where Facebook returns a connection begun on
+// the Friends page. It must be registered in the Meta app as a Valid OAuth
+// Redirect URI, next to FacebookNativeCallbackPath.
+const FacebookWebCallbackPath = "/app/friends/facebook/callback"
+
 // CountryView is one calling code the phone card offers beside a national number.
 type CountryView struct {
 	// Dial is the calling code without the plus: "351".

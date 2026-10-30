@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
@@ -526,4 +527,16 @@ func validWebCallback(raw string) bool {
 		return false
 	}
 	return u.Path == strava.WebCallbackPath && u.RawQuery == "" && u.Fragment == ""
+}
+
+// sessionPageParam reads ?page=. Anything that is not a positive number is
+// page one: a pager is navigation, and navigation that answers a fat-fingered
+// URL with a 422 is worse than one that answers it with the first page. The
+// service clamps the upper end against how many pages there actually are.
+func sessionPageParam(r *http.Request) int {
+	n, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || n < 1 {
+		return 1
+	}
+	return n
 }

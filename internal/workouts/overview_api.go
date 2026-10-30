@@ -1,6 +1,7 @@
 package workouts
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -9,11 +10,23 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/lifts"
+	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
+	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts/workoutsummary"
 )
+
+// Recaps finds the latest finished workout in a window.
+type Recaps interface {
+	LatestRecap(ctx context.Context, user users.User, rg timerange.Range) (lift.Recap, bool, error)
+}
+
+// Loads reads how ready each muscle is from logged sets.
+type Loads interface {
+	Readiness(ctx context.Context, user users.User) (lift.Load, error)
+}
 
 // WithRecaps lets GET /training/overview carry this week's latest workout.
 func (a *API) WithRecaps(recaps Recaps) *API {
