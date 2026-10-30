@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -1084,6 +1086,16 @@ func routes(
 	r := chi.NewRouter()
 	e.RouteNotFound("/*", echo.WrapHandler(r))
 
+	// Liveness and the operator's user count. Neither carries a session: the
+	// kubelet and the portfolio dashboard are not people.
+	e.GET("/healthz", healthz(pool))
+
+	// Internal operator endpoint: total user count for the portfolio
+	// dashboard at facorreia.com/apps. Guarded by METRICS_SECRET.
+	if cfg.MetricsSecret != "" {
+		e.GET("/internal/metrics", metricsHandler(pool, cfg.MetricsSecret))
+	}
+
 	// /mcp sits outside the session group, and the two middlewares it skips are
 	// the reason it needs its own.
 	//
@@ -1249,14 +1261,7 @@ func routes(
 		mountAssets(r, cfg)
 		pwa.Mount(r)
 
-		r.Get("/healthz", healthz(pool))
 		r.Get("/.well-known/apple-app-site-association", auth.AppleAppSiteAssociation(cfg.AppleTeamID, cfg.AppleBundleID))
-
-		// Internal operator endpoint: total user count for the portfolio
-		// dashboard at facorreia.com/apps. Guarded by METRICS_SECRET.
-		if cfg.MetricsSecret != "" {
-			r.Get("/internal/metrics", metricsHandler(pool, cfg.MetricsSecret))
-		}
 		r.Method(http.MethodGet, "/", templ.Handler(landing.Page()))
 
 		// Public and outside /app on purpose: somebody deciding whether to
@@ -1423,4 +1428,22 @@ func runTelegram(ctx context.Context, client *telegram.Client, poller *telegram.
 // healthz reports whether the process can serve traffic. It checks the database
 // because an instance that cannot reach Postgres should be taken out of a load
 // balancer rather than left accepting requests it will fail.
-// setLocale remembers a visitor's language and sends them back where they were.
+func healthz(pool *pgxpool.Pool) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		r, w := c.Request(), c.Response()
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if err := pool.Ping(ctx); err != nil {
+			middleware.FromContext(r.Context()).Error("health check failed", slog.Any("error", err))
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = fmt.Fprint(w, `{"status":"unhealthy","database":"unreachable"}`)
+			return nil
+		}
+
+		_, _ = fmt.Fprint(w, `{"status":"ok","database":"ok"}`)
+		return nil
+	}
+}
