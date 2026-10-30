@@ -300,19 +300,18 @@ See [Setting up Telegram](#setting-up-telegram) below.
 ## Backend
 
 - Go
-- Chi
-- Templ
+- Echo
 - PostgreSQL
 - pgx
 - sqlc
 
-## Frontend
+## Clients
 
-- Server Side Rendering
-- Tailwind CSS
-- Alpine.js
-- HTMX
-- Server-Sent Events
+This repository is the API. The clients live elsewhere and talk to `/api/v1`:
+
+- Web: `north-web-app` (SvelteKit)
+- iOS: `north-ios-app`
+- Server-Sent Events for streamed coach replies
 
 ## AI
 
@@ -350,7 +349,7 @@ than four. Layering is enforced *inside* the slice, not across the tree.
 
 ```
 cmd/
-    web/            HTTP server
+    api/            HTTP API (`/api/v1`, MCP, OAuth, ingest, webhooks)
     worker/         background jobs
     mcp-server/     MCP server
 
@@ -361,7 +360,7 @@ internal/
         openrouter/
         fake/
         prompts/
-    auth/           sessions, passwords, RequireAuth
+    auth/           sessions, passwords, Bearer
     users/
     coach/          CoachService, ContextBuilder, PromptBuilder
     conversations/
@@ -380,19 +379,8 @@ internal/
     shared/
         database/   pgxpool
         errors/     sentinel errors
-        middleware/ request id, logging, recover, CSRF
+        middleware/ request id, logging, recover, locale
         types/
-
-web/
-    shared/
-        layout/     base and app layouts
-        ui/         templUI components
-        utils/
-    auth/           login, signup pages
-    chat/
-    workouts/
-    landing/
-    assets/         css, js, fonts (embedded)
 
 migrations/         goose migrations
 terraform/
@@ -404,7 +392,7 @@ Every slice follows the same shape:
 
 ```
 internal/<feature>/
-    handler.go      parse, validate, authenticate, call service, render
+    api.go          parse, validate, authenticate, call service, write JSON
     service.go      business logic; depends on repository interfaces
     repository.go   thin wrapper over generated code
     db/queries.sql  sqlc input
@@ -488,19 +476,10 @@ being evaluated.
 
 # Design Philosophy
 
-North is intentionally built as a **Server-Side Rendered** application.
-
-Reasons:
-
-- Fast initial load
-- Excellent SEO
-- Simple architecture
-- Minimal JavaScript
-- Easier maintenance
-- Great developer experience
-- Progressive enhancement
-
-Client-side JavaScript is used only where it provides clear value.
+The Go server is an API and renders no pages. Every client — the SvelteKit
+web app, the iOS app, MCP agents, the messaging bots — reaches the same
+services, so a feature is built once, behind `/api/v1` or the gateway it
+arrives through.
 
 ---
 
@@ -512,7 +491,6 @@ Client-side JavaScript is used only where it provides clear value.
 - Business logic belongs in services.
 - The AI provider is an implementation detail.
 - Keep Go code idiomatic.
-- Use HTMX before writing JavaScript.
 - Avoid unnecessary dependencies.
 
 ---
