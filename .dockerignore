@@ -45,3 +45,5 @@ charts/
 terraform/
 *.md
 docker-compose.yml
+web/.DS_Store
+.DS_Store

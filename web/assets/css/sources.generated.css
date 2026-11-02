@@ -1,0 +1,4 @@
+@source "./**/*.templ";
+@source "./**/*.js";
+@source "/Users/fernandocorreiachill/go/pkg/mod/github.com/templui/templui@v1.13.1/components/**/*.templ";
+@source "/Users/fernandocorreiachill/go/pkg/mod/github.com/templui/templui@v1.13.1/components/**/*.js";
