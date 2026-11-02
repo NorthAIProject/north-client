@@ -31,3 +31,5 @@ package-lock.json
 /vendor/
 # Local scratch output.
 tmp/
+web/.DS_Store
+.DS_Store
