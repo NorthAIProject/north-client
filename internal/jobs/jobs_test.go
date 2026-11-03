@@ -19,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type payload struct {
@@ -213,6 +214,88 @@ func TestStaleRunningJobsAreReturnedToTheQueue(t *testing.T) {
 	if _, ok, _ := q.Claim(ctx); !ok {
 		t.Fatal("a released job should be claimable again")
 	}
+}
+
+// A job abandoned on its last attempt has nothing left to retry with. Putting
+// it back would run it with attempts past max_attempts, and a job whose input
+// always kills its worker would then run forever.
+func TestAStaleJobOnItsLastAttemptIsFailedNotRequeued(t *testing.T) {
+	pool := testdb.New(t)
+	q := jobs.NewQueue(pool)
+	ctx := context.Background()
+
+	queued, err := q.Enqueue(ctx, jobs.KindAnalyzeFormVideo, payload{})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE jobs SET attempts = max_attempts - 1 WHERE id = $1`, queued.ID); err != nil {
+		t.Fatalf("spend attempts: %v", err)
+	}
+	if _, ok, _ := q.Claim(ctx); !ok {
+		t.Fatal("expected to claim the job")
+	}
+
+	if _, err := q.ReleaseStale(ctx, 0); err != nil {
+		t.Fatalf("release stale: %v", err)
+	}
+
+	if _, ok, _ := q.Claim(ctx); ok {
+		t.Fatal("a job past its last attempt was put back in the queue")
+	}
+	if status := jobStatus(t, pool, queued.ID); status != "failed" {
+		t.Fatalf("status = %q, want failed", status)
+	}
+}
+
+// A handler that runs into the job timeout returns once its context expires.
+// The worker must still be able to record that, or the job sits in 'running'
+// until the stale sweep and is then run again from the top.
+func TestAJobThatTimesOutIsStillScheduledForRetry(t *testing.T) {
+	pool := testdb.New(t)
+	q := jobs.NewQueue(pool)
+	ctx := context.Background()
+
+	queued, err := q.Enqueue(ctx, jobs.KindAnalyzeFormVideo, payload{})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	ran := make(chan struct{}, 1)
+	worker := jobs.NewWorker(q, slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithJobTimeout(50 * time.Millisecond)
+	worker.Register(jobs.KindAnalyzeFormVideo, func(ctx context.Context, _ json.RawMessage) error {
+		<-ctx.Done()
+		ran <- struct{}{}
+		return ctx.Err()
+	})
+
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- worker.Run(runCtx) }()
+
+	select {
+	case <-ran:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler never ran")
+	}
+	cancel()
+	<-done
+
+	if status := jobStatus(t, pool, queued.ID); status != "pending" {
+		t.Fatalf("status = %q, want pending: the retry was not recorded", status)
+	}
+}
+
+func jobStatus(t *testing.T, pool interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, id uuid.UUID,
+) string {
+	t.Helper()
+	var status string
+	if err := pool.QueryRow(context.Background(), `SELECT status FROM jobs WHERE id = $1`, id).Scan(&status); err != nil {
+		t.Fatalf("read job status: %v", err)
+	}
+	return status
 }
 
 func TestBackoffGrows(t *testing.T) {

@@ -25,6 +25,14 @@ const staleAfter = 30 * time.Minute
 // jobTimeout bounds a single handler run.
 const jobTimeout = 15 * time.Minute
 
+// bookkeepingTimeout bounds recording a run's outcome.
+//
+// Its own budget rather than the handler's: a handler that ran into
+// jobTimeout returns on an expired context, and recording the retry on that
+// same context would fail before reaching the database. The job would then sit
+// in 'running' until the stale sweep and be run again from the top.
+const bookkeepingTimeout = 10 * time.Second
+
 // Handler performs one kind of job. Payload is the JSON it was enqueued with.
 type Handler func(ctx context.Context, payload json.RawMessage) error
 
@@ -39,11 +47,21 @@ type Worker struct {
 	// now is the clock periodic alignment reads. Swapped in tests so they do
 	// not have to wait for a real wall-clock boundary.
 	now func() time.Time
+
+	// jobTimeout bounds one handler run. A field so tests can hit it without
+	// waiting fifteen minutes.
+	jobTimeout time.Duration
 }
 
 // WithClock fixes the worker's idea of now. Tests only.
 func (w *Worker) WithClock(now func() time.Time) *Worker {
 	w.now = now
+	return w
+}
+
+// WithJobTimeout changes how long one handler may run. Tests only.
+func (w *Worker) WithJobTimeout(d time.Duration) *Worker {
+	w.jobTimeout = d
 	return w
 }
 
@@ -54,7 +72,7 @@ type periodicEnqueue struct {
 }
 
 func NewWorker(queue *Queue, log *slog.Logger) *Worker {
-	return &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler), now: time.Now}
+	return &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler), now: time.Now, jobTimeout: jobTimeout}
 }
 
 // WithMetrics attaches counters. Returns the worker so it can be wired in one
@@ -164,7 +182,7 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 
 	// Detached from the loop's context so shutdown lets the current job finish
 	// rather than abandoning it half-done.
-	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jobTimeout)
+	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.jobTimeout)
 	defer cancel()
 
 	// The handler logs through the context like every other layer does, so it
@@ -182,20 +200,25 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 	// that story.
 	w.metrics.JobFinished(string(job.Kind), elapsed, err != nil)
 
+	// Detached from runCtx, which may be the very deadline the handler just
+	// ran into. See bookkeepingTimeout.
+	bookCtx, cancelBook := context.WithTimeout(context.WithoutCancel(ctx), bookkeepingTimeout)
+	defer cancelBook()
+
 	if err == nil {
 		log.Info("job done", slog.Duration("took", elapsed))
-		return true, w.queue.Complete(runCtx, job.ID)
+		return true, w.queue.Complete(bookCtx, job.ID)
 	}
 
 	if job.Exhausted() {
 		log.Error("job failed permanently", slog.Any("error", err), slog.Int("attempts", job.Attempts))
-		return true, w.queue.Fail(runCtx, job.ID, err.Error())
+		return true, w.queue.Fail(bookCtx, job.ID, err.Error())
 	}
 
 	retryAt := time.Now().Add(Backoff(job.Attempts))
 	log.Warn("job failed, will retry", slog.Any("error", err), slog.Time("retry_at", retryAt))
 
-	return true, w.queue.Retry(runCtx, job.ID, retryAt, err.Error())
+	return true, w.queue.Retry(bookCtx, job.ID, retryAt, err.Error())
 }
 
 // runSafely turns a panicking handler into a failed job rather than a dead

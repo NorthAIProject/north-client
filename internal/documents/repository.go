@@ -17,13 +17,14 @@ import (
 )
 
 type PostgresRepository struct {
-	q *documentsdb.Queries
+	pool *pgxpool.Pool
+	q    *documentsdb.Queries
 }
 
 var _ Repository = (*PostgresRepository)(nil)
 
 func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
-	return &PostgresRepository{q: documentsdb.New(pool)}
+	return &PostgresRepository{pool: pool, q: documentsdb.New(pool)}
 }
 
 // NewDocument is a row to insert.
@@ -108,13 +109,20 @@ func (r *PostgresRepository) SoftDelete(ctx context.Context, id, userID uuid.UUI
 // ReplaceChunks writes the chunks a document currently produces and removes the
 // ones it no longer does.
 //
-// Upserts first, deletes second, on purpose: doing it the other way round would
-// leave the document unsearchable for the width of the write, and a reply that
-// landed in that window would silently have no knowledge to draw on.
+// One transaction, stale rows removed first. The order matters: an edited
+// passage gets a new chunk id at an ordinal the old row still holds, so writing
+// it before the old row is gone collides with UNIQUE (document_id, ordinal) and
+// the whole reindex fails. The transaction is what keeps the document
+// searchable meanwhile: until it commits, readers still see the old chunks,
+// never a gap.
+//
+// Unchanged chunks keep their row (and their embeddings) because their id is
+// in keep and the insert collides with them harmlessly.
 //
 // Returns how many rows were written and removed, for the run record.
 func (r *PostgresRepository) ReplaceChunks(ctx context.Context, doc Document, chunks []Chunk) (written, removed int, err error) {
 	keep := make([]string, 0, len(chunks))
+	params := make([]documentsdb.UpsertChunkParams, 0, len(chunks))
 
 	for _, c := range chunks {
 		id := ChunkID(doc.ID, c.Ordinal, c.SHA256)
@@ -122,10 +130,10 @@ func (r *PostgresRepository) ReplaceChunks(ctx context.Context, doc Document, ch
 
 		path, pathErr := json.Marshal(c.HeadingPath)
 		if pathErr != nil {
-			return written, 0, apperr.Wrap(pathErr, "encode heading path")
+			return 0, 0, apperr.Wrap(pathErr, "encode heading path")
 		}
 
-		if err = r.q.UpsertChunk(ctx, documentsdb.UpsertChunkParams{
+		params = append(params, documentsdb.UpsertChunkParams{
 			ChunkID:       id,
 			DocumentID:    doc.ID,
 			UserID:        doc.UserID,
@@ -135,18 +143,35 @@ func (r *PostgresRepository) ReplaceChunks(ctx context.Context, doc Document, ch
 			EndLine:       int32(c.EndLine),
 			Content:       c.Content,
 			ContentSha256: c.SHA256,
-		}); err != nil {
-			return written, 0, apperr.Wrap(err, "write chunk")
-		}
-		written++
+		})
 	}
 
-	n, err := r.q.DeleteChunksNotIn(ctx, documentsdb.DeleteChunksNotInParams{
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, 0, apperr.Wrap(err, "begin chunk replace")
+	}
+	// Rollback after a successful Commit is a no-op.
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	q := r.q.WithTx(tx)
+
+	n, err := q.DeleteChunksNotIn(ctx, documentsdb.DeleteChunksNotInParams{
 		DocumentID: doc.ID,
 		Keep:       keep,
 	})
 	if err != nil {
-		return written, 0, apperr.Wrap(err, "remove stale chunks")
+		return 0, 0, apperr.Wrap(err, "remove stale chunks")
+	}
+
+	for _, p := range params {
+		if err = q.UpsertChunk(ctx, p); err != nil {
+			return 0, 0, apperr.Wrap(err, "write chunk")
+		}
+		written++
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return 0, 0, apperr.Wrap(err, "commit chunk replace")
 	}
 	return written, int(n), nil
 }

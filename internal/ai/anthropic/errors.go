@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,10 +26,19 @@ func (c *Client) classify(err error) error {
 // Its chain predates it and answers the same requests, so a 400 or a 404
 // here (an effort the model does not take, a retired model name) is this
 // provider's problem, not the caller's.
+//
+// A failure that never got an API answer (DNS, a refused or reset
+// connection, a stream cut short) is unavailability: it says nothing about
+// the request, and the next provider may well reach its own service. The
+// caller cancelling, or its deadline passing, is the exception, and is left
+// unmarked so the runner stops rather than spending the chain on nobody.
 func classify(err error, managed bool) error {
 	var apiErr *sdk.Error
 	if !errors.As(err, &apiErr) {
-		return fmt.Errorf("anthropic: %w", err)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("anthropic: %w", err)
+		}
+		return fmt.Errorf("%w: anthropic: %w", apperr.ErrUnavailable, err)
 	}
 
 	detail := apiMessage(apiErr)
@@ -51,6 +61,10 @@ func classify(err error, managed bool) error {
 		return fmt.Errorf("%w: anthropic returned %d: %s", apperr.ErrForbidden, status, detail)
 	case status == http.StatusTooManyRequests, status >= 500:
 		return fmt.Errorf("%w: anthropic returned %d: %s", apperr.ErrUnavailable, status, detail)
+	// An error event inside a stream arrives with the stream's own status,
+	// a 200, so only its type says what went wrong.
+	case transientType(apiErrorType(apiErr)):
+		return fmt.Errorf("%w: anthropic returned %s: %s", apperr.ErrUnavailable, apiErrorType(apiErr), detail)
 	case managed && status >= 400:
 		return fmt.Errorf("%w: anthropic returned %d: %s", apperr.ErrUnavailable, status, detail)
 	default:
@@ -87,6 +101,29 @@ func answered(content []sdk.ContentBlockUnion) bool {
 		}
 	}
 	return false
+}
+
+// transientType reports whether an API error type means the service, not the
+// request, is the problem.
+func transientType(kind string) bool {
+	switch kind {
+	case "overloaded_error", "api_error", "rate_limit_error":
+		return true
+	}
+	return false
+}
+
+// apiErrorType reads the error type ("overloaded_error", ...) out of the body.
+func apiErrorType(apiErr *sdk.Error) string {
+	var body struct {
+		Error struct {
+			Type string `json:"type"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(apiErr.RawJSON()), &body); err != nil {
+		return ""
+	}
+	return body.Error.Type
 }
 
 // apiMessage reads the error message out of the response body. The SDK's own

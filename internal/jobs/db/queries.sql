@@ -73,7 +73,16 @@ SELECT EXISTS(
 -- is set by the database, so comparing it against the application's clock makes
 -- the sweep depend on the two agreeing — and with Postgres in a container they
 -- do not have to.
+--
+-- A job abandoned on its last attempt is failed rather than requeued. Claiming
+-- counts the attempt, so requeueing it would run it past max_attempts, and a
+-- job whose input always outlives its worker would come back forever.
 UPDATE jobs
-SET status = 'pending', updated_at = now()
+SET status     = CASE WHEN attempts < max_attempts THEN 'pending' ELSE 'failed' END,
+    last_error = CASE WHEN attempts < max_attempts THEN last_error
+                      ELSE 'abandoned while running on its last attempt'
+                           || CASE WHEN last_error = '' THEN '' ELSE '; last error: ' || last_error END
+                 END,
+    updated_at = now()
 WHERE status = 'running'
   AND updated_at < now() - make_interval(secs => sqlc.arg('stale_seconds')::double precision);

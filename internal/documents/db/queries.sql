@@ -101,8 +101,8 @@ ON CONFLICT (chunk_id) DO NOTHING;
 
 -- name: DeleteChunksNotIn :execrows
 -- Removes what the latest chunking no longer produces: the passages of a
--- document that were edited away. Runs after the upserts, so a chunk is never
--- absent from the index in between.
+-- document that were edited away. Runs before the inserts, in the same
+-- transaction: an edited chunk reuses an ordinal the stale row still holds.
 DELETE FROM document_chunks
 WHERE document_id = @document_id
   AND chunk_id <> ALL(@keep::text[]);

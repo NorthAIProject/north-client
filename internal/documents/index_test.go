@@ -2,6 +2,8 @@ package documents_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 
@@ -393,5 +395,55 @@ func TestChunkIDsSurviveAnEdit(t *testing.T) {
 	}
 	if len(again) == 0 || again[0].ChunkID != rehab[0].ChunkID {
 		t.Error("an unedited passage lost its chunk id across a reindex")
+	}
+}
+
+// An edited passage gets a new chunk id at an ordinal an old row still holds.
+// Writing the new row before removing the old one collided with
+// UNIQUE (document_id, ordinal), and every edited document failed to reindex.
+func TestReplacingChunksAfterAnEditKeepsUntouchedIDs(t *testing.T) {
+	svc, _, repo, user, ctx := fixture(t, "index-replace@north.test")
+
+	doc, err := svc.CreateNote(ctx, user.ID, "Physio notes", physioNote)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := func(ordinal int, content string) documents.Chunk {
+		sum := sha256.Sum256([]byte(content))
+		return documents.Chunk{
+			Ordinal: ordinal, StartLine: ordinal + 1, EndLine: ordinal + 1,
+			Content: content, SHA256: hex.EncodeToString(sum[:]),
+		}
+	}
+
+	before := []documents.Chunk{chunk(0, "intro"), chunk(1, "wide grip hurts"), chunk(2, "band pull-aparts")}
+	if _, _, err = repo.ReplaceChunks(ctx, doc, before); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+
+	after := []documents.Chunk{chunk(0, "intro"), chunk(1, "narrow grip is fine now"), chunk(2, "band pull-aparts")}
+	written, removed, err := repo.ReplaceChunks(ctx, doc, after)
+	if err != nil {
+		t.Fatalf("rewrite after an edit: %v", err)
+	}
+	if removed != 1 {
+		t.Errorf("removed %d chunks, want the 1 edited away", removed)
+	}
+	if written != 3 {
+		t.Errorf("written = %d, want 3", written)
+	}
+
+	ids := []string{
+		documents.ChunkID(doc.ID, 0, after[0].SHA256),
+		documents.ChunkID(doc.ID, 1, after[1].SHA256),
+		documents.ChunkID(doc.ID, 2, after[2].SHA256),
+	}
+	hits, err := svc.Passages(ctx, user.ID, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 3 {
+		t.Fatalf("found %d of the current chunks, want 3", len(hits))
 	}
 }
