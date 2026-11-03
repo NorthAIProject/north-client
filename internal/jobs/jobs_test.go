@@ -279,7 +279,9 @@ func TestAJobThatTimesOutIsStillScheduledForRetry(t *testing.T) {
 		t.Fatal("the handler never ran")
 	}
 	cancel()
-	<-done
+	if err := <-done; err != nil {
+		t.Fatalf("worker stopped with error: %v", err)
+	}
 
 	if status := jobStatus(t, pool, queued.ID); status != "pending" {
 		t.Fatalf("status = %q, want pending: the retry was not recorded", status)
