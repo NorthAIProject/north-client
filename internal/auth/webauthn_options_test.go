@@ -11,7 +11,9 @@ import (
 func TestRegistrationOptionsAskForADiscoverableCredential(t *testing.T) {
 	var cco protocol.PublicKeyCredentialCreationOptions
 	for _, opt := range registrationOptions() {
-		opt(&cco)
+		if err := opt(&cco); err != nil {
+			t.Fatalf("registration option: %v", err)
+		}
 	}
 	if got := cco.AuthenticatorSelection.ResidentKey; got != protocol.ResidentKeyRequirementPreferred {
 		t.Fatalf("residentKey = %q, want %q", got, protocol.ResidentKeyRequirementPreferred)
