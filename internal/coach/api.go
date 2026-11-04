@@ -697,6 +697,8 @@ func projectApproval(p PendingCall) *Approval {
 // friendly turns an internal error into something worth showing a user.
 func friendly(err error) string {
 	switch {
+	case apperr.Is(err, apperr.ErrAIConsentRequired):
+		return "AI is off for your account. Turn it on in Settings under AI data sharing."
 	case apperr.Is(err, apperr.ErrUnavailable):
 		return "The coach is busy right now. Try again in a moment."
 	case apperr.Is(err, apperr.ErrForbidden):

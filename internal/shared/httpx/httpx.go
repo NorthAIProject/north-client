@@ -103,6 +103,8 @@ func Status(err error) int {
 		return http.StatusUnauthorized
 	case apperr.Is(err, apperr.ErrForbidden):
 		return http.StatusForbidden
+	case apperr.Is(err, apperr.ErrAIConsentRequired):
+		return http.StatusForbidden
 	case apperr.Is(err, apperr.ErrConflict):
 		return http.StatusConflict
 	case apperr.Is(err, apperr.ErrPaymentRequired):
@@ -128,6 +130,10 @@ type ErrorDetail struct {
 	Code    string            `json:"code,omitempty"`
 }
 
+// CodeAIConsentRequired tells a client to ask the AI data sharing question
+// rather than show a failure.
+const CodeAIConsentRequired = "ai_consent_required"
+
 // Error writes err as JSON with the status Status gives it.
 //
 // The message is only ever the caller's own: a 500 says so in general terms
@@ -140,6 +146,9 @@ func Error(w http.ResponseWriter, err error, message string) {
 	var fields apperr.FieldErrors
 	if apperr.As(err, &fields) {
 		detail.Fields = fields.Messages()
+	}
+	if apperr.Is(err, apperr.ErrAIConsentRequired) {
+		detail.Code = CodeAIConsentRequired
 	}
 
 	WriteJSON(w, status, ErrorBody{Error: detail})

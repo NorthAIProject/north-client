@@ -16,6 +16,9 @@ type Registry struct {
 	clients     map[string]Client
 	defaultName string
 	meter       Meter
+
+	// consent gates clients registered after WithConsent.
+	consent ConsentChecker
 }
 
 func NewRegistry() *Registry {
@@ -37,6 +40,13 @@ func (r *Registry) WithMeter(m Meter) *Registry {
 	return r
 }
 
+// WithConsent refuses calls for anyone the checker says has not agreed. As with
+// WithMeter, call it before Register. A nil checker leaves clients ungated.
+func (r *Registry) WithConsent(c ConsentChecker) *Registry {
+	r.consent = c
+	return r
+}
+
 // Register adds a client. The first one registered becomes the default until
 // SetDefault says otherwise.
 func (r *Registry) Register(c Client) {
@@ -47,7 +57,7 @@ func (r *Registry) Register(c Client) {
 	// it from the original makes it obvious that metering cannot rename a
 	// provider and so cannot move it in a chain.
 	name := c.Name()
-	r.clients[name] = Metered(c, r.meter, false)
+	r.clients[name] = Gated(Metered(c, r.meter, false), r.consent)
 	if r.defaultName == "" {
 		r.defaultName = name
 	}

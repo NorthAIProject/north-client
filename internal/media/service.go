@@ -116,6 +116,7 @@ var imageExtensions = map[string]bool{
 }
 
 type Service struct {
+	consent  ai.ConsentChecker
 	repo     Repository
 	storage  Storage
 	queue    *jobs.Queue
@@ -143,6 +144,12 @@ type Options struct {
 	// OnReady is called after a form analysis completes. Used to raise a
 	// bell note. Nil is a no-op.
 	OnReady func(ctx context.Context, userID, analysisID uuid.UUID)
+}
+
+// WithConsent checks AI data sharing before a form video is accepted. Nil allows.
+func (s *Service) WithConsent(c ai.ConsentChecker) *Service {
+	s.consent = c
+	return s
 }
 
 func (s *Service) WithOnReady(fn func(ctx context.Context, userID, analysisID uuid.UUID)) *Service {
@@ -194,6 +201,17 @@ type AnalyzeFormPayload struct {
 // It returns as soon as the file is stored. Analysing a video takes far longer
 // than a request should, so the work happens in the worker and the page polls.
 func (s *Service) UploadVideo(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (analysis.Analysis, error) {
+	// Asked before the upload, so the analysis cannot be left failing later.
+	if s.consent != nil {
+		allowed, err := s.consent.AllowsAI(ctx, userID)
+		if err != nil {
+			return analysis.Analysis{}, err
+		}
+		if !allowed {
+			return analysis.Analysis{}, apperr.Wrap(apperr.ErrAIConsentRequired, "upload form video")
+		}
+	}
+
 	record, err := s.storeUpload(ctx, storeUpload{
 		UserID:   userID,
 		Filename: filename,

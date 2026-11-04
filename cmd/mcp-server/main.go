@@ -41,6 +41,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/aiconsent"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/awards"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
@@ -125,7 +126,10 @@ func run() error {
 	}
 	defer pool.Close()
 
-	registry, err := providers.Build(ctx, cfg.AI.ProviderOptions(cfg.Env))
+	aiConsent := aiconsent.Checker(pool, cfg.AI.ConsentRequired)
+	aiOpts := cfg.AI.ProviderOptions(cfg.Env)
+	aiOpts.Consent = aiConsent
+	registry, err := providers.Build(ctx, aiOpts)
 	if err != nil {
 		return err
 	}
@@ -135,6 +139,7 @@ func run() error {
 		Provider:   cfg.Embedding.Provider,
 		Model:      cfg.Embedding.Model,
 		Dimensions: cfg.Embedding.Dimensions,
+		Consent:    aiConsent,
 	})
 	if err != nil {
 		return err

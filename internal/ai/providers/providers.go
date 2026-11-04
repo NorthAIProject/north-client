@@ -31,6 +31,10 @@ type Options struct {
 	// with no database want.
 	Meter ai.Meter
 
+	// Consent refuses calls for anyone who has not agreed to AI data sharing.
+	// Nil, while AI_CONSENT_REQUIRED is off, leaves every call allowed.
+	Consent ai.ConsentChecker
+
 	// AllowFakeHead lets a chain that resolves to nothing fall back to the fake
 	// client instead of failing the boot. Set outside production, where a
 	// checkout with no credentials at all should still start and be clickable.
@@ -82,7 +86,7 @@ type Compatible struct {
 // The fake provider is always registered. It costs nothing, and it means the
 // application can be run and demonstrated with no credentials at all.
 func Build(ctx context.Context, opts Options) (*ai.Registry, error) {
-	r := ai.NewRegistry().WithMeter(opts.Meter)
+	r := ai.NewRegistry().WithMeter(opts.Meter).WithConsent(opts.Consent)
 
 	if opts.GeminiAPIKey != "" {
 		client, err := gemini.New(ctx, gemini.Options{

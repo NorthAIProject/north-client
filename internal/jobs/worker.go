@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
@@ -252,6 +253,13 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 	if ctx.Err() != nil && errors.Is(runCtx.Err(), context.Canceled) {
 		log.Warn("job interrupted by shutdown, requeued", slog.Any("error", err))
 		return true, w.queue.Requeue(bookCtx, job.ID, "interrupted by shutdown: "+err.Error())
+	}
+
+	// Asking again later changes nothing until the person answers, and the
+	// sweep that enqueued this will come round again if they do.
+	if apperr.Is(err, apperr.ErrAIConsentRequired) {
+		log.Info("job skipped: no ai consent")
+		return true, w.queue.Complete(runCtx, job.ID)
 	}
 
 	if job.Exhausted() {

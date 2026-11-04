@@ -8324,6 +8324,48 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /ai-consent:
+    get:
+      operationId: getAIConsent
+      summary: Read the AI data sharing choice and who would receive the data
+      responses:
+        '200':
+          description: The choice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIConsent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: setAIConsent
+      summary: Allow or decline sending data to third-party AI providers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision:
+                  type: string
+                  description: granted or declined.
+      responses:
+        '200':
+          description: The choice as saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIConsent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /settings/appearance:
     put:
       operationId: setAppearance
@@ -8629,6 +8671,24 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorBody'
   schemas:
+    AIConsent:
+      type: object
+      required: [status, version, recipients]
+      properties:
+        status:
+          type: string
+          description: unset, granted or declined. Open string so a shipped client survives a new value.
+        version:
+          type: integer
+          description: The wording of the question this server asks.
+        decided_at:
+          type: string
+          format: date-time
+        recipients:
+          type: array
+          description: The companies this deployment can send a consenting person's data to.
+          items:
+            type: string
     PhoneView:
       type: object
       required: [configured, number, pending]

@@ -118,6 +118,7 @@ func (s *Summarizer) Summarize(ctx context.Context, conversationID uuid.UUID) er
 	if err != nil {
 		return err
 	}
+	ctx = aiattr.WithUser(ctx, owner, spend.SurfaceSummary)
 
 	// The watermark: the newest turn that is NOT in the tail. Everything at or
 	// before it is what the model is about to stop being able to see.

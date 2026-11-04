@@ -28,6 +28,8 @@ var portugueseBrazilianTelegram = map[string]string{
 	"tg.voice.download":    "Não consegui baixar esse áudio. Manda de novo?",
 	"tg.wrong":             "Deu alguma coisa errada do meu lado. Tente de novo daqui a pouco.",
 	"tg.nocredit":          "Não consigo chegar a um modelo agora — o serviço está sem crédito. Tente de novo daqui a pouco.",
+	"tg.aiconsent":         "Seu coach está desligado até você permitir o compartilhamento de dados com a IA. Você pode ligá-lo no app Khepri, em Ajustes.",
+	"ai.consent.off":       "A IA está desligada na sua conta. Ative em Ajustes, em Compartilhamento de dados com a IA.",
 
 	"tg.confirm.again": "Ainda preciso de um sim ou de um não primeiro.",
 	"tg.confirm":       "Antes de fazer isso, você confirma?",

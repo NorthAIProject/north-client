@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/aiconsent"
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/config"
@@ -67,6 +68,8 @@ func run() error {
 
 	aiOpts := cfg.AI.ProviderOptions(cfg.Env)
 	aiOpts.Meter = spendMeter
+	aiConsent := aiconsent.Checker(pool, cfg.AI.ConsentRequired)
+	aiOpts.Consent = aiConsent
 
 	registry, err := providers.Build(ctx, aiOpts)
 	if err != nil {
@@ -99,6 +102,7 @@ func run() error {
 		Model:      cfg.Embedding.Model,
 		Dimensions: cfg.Embedding.Dimensions,
 		Meter:      spendMeter,
+		Consent:    aiConsent,
 	})
 	if err != nil {
 		return err

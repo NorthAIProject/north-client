@@ -17,6 +17,9 @@ type EmbedderOptions struct {
 	// registry's meter because this path unwraps the registered client to reach
 	// the embeddings endpoint, so the wrapper that meters chat is left behind.
 	Meter ai.Meter
+
+	// Consent is passed separately for the same reason.
+	Consent ai.ConsentChecker
 }
 
 // Embedder returns the client that will produce vectors, or nil when
@@ -45,9 +48,9 @@ func Embedder(registry *ai.Registry, opts EmbedderOptions) (ai.Embedder, error) 
 			opts.Provider)
 	}
 
-	return compat.WithEmbeddings(openaicompat.EmbedOptions{
+	return ai.GatedEmbedder(compat.WithEmbeddings(openaicompat.EmbedOptions{
 		Model:      opts.Model,
 		Dimensions: opts.Dimensions,
 		Meter:      opts.Meter,
-	}), nil
+	}), opts.Consent), nil
 }

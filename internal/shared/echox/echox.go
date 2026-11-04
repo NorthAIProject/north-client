@@ -24,6 +24,7 @@ import (
 
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
+	"github.com/NorthAIProject/north-client/internal/shared/i18n"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
@@ -235,6 +236,12 @@ func ErrorHandler(c *echo.Context, err error) {
 			writeStatus(c, coded.StatusCode(), "")
 		}
 		return
+	}
+
+	// One sentence whichever feature was refused: its own "could not build the
+	// plan" would read as a failure rather than a choice the person made.
+	if errors.Is(cause, apperr.ErrAIConsentRequired) {
+		message = i18n.T(ctx, "ai.consent.off")
 	}
 
 	if status := httpx.Status(cause); status >= http.StatusInternalServerError {

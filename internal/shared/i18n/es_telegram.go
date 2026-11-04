@@ -28,6 +28,8 @@ var spanishTelegram = map[string]string{
 	"tg.voice.download":    "No he podido descargar esa nota de voz. ¿Me la envías otra vez?",
 	"tg.wrong":             "Algo ha ido mal por mi lado. Inténtalo de nuevo en un momento.",
 	"tg.nocredit":          "No puedo llegar a un modelo ahora mismo — el servicio se ha quedado sin crédito. Inténtalo de nuevo en un momento.",
+	"tg.aiconsent":         "Tu coach está desactivado hasta que permitas compartir datos con la IA. Puedes activarlo en la app de Khepri, en Ajustes.",
+	"ai.consent.off":       "La IA está desactivada en tu cuenta. Actívala en Ajustes, en Compartir datos con la IA.",
 
 	"tg.confirm.again": "Todavía necesito un sí o un no primero.",
 	"tg.confirm":       "Antes de hacer esto, ¿me lo confirmas?",

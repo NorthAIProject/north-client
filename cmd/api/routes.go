@@ -20,6 +20,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/agent"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/openaicompat"
+	"github.com/NorthAIProject/north-client/internal/aiconsent"
 	"github.com/NorthAIProject/north-client/internal/aicreds"
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/apns"
@@ -273,6 +274,7 @@ func routes(
 		Provider:   cfg.AI.UploadProvider,
 		Model:      cfg.AI.Model,
 	})
+	mediaSvc.WithConsent(aiconsent.Checker(pool, cfg.AI.ConsentRequired))
 
 	// Biometrics -> calculator/activity both need the user's current weight,
 	// so biometrics is constructed first and passed in as a lookup rather
@@ -670,6 +672,7 @@ func routes(
 		Context:    reports.NewInsightsContext(insightsSvc, mealProgressSvc, memorySvc),
 		FastModel:  cfg.AI.FastModel,
 	})
+	reportSvc.WithConsent(aiconsent.Checker(pool, cfg.AI.ConsentRequired))
 
 	// The weekly review reads goals and reports, and sets the week's training
 	// volume, so it is wired after both and handed back to workouts.
@@ -1097,6 +1100,7 @@ func routes(
 		voice:        voice.NewAPI(voiceSvc, quotaSvc),
 		exercises:    exercises.NewAPI(exerciseSvc, art.Frames),
 		settings:     settings.NewAPI(settingsHandler),
+		aiConsent:    aiconsent.NewAPI(aiconsent.NewService(pool), registry.Names()),
 		vault:        vaultHandler,
 		training:     workouts.NewAPI(workoutSvc).WithRecaps(liftSvc).WithLoads(liftSvc),
 		activity:     activity.NewAPI(activitySvc),
