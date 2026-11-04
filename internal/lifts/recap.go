@@ -17,8 +17,9 @@ import (
 // Sessions reads the timed workout a recap describes.
 type Sessions interface {
 	Get(ctx context.Context, id, userID uuid.UUID) (activity.Session, error)
-	// CompletedByIDs is not owner-scoped; whoever calls it authorizes.
-	CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]activity.Session, error)
+	// CompletedByIDs reads only ownerIDs' sessions; whoever calls it authorizes
+	// those owners.
+	CompletedByIDs(ctx context.Context, ownerIDs, ids []uuid.UUID) ([]activity.Session, error)
 }
 
 // Prescriptions is what the week containing at asked for on a weekday: its

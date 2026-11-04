@@ -12,21 +12,23 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 )
 
-// CardsFor builds the workout card of each completed session in sessionIDs,
-// keyed by session id. A session that is missing or not completed is absent.
+// CardsFor builds the workout card of each completed session in sessionIDs
+// that belongs to one of ownerIDs, keyed by session id. A session that is
+// missing, not completed or somebody else's is absent, and its rows are never
+// read.
 //
-// It is not owner-scoped: the caller must already have decided that the
-// reader may see these workouts, which is why a feed or a profile asks for
-// ids it chose rather than for anyone's.
-func (s *Service) CardsFor(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID]lift.Card, error) {
+// It does not check the reader: the caller must already have decided that the
+// reader may see these owners' workouts, which is why a feed or a profile names
+// the people as well as the ids it chose.
+func (s *Service) CardsFor(ctx context.Context, ownerIDs, sessionIDs []uuid.UUID) (map[uuid.UUID]lift.Card, error) {
 	out := map[uuid.UUID]lift.Card{}
-	if len(sessionIDs) == 0 {
+	if len(sessionIDs) == 0 || len(ownerIDs) == 0 {
 		return out, nil
 	}
 	if s.sessions == nil {
 		return nil, errors.New("lifts: sessions not wired")
 	}
-	sessions, err := s.sessions.CompletedByIDs(ctx, sessionIDs)
+	sessions, err := s.sessions.CompletedByIDs(ctx, ownerIDs, sessionIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +40,7 @@ func (s *Service) CardsFor(ctx context.Context, sessionIDs []uuid.UUID) (map[uui
 	for i, se := range sessions {
 		ids[i] = se.ID
 	}
-	all, err := s.repo.ListForSessions(ctx, ids)
+	all, err := s.repo.ListForSessions(ctx, ownerIDs, ids)
 	if err != nil {
 		return nil, err
 	}

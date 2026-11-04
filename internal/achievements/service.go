@@ -30,10 +30,11 @@ type Inbox interface {
 	NoteWithPush(ctx context.Context, userID uuid.UUID, kind, dedupe, title, body, href string) error
 }
 
-// WorkoutCards builds the card of finished workouts, by session id. A session
-// that is missing or not finished is absent from the result.
+// WorkoutCards builds the card of the named owners' finished workouts, by
+// session id. A session that is missing, not finished or somebody else's is
+// absent from the result.
 type WorkoutCards interface {
-	CardsFor(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID]lift.Card, error)
+	CardsFor(ctx context.Context, ownerIDs, sessionIDs []uuid.UUID) (map[uuid.UUID]lift.Card, error)
 }
 
 // KindKudos is the bell note for kudos received.
@@ -279,19 +280,22 @@ func (s *Service) attachCards(ctx context.Context, items []Item) {
 	if s.cards == nil {
 		return
 	}
-	var ids []uuid.UUID
+	var owners, ids []uuid.UUID
 	for _, it := range items {
 		if it.Kind != achievement.KindWorkoutCompleted {
 			continue
 		}
 		if id, err := uuid.Parse(it.SourceKey); err == nil {
+			// The item is on this page because the viewer may see its author,
+			// and its source is always the author's own session.
+			owners = append(owners, it.UserID)
 			ids = append(ids, id)
 		}
 	}
 	if len(ids) == 0 {
 		return
 	}
-	cards, err := s.cards.CardsFor(ctx, ids)
+	cards, err := s.cards.CardsFor(ctx, owners, ids)
 	if err != nil {
 		s.log.Warn("could not build workout cards for the feed", "error", err)
 		return

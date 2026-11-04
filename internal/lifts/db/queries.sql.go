@@ -362,13 +362,21 @@ func (q *Queries) ListSetsForSession(ctx context.Context, arg ListSetsForSession
 const listSetsForSessions = `-- name: ListSetsForSessions :many
 SELECT id, user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at, kind, rir, client_id FROM set_logs
 WHERE activity_session_id = ANY($1::uuid[])
+  AND user_id = ANY($2::uuid[])
 ORDER BY performed_at, set_number
 `
 
-// Every set logged against these workouts, in the order they were done. Not
-// owner-scoped: the caller decides whose workouts the reader may see.
-func (q *Queries) ListSetsForSessions(ctx context.Context, ids []uuid.UUID) ([]SetLog, error) {
-	rows, err := q.db.Query(ctx, listSetsForSessions, ids)
+type ListSetsForSessionsParams struct {
+	Ids      []uuid.UUID
+	OwnerIds []uuid.UUID
+}
+
+// Every set the named owners logged against these workouts, in the order they
+// were done. The caller decides whose workouts the reader may see before
+// asking. The insert above only links a set to its own user's session, so this
+// leaves out nothing a workout's owner logged.
+func (q *Queries) ListSetsForSessions(ctx context.Context, arg ListSetsForSessionsParams) ([]SetLog, error) {
+	rows, err := q.db.Query(ctx, listSetsForSessions, arg.Ids, arg.OwnerIds)
 	if err != nil {
 		return nil, err
 	}

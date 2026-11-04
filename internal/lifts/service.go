@@ -78,7 +78,7 @@ type Repository interface {
 	ListForExercises(ctx context.Context, userID uuid.UUID, keys []string, since time.Time) ([]Set, error)
 	ListForSession(ctx context.Context, userID, sessionID uuid.UUID) ([]Set, error)
 	ListForExercisesBefore(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error)
-	ListForSessions(ctx context.Context, sessionIDs []uuid.UUID) ([]Set, error)
+	ListForSessions(ctx context.Context, ownerIDs, sessionIDs []uuid.UUID) ([]Set, error)
 	ListForExercisesBetween(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error)
 }
 

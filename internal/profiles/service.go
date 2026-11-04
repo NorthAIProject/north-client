@@ -53,9 +53,10 @@ type Sessions interface {
 	ListCompleted(ctx context.Context, userID uuid.UUID, before time.Time, limit int) ([]activity.Session, error)
 }
 
-// Cards builds workout cards. It does not check the reader.
+// Cards builds workout cards of the named owners' sessions. It does not check
+// the reader.
 type Cards interface {
-	CardsFor(ctx context.Context, sessionIDs []uuid.UUID) (map[uuid.UUID]lift.Card, error)
+	CardsFor(ctx context.Context, ownerIDs, sessionIDs []uuid.UUID) (map[uuid.UUID]lift.Card, error)
 }
 
 // Badges reads the badges a person holds, whoever asks.
@@ -229,7 +230,7 @@ func (s *Service) page(ctx context.Context, ownerID uuid.UUID, before time.Time,
 	for i, se := range sessions {
 		ids[i] = se.ID
 	}
-	byID, err := s.cards.CardsFor(ctx, ids)
+	byID, err := s.cards.CardsFor(ctx, []uuid.UUID{ownerID}, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +256,7 @@ func (s *Service) Workout(ctx context.Context, viewer users.User, handle string,
 	if !shares.Training {
 		return lift.Card{}, apperr.ErrNotFound
 	}
-	byID, err := s.cards.CardsFor(ctx, []uuid.UUID{sessionID})
+	byID, err := s.cards.CardsFor(ctx, []uuid.UUID{p.ID}, []uuid.UUID{sessionID})
 	if err != nil {
 		return lift.Card{}, err
 	}

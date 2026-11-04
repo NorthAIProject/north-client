@@ -91,10 +91,10 @@ func (r *PostgresRepository) ListForExercisesBefore(ctx context.Context, userID 
 	return fromRows(rows), nil
 }
 
-// ListForSessions is every set logged against these workouts, in the order
-// they were done. It is not owner-scoped: the caller authorizes.
-func (r *PostgresRepository) ListForSessions(ctx context.Context, sessionIDs []uuid.UUID) ([]Set, error) {
-	rows, err := r.q.ListSetsForSessions(ctx, sessionIDs)
+// ListForSessions is every set ownerIDs logged against these workouts, in the
+// order they were done. The caller authorizes those owners.
+func (r *PostgresRepository) ListForSessions(ctx context.Context, ownerIDs, sessionIDs []uuid.UUID) ([]Set, error) {
+	rows, err := r.q.ListSetsForSessions(ctx, liftsdb.ListSetsForSessionsParams{Ids: sessionIDs, OwnerIds: ownerIDs})
 	if err != nil {
 		return nil, apperr.Wrap(err, "list sets for sessions")
 	}
