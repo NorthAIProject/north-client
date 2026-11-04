@@ -4,9 +4,8 @@ import (
 	"context"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/NorthAIProject/north-client/internal/insights/score"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -54,7 +53,7 @@ func (s *Service) AreaTrend(ctx context.Context, user users.User, weeks int, now
 	}
 
 	scores := make([][]score.Score, weeks)
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	g.SetLimit(areaParallel)
 	for i, w := range windows {
 		g.Go(func() error {

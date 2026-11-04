@@ -194,6 +194,28 @@ func (q *Queries) RequeueFailedEmbedJobsForUser(ctx context.Context, userID uuid
 	return result.RowsAffected(), nil
 }
 
+const requeueInterruptedJob = `-- name: RequeueInterruptedJob :exec
+UPDATE jobs
+SET status     = 'pending',
+    attempts   = greatest(attempts - 1, 0),
+    run_after  = now(),
+    last_error = $2,
+    updated_at = now()
+WHERE id = $1
+`
+
+type RequeueInterruptedJobParams struct {
+	ID        uuid.UUID
+	LastError string
+}
+
+// Returns a job a shutdown interrupted, ready to run at once and with the attempt
+// given back: a deploy says nothing about whether the job can succeed.
+func (q *Queries) RequeueInterruptedJob(ctx context.Context, arg RequeueInterruptedJobParams) error {
+	_, err := q.db.Exec(ctx, requeueInterruptedJob, arg.ID, arg.LastError)
+	return err
+}
+
 const retryJob = `-- name: RetryJob :exec
 UPDATE jobs
 SET status     = 'pending',

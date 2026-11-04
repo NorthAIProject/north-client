@@ -5,9 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -357,7 +356,7 @@ func (s *Service) Metric(ctx context.Context, user users.User, rg timerange.Rang
 	out := MetricData{Range: rg, Metric: m}
 	prev := rg.Previous()
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	g.Go(func() (err error) {
 		out.Points, err = m.load(gctx, s, user, rg)
 		return

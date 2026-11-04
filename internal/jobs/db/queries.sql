@@ -36,6 +36,17 @@ SET status     = 'pending',
     updated_at = now()
 WHERE id = $1;
 
+-- name: RequeueInterruptedJob :exec
+-- Returns a job a shutdown interrupted, ready to run at once and with the attempt
+-- given back: a deploy says nothing about whether the job can succeed.
+UPDATE jobs
+SET status     = 'pending',
+    attempts   = greatest(attempts - 1, 0),
+    run_after  = now(),
+    last_error = $2,
+    updated_at = now()
+WHERE id = $1;
+
 -- name: FailJob :exec
 UPDATE jobs
 SET status = 'failed', last_error = $2, updated_at = now()

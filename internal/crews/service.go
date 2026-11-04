@@ -12,12 +12,12 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/crews/crew"
 	"github.com/NorthAIProject/north-client/internal/crews/live"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -361,7 +361,7 @@ func (s *Service) Board(ctx context.Context, crewID, viewerID uuid.UUID) (Board,
 	// people, so fill a few at a time rather than one after another.
 	now := s.now()
 	out.Members = make([]Member, len(rows))
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	g.SetLimit(boardFillers)
 	for i, r := range rows {
 		m := Member{ID: r.ID, DisplayName: r.DisplayName, Owner: r.ID == c.OwnerID, Me: r.ID == viewerID, Role: r.Role}

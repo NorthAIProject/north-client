@@ -395,11 +395,12 @@ func (a *API) putAI(c *echo.Context) error {
 	}
 	// As on the web: find out in the background whether this provider will
 	// call the coach's tools. The answer appears on a later GET.
-	go func(userID uuid.UUID) {
+	userID := user.ID
+	a.h.background.Go("provider tools probe", func() {
 		probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), probeBudget)
 		defer cancel()
 		a.h.aicreds.ProbeTools(probeCtx, userID)
-	}(user.ID)
+	})
 
 	out, err := a.aiSettings(ctx, user.ID)
 	if err != nil {

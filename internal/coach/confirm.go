@@ -283,7 +283,7 @@ func (s *Service) Resume(ctx context.Context, user users.User, conversationID uu
 	}
 
 	out := make(chan ai.StreamChunk)
-	go s.pump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
+	s.startPump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
 		conversation: conversation,
 		user:         user,
 		provider:     client.Name(),

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"time"
+
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 )
 
 // pollTimeoutSeconds is how long Telegram holds a getUpdates call open waiting
@@ -34,7 +36,10 @@ type Poller struct {
 type PollerConfig struct {
 	Messages Handler
 	Client   *Client
-	Log      *slog.Logger
+
+	// Background lets a shutdown wait for turns. Nil is valid.
+	Background *lifecycle.Tracker
+	Log        *slog.Logger
 }
 
 // NewPoller builds the poller, or returns nil when there is nothing to poll
@@ -48,7 +53,7 @@ func NewPoller(cfg PollerConfig) *Poller {
 		log = slog.Default()
 	}
 	return &Poller{
-		bridge: bridge{messages: cfg.Messages, client: cfg.Client, log: log},
+		bridge: bridge{messages: cfg.Messages, client: cfg.Client, log: log, background: cfg.Background},
 		client: cfg.Client,
 		log:    log,
 	}

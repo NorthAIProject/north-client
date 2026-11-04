@@ -344,6 +344,15 @@ func (q *Queue) Retry(ctx context.Context, id uuid.UUID, after time.Time, reason
 	}), "retry job")
 }
 
+// Requeue returns a job a shutdown interrupted to the queue, ready at once and
+// with its attempt given back.
+func (q *Queue) Requeue(ctx context.Context, id uuid.UUID, reason string) error {
+	return apperr.Wrap(q.q.RequeueInterruptedJob(ctx, jobsdb.RequeueInterruptedJobParams{
+		ID:        id,
+		LastError: reason,
+	}), "requeue job")
+}
+
 // Fail marks a job permanently failed.
 func (q *Queue) Fail(ctx context.Context, id uuid.UUID, reason string) error {
 	return apperr.Wrap(q.q.FailJob(ctx, jobsdb.FailJobParams{ID: id, LastError: reason}), "fail job")

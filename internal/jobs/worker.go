@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -33,6 +34,12 @@ const jobTimeout = 15 * time.Minute
 // in 'running' until the stale sweep and be run again from the top.
 const bookkeepingTimeout = 10 * time.Second
 
+// shutdownGrace is how long the current job may keep running once the worker is
+// told to stop. After that its context is cancelled and it is requeued, rather
+// than being killed outright and waiting out staleAfter. Below the pod's
+// terminationGracePeriodSeconds in the infra repo.
+const shutdownGrace = 60 * time.Second
+
 // Handler performs one kind of job. Payload is the JSON it was enqueued with.
 type Handler func(ctx context.Context, payload json.RawMessage) error
 
@@ -51,11 +58,21 @@ type Worker struct {
 	// jobTimeout bounds one handler run. A field so tests can hit it without
 	// waiting fifteen minutes.
 	jobTimeout time.Duration
+
+	// shutdownGrace is the constant of that name. A field so tests do not wait
+	// out a minute.
+	shutdownGrace time.Duration
 }
 
 // WithClock fixes the worker's idea of now. Tests only.
 func (w *Worker) WithClock(now func() time.Time) *Worker {
 	w.now = now
+	return w
+}
+
+// WithShutdownGrace changes how long a job may run on after shutdown. Tests only.
+func (w *Worker) WithShutdownGrace(d time.Duration) *Worker {
+	w.shutdownGrace = d
 	return w
 }
 
@@ -72,7 +89,7 @@ type periodicEnqueue struct {
 }
 
 func NewWorker(queue *Queue, log *slog.Logger) *Worker {
-	return &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler), now: time.Now, jobTimeout: jobTimeout}
+	return &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler), now: time.Now, jobTimeout: jobTimeout, shutdownGrace: shutdownGrace}
 }
 
 // WithMetrics attaches counters. Returns the worker so it can be wired in one
@@ -181,9 +198,16 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 	}
 
 	// Detached from the loop's context so shutdown lets the current job finish
-	// rather than abandoning it half-done.
+	// rather than abandoning it half-done, for as long as shutdownGrace allows.
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.jobTimeout)
 	defer cancel()
+
+	grace := w.shutdownGrace
+	stopWatching := context.AfterFunc(ctx, func() {
+		timer := time.AfterFunc(grace, cancel)
+		context.AfterFunc(runCtx, func() { timer.Stop() })
+	})
+	defer stopWatching()
 
 	// The handler logs through the context like every other layer does, so it
 	// gets the logger built above rather than the default one. Without this a
@@ -208,6 +232,15 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 	if err == nil {
 		log.Info("job done", slog.Duration("took", elapsed))
 		return true, w.queue.Complete(bookCtx, job.ID)
+	}
+
+	// Ahead of the attempt check: running out of shutdown grace says nothing
+	// about the job, so it must not be what fails it. Canceled rather than
+	// DeadlineExceeded, because only the grace timer cancels runCtx while the
+	// handler is still running.
+	if ctx.Err() != nil && errors.Is(runCtx.Err(), context.Canceled) {
+		log.Warn("job interrupted by shutdown, requeued", slog.Any("error", err))
+		return true, w.queue.Requeue(bookCtx, job.ID, "interrupted by shutdown: "+err.Error())
 	}
 
 	if job.Exhausted() {

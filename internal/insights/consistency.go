@@ -4,10 +4,9 @@ import (
 	"context"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -38,7 +37,7 @@ func (s *Service) Consistency(ctx context.Context, user users.User, now time.Tim
 	trained, checked := map[time.Time]bool{}, map[time.Time]bool{}
 	var out ConsistencyData
 	var trainedDays, setDays, checkDays []time.Time
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	if s.activity != nil {
 		g.Go(func() error {
 			sessions, err := s.activity.ListBetween(gctx, user.ID, rg)

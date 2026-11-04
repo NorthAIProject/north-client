@@ -9,7 +9,6 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/bodymap"
@@ -17,6 +16,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n/fieldmsg"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -236,7 +236,7 @@ func (st Stats) VolumeKg() float64 {
 
 func (s *Service) Stats(ctx context.Context, user users.User, rg timerange.Range) (Stats, error) {
 	var all, prior []Set
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	g.Go(func() (err error) {
 		all, err = s.repo.ListBetween(gctx, user.ID, rg.Since.Add(-history), rg.Until)
 		return

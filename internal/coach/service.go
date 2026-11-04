@@ -18,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
 	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 	"github.com/NorthAIProject/north-client/internal/spend"
@@ -96,6 +97,7 @@ const toolRounds = 5
 // Telegram and MCP adapters, all call SendMessage. None of them builds a prompt
 // or touches a provider.
 type Service struct {
+	background    *lifecycle.Tracker
 	conversations *conversations.Service
 	contextB      *ContextBuilder
 	promptB       *PromptBuilder
@@ -209,6 +211,10 @@ func (f AttachmentTextFunc) AttachmentText(ctx context.Context, userID, mediaID 
 }
 
 type Options struct {
+	// Background lets a shutdown wait for replies being generated. Nil still
+	// recovers panics and simply has nothing to wait for.
+	Background *lifecycle.Tracker
+
 	Registry       *ai.Registry
 	Conversations  *conversations.Service
 	ContextBuilder *ContextBuilder
@@ -287,6 +293,7 @@ func (s *Service) WithAway(in Inbox) *Service {
 
 func NewService(opts Options) *Service {
 	return &Service{
+		background:     opts.Background,
 		conversations:  opts.Conversations,
 		contextB:       opts.ContextBuilder,
 		promptB:        opts.PromptBuilder,
@@ -386,7 +393,7 @@ func (s *Service) SendIncoming(ctx context.Context, user users.User, conversatio
 	// One trace id per turn: every generation and tool span this message
 	// produces, however many rounds it takes, shares it — that is what lets
 	// PostHog group them into one trace instead of one row per model call.
-	go s.pump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
+	s.startPump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
 		conversation: conversation,
 		user:         user,
 		provider:     client.Name(),
@@ -680,6 +687,21 @@ type pumpTarget struct {
 // callerCtx governs delivery; genCtx governs generation. When the caller goes
 // away the loop keeps draining so the reply still completes and is persisted —
 // it simply stops trying to send.
+// startPump runs pump detached from the request, tracked so a shutdown can let
+// the reply finish and be saved.
+func (s *Service) startPump(
+	callerCtx context.Context,
+	genCtx context.Context,
+	cancelGen context.CancelFunc,
+	stream <-chan ai.StreamChunk,
+	out chan<- ai.StreamChunk,
+	target pumpTarget,
+) {
+	s.background.Go("coach reply", func() {
+		s.pump(callerCtx, genCtx, cancelGen, stream, out, target)
+	})
+}
+
 func (s *Service) pump(
 	callerCtx context.Context,
 	genCtx context.Context,
@@ -1059,7 +1081,7 @@ func (s *Service) BeginReflection(ctx context.Context, user users.User, conversa
 	}
 
 	out := make(chan ai.StreamChunk)
-	go s.pump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
+	s.startPump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
 		conversation: conversation,
 		user:         user,
 		provider:     client.Name(),

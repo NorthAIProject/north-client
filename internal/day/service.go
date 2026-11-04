@@ -14,7 +14,6 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/biometrics/biometric"
@@ -33,6 +32,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/soreness"
@@ -311,7 +311,7 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 		IsToday: rg.Contains(now),
 	}
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 
 	g.Go(func() error { return s.loadFood(gctx, user, date, &snap) })
 	g.Go(func() error { return s.loadWater(gctx, user, rg, &snap) })
@@ -899,7 +899,7 @@ func (s *Service) CheckInVersion(ctx context.Context, userID uuid.UUID) (string,
 // refresh: three small queries rather than the whole day.
 func (s *Service) LoadStreakTile(ctx context.Context, user users.User) (StreakTile, error) {
 	var tile StreakTile
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	if s.streaks != nil {
 		g.Go(func() (err error) { tile.Streak, err = s.streaks.Streak(gctx, user); return })
 	}

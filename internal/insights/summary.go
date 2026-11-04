@@ -3,8 +3,7 @@ package insights
 import (
 	"context"
 
-	"golang.org/x/sync/errgroup"
-
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -32,7 +31,7 @@ type SummaryData struct {
 func (s *Service) Summary(ctx context.Context, user users.User, rg timerange.Range) (SummaryData, error) {
 	out := SummaryData{Range: rg}
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 
 	g.Go(func() (err error) {
 		out.Body, err = s.Body(gctx, user, rg)
