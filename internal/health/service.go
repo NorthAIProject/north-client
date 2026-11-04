@@ -44,6 +44,7 @@ type Repository interface {
 	HasFromSource(ctx context.Context, userID uuid.UUID, source string) (bool, error)
 	Save(ctx context.Context, userID uuid.UUID, source string, readings []Reading) (int, error)
 	Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]Stored, error)
+	Latest(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) (Stored, bool, error)
 	Stats(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) (metricStats, error)
 	DeleteBySource(ctx context.Context, userID uuid.UUID, source string) error
 }
@@ -102,6 +103,12 @@ func (s *Service) Ingest(ctx context.Context, userID uuid.UUID, source string, r
 // first.
 func (s *Service) Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]Stored, error) {
 	return s.repo.Between(ctx, userID, metric, since, until)
+}
+
+// Latest returns the newest of one metric's readings inside a half-open
+// window; false when the window holds none.
+func (s *Service) Latest(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) (Stored, bool, error) {
+	return s.repo.Latest(ctx, userID, metric, since, until)
 }
 
 // Summary renders the headline metrics of the last `days` days as sentences,
