@@ -128,6 +128,28 @@ func (q *Queries) ListAlertSchedules(ctx context.Context, userID uuid.UUID) ([]U
 	return items, nil
 }
 
+const statsDigestClaimed = `-- name: StatsDigestClaimed :one
+SELECT EXISTS(
+    SELECT 1 FROM stats_digest_sends
+    WHERE user_id = $1 AND cadence = $2 AND period_start = $3
+)::bool
+`
+
+type StatsDigestClaimedParams struct {
+	UserID      uuid.UUID
+	Cadence     string
+	PeriodStart pgtype.Date
+}
+
+// Whether this window is already booked, so a sweep can avoid computing a digest
+// it would not be allowed to send. Never the lock: see ClaimStatsDigest.
+func (q *Queries) StatsDigestClaimed(ctx context.Context, arg StatsDigestClaimedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, statsDigestClaimed, arg.UserID, arg.Cadence, arg.PeriodStart)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const upsertAlertSchedule = `-- name: UpsertAlertSchedule :one
 INSERT INTO user_alert_schedules (user_id, kind, enabled, every_days, reminder_days)
 VALUES ($1, $2, $3, $4, $5)

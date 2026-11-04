@@ -111,6 +111,7 @@ type DigestPrefs interface {
 
 // DigestLedger books a period so the same one cannot be sent twice.
 type DigestLedger interface {
+	DigestClaimed(ctx context.Context, userID uuid.UUID, cadence string, period time.Time) (bool, error)
 	ClaimDigest(ctx context.Context, userID uuid.UUID, cadence string, period time.Time) (bool, error)
 }
 
@@ -205,6 +206,18 @@ func (s *DigestSweeper) sweepOne(ctx context.Context, now time.Time, user users.
 	// report appears in the app and the Telegram note is incidental, while a
 	// digest IS the push, which is exactly what quiet hours exist to govern.
 	if prefs.QuietHoursEnabled && prefs.InQuietHours(local) {
+		return false, nil
+	}
+
+	// The gate is true every hour of the period, so without this a daily digest
+	// is computed about sixteen times a day and thrown away fifteen of them.
+	// Reading here does not replace the claim below, which is still what stops
+	// two sweeps both sending.
+	booked, err := s.ledger.DigestClaimed(ctx, user.ID, prefs.Cadence(), period)
+	if err != nil {
+		return false, err
+	}
+	if booked {
 		return false, nil
 	}
 
