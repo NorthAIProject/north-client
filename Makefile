@@ -1,4 +1,4 @@
-# Aaru API (Go). Tests need Postgres: `docker compose up -d` here, or set POSTGRES_*.
+# North API (Go). Tests need Postgres: `docker compose up -d` here, or set POSTGRES_*.
 .PHONY: generate api sqlc build test lint fmt run migrate
 
 generate: api sqlc
@@ -10,7 +10,9 @@ sqlc:
 	go tool sqlc generate
 
 build:
-	go build -o bin/aaru ./cmd/aaru
+	go build -o bin/api ./cmd/api
+	go build -o bin/worker ./cmd/worker
+	go build -o bin/mcp-server ./cmd/mcp-server
 
 test:
 	go test ./...
@@ -22,10 +24,10 @@ fmt:
 	go tool gofumpt -w .
 
 run:
-	go run ./cmd/aaru
+	go run ./cmd/api
 
 migrate:
-	go run ./cmd/aaru --db-migrate
+	go run ./cmd/api migrate
 
 check-fmt: ## Format validation — list files with wrong formatting
 	@bad=$$(find . -name '*.go' -not -path './vendor/*' | xargs gofmt -l); \
