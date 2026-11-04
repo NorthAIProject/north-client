@@ -32,14 +32,15 @@ func TestConsentLifecycle(t *testing.T) {
 	if err != nil || got.Status != aiconsent.StatusUnset || got.DecidedAt != nil {
 		t.Fatalf("never asked: got %+v, %v", got, err)
 	}
-	if allowed, err := svc.AllowsAI(ctx, userID); err != nil || allowed {
+	allowed, err := svc.AllowsAI(ctx, userID)
+	if err != nil || allowed {
 		t.Fatalf("never asked must refuse: %v, %v", allowed, err)
 	}
 
-	if _, err := svc.Set(ctx, userID, aiconsent.StatusGranted); err != nil {
+	if _, err = svc.Set(ctx, userID, aiconsent.StatusGranted); err != nil {
 		t.Fatalf("grant: %v", err)
 	}
-	if allowed, _ := svc.AllowsAI(ctx, userID); !allowed {
+	if ok, _ := svc.AllowsAI(ctx, userID); !ok {
 		t.Fatal("granted must allow")
 	}
 
@@ -47,11 +48,11 @@ func TestConsentLifecycle(t *testing.T) {
 	if err != nil || declined.Status != aiconsent.StatusDeclined || declined.Version != aiconsent.Version || declined.DecidedAt == nil {
 		t.Fatalf("decline: %+v, %v", declined, err)
 	}
-	if allowed, _ := svc.AllowsAI(ctx, userID); allowed {
+	if ok, _ := svc.AllowsAI(ctx, userID); ok {
 		t.Fatal("declined must refuse")
 	}
 
-	if _, err := svc.Set(ctx, userID, "maybe"); err == nil {
+	if _, err = svc.Set(ctx, userID, "maybe"); err == nil {
 		t.Fatal("an unknown decision must be rejected")
 	}
 }
