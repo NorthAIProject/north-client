@@ -96,6 +96,11 @@ const titleTimeout = 30 * time.Second
 // answer — and low enough that a loop costs a few calls rather than a budget.
 const toolRounds = 5
 
+// toolRoundRetryWait is the pause before asking again when the model could not
+// take a round that follows tools. Managed clients make one attempt each, because
+// the chain is their retry, and these rounds have no chain.
+const toolRoundRetryWait = time.Second
+
 // Service turns a user's message into a coached reply.
 //
 // Everything conversational passes through here: the web handler, and later the
@@ -935,7 +940,7 @@ func (s *Service) pump(
 				slog.Any("error", err))
 		}
 
-		next, err := target.client.Chat(genCtx, request)
+		next, err := continueAfterTools(genCtx, target.client, request)
 		if err != nil {
 			streamErr = apperr.Wrap(err, "coach: continue after tools")
 			if listening {
@@ -1002,6 +1007,24 @@ func (s *Service) pump(
 		// then or it offers a composer that refuses.
 		ended: s.maybeEndReflection(saveCtx, target.conversation, text),
 	}, true
+}
+
+// continueAfterTools asks the model for the round after a tool call, once more if
+// it was unavailable. The tools have already run and been stored, so a brief 429
+// here would otherwise end the turn. It stays on the same client because the
+// request carries that provider's opaque state for the calls.
+func continueAfterTools(ctx context.Context, client ai.Client, req ai.Request) (<-chan ai.StreamChunk, error) {
+	stream, err := client.Chat(ctx, req)
+	if err == nil || !ai.Failover(err) || !apperr.Is(err, apperr.ErrUnavailable) {
+		return stream, err
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, err
+	case <-time.After(toolRoundRetryWait):
+	}
+	return client.Chat(ctx, req)
 }
 
 // afterReply is the work a saved reply sets off, none of which the person is
