@@ -1,44 +1,14 @@
 # Build stage:
-# We install everything we need here, build the CSS, generate templ code,
-# and compile the app binaries.
+# We download the modules and compile the app binaries.
 FROM golang:1.27.3 AS build
 WORKDIR /app
 
-# Keep tool installation independent of application source changes.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates wget && \
-    rm -rf /var/lib/apt/lists/*
-
-ARG TARGETARCH
-ARG TAILWIND_VERSION=4.3.3
-RUN case "${TARGETARCH:-amd64}" in \
-      amd64) tailwind_arch="x64" ;; \
-      arm64) tailwind_arch="arm64" ;; \
-      *) echo "unsupported architecture: ${TARGETARCH}" >&2 && exit 1 ;; \
-    esac && \
-    wget -q --show-progress -O /usr/local/bin/tailwindcss \
-      "https://github.com/tailwindlabs/tailwindcss/releases/download/v${TAILWIND_VERSION}/tailwindcss-linux-${tailwind_arch}" && \
-    chmod +x /usr/local/bin/tailwindcss
-
 # Copy Go dependency files first so Docker can cache downloads better.
-COPY --link go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go mod download
+COPY go.mod go.sum ./
+RUN go mod download
 
 # Copy the rest of the project files.
-COPY --link . .
-
-# Build CSS via the same script CI uses so local/CI/image stay aligned.
-# build-css.sh downloads the templui module so its component sources are
-# available to Tailwind even on a cold module cache.
-RUN --mount=type=cache,target=/go/pkg/mod \
-    bash scripts/build-css.sh
-
-# Generate Go files from .templ files.
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go tool templ generate
+COPY . .
 
 # Build both static Linux binaries for the final image.
 #
@@ -49,10 +19,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 #
 # Goose SQL is embedded via migrations.FS, so the runtime image needs no
 # separate migrations directory — `main migrate` applies the schema.
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/main ./cmd/web && \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/worker ./cmd/worker
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -o worker ./cmd/worker
 
 # Runtime stage:
 # This image stays small and only contains the final app binaries.
@@ -66,8 +34,8 @@ RUN apk add --no-cache ca-certificates
 ENV GO_ENV=production
 
 # Copy the built binaries from the build stage.
-COPY --link --from=build /app/main .
-COPY --link --from=build /app/worker .
+COPY --from=build /app/main .
+COPY --from=build /app/worker .
 
 # The app listens on port 8090.
 EXPOSE 8090
