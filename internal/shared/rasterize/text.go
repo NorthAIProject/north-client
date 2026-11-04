@@ -28,46 +28,60 @@ const (
 	textBold
 )
 
-// Faces are parsed once and cached by size. Parsing an OpenType face is not
-// free and a card draws a dozen strings; a worker sweeping a thousand accounts
-// would otherwise re-parse the typeface for every one of them.
+// The typefaces are parsed once and shared. Parsing is the expensive part, and
+// a worker sweeping a thousand accounts must not repeat it for each of them. An
+// *opentype.Font is safe to share: its methods only need a buffer of the
+// caller's own, and each face brings one.
 var (
-	faceMu    sync.Mutex
-	faceCache = map[faceKey]font.Face{}
-
 	parsedOnce sync.Once
 	regularTTF *opentype.Font
 	boldTTF    *opentype.Font
 	parseErr   error
 )
 
-type faceKey struct {
-	face textFace
-	size float64
-}
-
-func loadFace(which textFace, size float64) (font.Face, error) {
+func parsedFonts() (regular, bold *opentype.Font, err error) {
 	parsedOnce.Do(func() {
 		if regularTTF, parseErr = opentype.Parse(goregular.TTF); parseErr != nil {
 			return
 		}
 		boldTTF, parseErr = opentype.Parse(gobold.TTF)
 	})
-	if parseErr != nil {
-		return nil, parseErr
-	}
+	return regularTTF, boldTTF, parseErr
+}
 
-	faceMu.Lock()
-	defer faceMu.Unlock()
+type faceKey struct {
+	face textFace
+	size float64
+}
 
+// faces holds the sized faces for one render.
+//
+// One per RenderCard call and never shared. A font.Face is what draws, and
+// opentype documents it as unsafe to use concurrently: it writes to a scratch
+// buffer and a glyph cache on every glyph. A cache of them across renders meant
+// two digests drawing at once corrupted each other.
+type faces struct {
+	built map[faceKey]font.Face
+}
+
+func newFaces() *faces {
+	return &faces{built: map[faceKey]font.Face{}}
+}
+
+func (f *faces) load(which textFace, size float64) (font.Face, error) {
 	key := faceKey{face: which, size: size}
-	if cached, ok := faceCache[key]; ok {
+	if cached, ok := f.built[key]; ok {
 		return cached, nil
 	}
 
-	src := regularTTF
+	regular, bold, err := parsedFonts()
+	if err != nil {
+		return nil, err
+	}
+
+	src := regular
 	if which == textBold {
-		src = boldTTF
+		src = bold
 	}
 	built, err := opentype.NewFace(src, &opentype.FaceOptions{
 		Size: size,
@@ -79,7 +93,7 @@ func loadFace(which textFace, size float64) (font.Face, error) {
 	if err != nil {
 		return nil, err
 	}
-	faceCache[key] = built
+	f.built[key] = built
 	return built, nil
 }
 
@@ -88,11 +102,11 @@ func loadFace(which textFace, size float64) (font.Face, error) {
 // A font that will not load is drawn as nothing rather than returned as an
 // error: a digest missing a label is worth sending, and a digest that fails to
 // send because a typeface did not parse is not.
-func drawText(img *image.RGBA, x, y int, text string, c color.RGBA, which textFace, size float64) {
+func (f *faces) drawText(img *image.RGBA, x, y int, text string, c color.RGBA, which textFace, size float64) {
 	if text == "" {
 		return
 	}
-	face, err := loadFace(which, size)
+	face, err := f.load(which, size)
 	if err != nil {
 		return
 	}
@@ -106,16 +120,16 @@ func drawText(img *image.RGBA, x, y int, text string, c color.RGBA, which textFa
 }
 
 // drawTextCentred paints a string centred horizontally on x.
-func drawTextCentred(img *image.RGBA, x, y int, text string, c color.RGBA, which textFace, size float64) {
-	drawText(img, x-textWidth(text, which, size)/2, y, text, c, which, size)
+func (f *faces) drawTextCentred(img *image.RGBA, x, y int, text string, c color.RGBA, which textFace, size float64) {
+	f.drawText(img, x-f.textWidth(text, which, size)/2, y, text, c, which, size)
 }
 
 // textWidth measures a string in pixels, so a caller can centre or wrap it.
-func textWidth(text string, which textFace, size float64) int {
+func (f *faces) textWidth(text string, which textFace, size float64) int {
 	if text == "" {
 		return 0
 	}
-	face, err := loadFace(which, size)
+	face, err := f.load(which, size)
 	if err != nil {
 		return 0
 	}

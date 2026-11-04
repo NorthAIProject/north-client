@@ -6,8 +6,71 @@ import (
 	"image/color"
 	_ "image/png" // registers the PNG decoder for image.Decode
 	"os"
+	"sync"
 	"testing"
 )
+
+// A /stats command and an hourly sweep can both be drawing a card at the same
+// moment. Under -race this catches a face shared between renders: opentype.Face
+// keeps a scratch buffer and a glyph cache and is documented as unsafe to use
+// concurrently. Without -race the byte comparison still catches a render that
+// came out garbled.
+func TestRenderCardIsSafeToCallConcurrently(t *testing.T) {
+	card := Card{
+		Title:    "Last 7 days",
+		Subtitle: "2 of 3 on track",
+		Rings: []Ring{
+			{Label: "Body", Points: 72, HasData: true},
+			{Label: "Mind", Points: 41, HasData: true},
+			{Label: "Nutrition", HasData: false},
+		},
+		Bars: Bars{
+			Label:  "Daily score",
+			Values: []float64{3, 5, 2, 8, 6, 7, 4},
+			Labels: []string{"M", "T", "W", "T", "F", "S", "S"},
+		},
+	}
+
+	want, err := RenderCard(card)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	const (
+		goroutines = 8
+		renders    = 5
+	)
+	results := make(chan []byte, goroutines*renders)
+	errs := make(chan error, goroutines*renders)
+
+	var wg sync.WaitGroup
+	for range goroutines {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range renders {
+				raw, renderErr := RenderCard(card)
+				if renderErr != nil {
+					errs <- renderErr
+					continue
+				}
+				results <- raw
+			}
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	for renderErr := range errs {
+		t.Errorf("render: %v", renderErr)
+	}
+	for raw := range results {
+		if !bytes.Equal(raw, want) {
+			t.Fatal("a concurrent render differs from the same card drawn alone")
+		}
+	}
+}
 
 func decode(t *testing.T, raw []byte) image.Image {
 	t.Helper()

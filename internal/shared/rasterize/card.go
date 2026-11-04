@@ -36,14 +36,16 @@ const maxRings = 5
 
 // drawCard paints the whole card onto img.
 func drawCard(img *image.RGBA, c Card) {
-	drawText(img, cardPad, titleBaseline, c.Title, colorForeground, textBold, sizeTitle)
-	drawText(img, cardPad, subtitleBaseline, c.Subtitle, colorMuted, textRegular, sizeSubtitle)
+	f := newFaces()
 
-	drawRings(img, c.Rings)
-	drawBarPanel(img, c.Bars)
+	f.drawText(img, cardPad, titleBaseline, c.Title, colorForeground, textBold, sizeTitle)
+	f.drawText(img, cardPad, subtitleBaseline, c.Subtitle, colorMuted, textRegular, sizeSubtitle)
+
+	drawRings(img, f, c.Rings)
+	drawBarPanel(img, f, c.Bars)
 }
 
-func drawRings(img *image.RGBA, rings []Ring) {
+func drawRings(img *image.RGBA, f *faces, rings []Ring) {
 	if len(rings) == 0 {
 		return
 	}
@@ -67,18 +69,18 @@ func drawRings(img *image.RGBA, rings []Ring) {
 		drawRing(img, centreX, centreY, ringRadius, ringStroke, points)
 
 		if r.HasData {
-			drawTextCentred(img, int(centreX), int(centreY)+11,
+			f.drawTextCentred(img, int(centreX), int(centreY)+11,
 				fmt.Sprintf("%d", r.Points), colorForeground, textBold, sizeRingNum)
 		} else {
-			drawTextCentred(img, int(centreX), int(centreY)+11,
+			f.drawTextCentred(img, int(centreX), int(centreY)+11,
 				"—", colorMuted, textRegular, sizeRingNum)
 		}
 
-		drawTextCentred(img, int(centreX), ringLabelY, r.Label, colorMuted, textRegular, sizeLabel)
+		f.drawTextCentred(img, int(centreX), ringLabelY, r.Label, colorMuted, textRegular, sizeLabel)
 	}
 }
 
-func drawBarPanel(img *image.RGBA, bars Bars) {
+func drawBarPanel(img *image.RGBA, f *faces, bars Bars) {
 	if len(bars.Values) == 0 {
 		return
 	}
@@ -86,7 +88,7 @@ func drawBarPanel(img *image.RGBA, bars Bars) {
 	panel := image.Rect(cardPad, barsTop, CardWidth-cardPad, CardHeight-cardPad)
 	drawRect(img, panel, colorSurface)
 
-	drawText(img, panel.Min.X+20, panel.Min.Y+34, bars.Label, colorMuted, textRegular, sizeLabel)
+	f.drawText(img, panel.Min.X+20, panel.Min.Y+34, bars.Label, colorMuted, textRegular, sizeLabel)
 
 	plot := image.Rect(panel.Min.X+20, panel.Min.Y+52, panel.Max.X-20, panel.Max.Y-34)
 	drawBars(img, plot, bars.Values)
@@ -101,6 +103,6 @@ func drawBarPanel(img *image.RGBA, bars Bars) {
 		}
 		slot := float64(plot.Dx()) / float64(len(bars.Values))
 		x := float64(plot.Min.X) + slot*float64(i) + slot/2
-		drawTextCentred(img, int(x), panel.Max.Y-12, label, colorMuted, textRegular, 13)
+		f.drawTextCentred(img, int(x), panel.Max.Y-12, label, colorMuted, textRegular, 13)
 	}
 }
