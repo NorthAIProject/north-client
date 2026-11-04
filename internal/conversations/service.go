@@ -43,6 +43,7 @@ type Repository interface {
 	Append(ctx context.Context, msg NewMessage) (Message, error)
 	Messages(ctx context.Context, conversationID uuid.UUID, limit int) ([]Message, error)
 	Recent(ctx context.Context, conversationID uuid.UUID, limit int) ([]Message, error)
+	RecentBefore(ctx context.Context, conversationID, before uuid.UUID, limit int) ([]Message, error)
 	RecentUserMessages(ctx context.Context, userID uuid.UUID, limit int) ([]Message, error)
 	CountMessages(ctx context.Context, conversationID uuid.UUID) (int, error)
 	AwaitingExtraction(ctx context.Context, idleBefore time.Time, minMessages, limit int) ([]Pending, error)
@@ -129,9 +130,50 @@ func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	return s.repo.Delete(ctx, id, userID)
 }
 
-// History returns a conversation's messages in reading order.
+// History returns a conversation's first page, oldest first. A thread longer than
+// the page is missing its newest turns here; for showing a thread use Thread, and
+// for its latest turn use Recent.
 func (s *Service) History(ctx context.Context, conversationID uuid.UUID) ([]Message, error) {
 	return s.repo.Messages(ctx, conversationID, defaultHistoryLimit)
+}
+
+// ThreadPage is one screenful of a thread.
+type ThreadPage struct {
+	// Messages are in reading order, oldest first.
+	Messages []Message
+
+	// NextBefore is the cursor for the page before this one, nil when this page
+	// reaches the start of the thread.
+	NextBefore *uuid.UUID
+}
+
+// Thread returns the newest page of a conversation, or with before set the page
+// older than that message.
+//
+// The page is chosen from the end and returned oldest first, so a client that
+// draws the array in order and treats the last element as the latest stays
+// correct however long the thread grows. Ownership is the caller's to check.
+func (s *Service) Thread(ctx context.Context, conversationID, before uuid.UUID) (ThreadPage, error) {
+	// One more than a page: the extra row is how the end of the thread is told
+	// from a page that happens to be full.
+	var (
+		rows []Message
+		err  error
+	)
+	if before == uuid.Nil {
+		rows, err = s.repo.Recent(ctx, conversationID, defaultHistoryLimit+1)
+	} else {
+		rows, err = s.repo.RecentBefore(ctx, conversationID, before, defaultHistoryLimit+1)
+	}
+	if err != nil {
+		return ThreadPage{}, err
+	}
+
+	if len(rows) <= defaultHistoryLimit {
+		return ThreadPage{Messages: rows}, nil
+	}
+	rows = rows[1:]
+	return ThreadPage{Messages: rows, NextBefore: &rows[0].ID}, nil
 }
 
 // Recent returns the tail of a conversation, for context building.

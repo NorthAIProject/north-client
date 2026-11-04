@@ -99,6 +99,28 @@ func (s *Service) latestTurn(ctx context.Context, conversationID uuid.UUID) ([]c
 	return s.conversations.Recent(ctx, conversationID, latestTurnWindow)
 }
 
+// LatestReplyID names the reply the latest turn stored, for a client to rate. It
+// reports false when the turn stored none, such as a model that returned nothing:
+// the walk stops at the person's own message, so that turn cannot be credited with
+// the answer before it.
+func (s *Service) LatestReplyID(ctx context.Context, conversationID uuid.UUID) (uuid.UUID, bool, error) {
+	history, err := s.latestTurn(ctx, conversationID)
+	if err != nil {
+		return uuid.Nil, false, err
+	}
+	for i := len(history) - 1; i >= 0; i-- {
+		m := history[i]
+		switch {
+		case m.IsToolTurn():
+		case m.IsModel():
+			return m.ID, true, nil
+		default:
+			return uuid.Nil, false, nil
+		}
+	}
+	return uuid.Nil, false, nil
+}
+
 // ResolvePending runs or refuses the waiting call and continues the reply.
 //
 // Approving invokes the tools and hands their results back to the model;
