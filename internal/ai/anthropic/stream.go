@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/FACorreiaa/go-utils/pkg/util"
 	sdk "github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/packages/ssestream"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 )
@@ -55,43 +55,65 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		defer close(out)
 		defer func() { _ = stream.Close() }()
 
-		// Replayed for their text only: msg has already accumulated them.
-		for _, event := range held {
-			if !sendText(ctx, out, event) {
-				return
-			}
-		}
+		err := c.relay(ctx, out, stream, &msg, held, ended)
 
-		if !ended {
-			for stream.Next() {
-				event := stream.Current()
-				if err := msg.Accumulate(event); err != nil {
-					send(ctx, out, ai.StreamChunk{Err: c.classify(err)})
-					return
-				}
-				if !sendText(ctx, out, event) {
-					return
-				}
-			}
-			if err := stream.Err(); err != nil {
-				send(ctx, out, ai.StreamChunk{Err: c.classify(err)})
-				return
-			}
-			if err := stopError(msg.StopReason, msg.Content); err != nil {
-				send(ctx, out, ai.StreamChunk{Err: err})
-				return
-			}
+		// Sent whatever became of ctx. A send that also selected on it would
+		// drop both exactly when ctx had expired, and the reply would then read
+		// as finished with nothing spent. A reader drains to close, so these
+		// cannot block for ever. Usage goes first because the error is the last
+		// chunk a reader takes.
+		if spent := usage(msg.Usage); err == nil || spent != (ai.Usage{}) {
+			out <- ai.StreamChunk{Usage: &spent, Model: string(msg.Model)}
 		}
-
-		if calls := toolCalls(msg.Content); len(calls) > 0 {
-			if !send(ctx, out, ai.StreamChunk{ToolCalls: calls, ProviderState: turnState(msg.Content)}) {
-				return
-			}
+		if err != nil {
+			out <- ai.StreamChunk{Err: err}
 		}
-		send(ctx, out, ai.StreamChunk{Usage: util.Ptr(usage(msg.Usage)), Model: string(msg.Model)})
 	}()
 
 	return out, nil
+}
+
+// relay sends the reply to out as it arrives, accumulating it into msg, and
+// returns what ended it. nil means the reply is complete.
+func (c *Client) relay(
+	ctx context.Context,
+	out chan<- ai.StreamChunk,
+	stream *ssestream.Stream[sdk.MessageStreamEventUnion],
+	msg *sdk.Message,
+	held []sdk.MessageStreamEventUnion,
+	ended bool,
+) error {
+	// Replayed for their text only: msg has already accumulated them.
+	for _, event := range held {
+		if !sendText(ctx, out, event) {
+			return c.classify(ctx.Err())
+		}
+	}
+
+	if !ended {
+		for stream.Next() {
+			event := stream.Current()
+			if err := msg.Accumulate(event); err != nil {
+				return c.classify(err)
+			}
+			if !sendText(ctx, out, event) {
+				return c.classify(ctx.Err())
+			}
+		}
+		if err := stream.Err(); err != nil {
+			return c.classify(err)
+		}
+		if err := stopError(msg.StopReason, msg.Content); err != nil {
+			return err
+		}
+	}
+
+	if calls := toolCalls(msg.Content); len(calls) > 0 {
+		if !send(ctx, out, ai.StreamChunk{ToolCalls: calls, ProviderState: turnState(msg.Content)}) {
+			return c.classify(ctx.Err())
+		}
+	}
+	return nil
 }
 
 // commits reports whether an event is the reply's first visible output: a
@@ -131,7 +153,8 @@ func toolCalls(content []sdk.ContentBlockUnion) []ai.ToolCall {
 	return calls
 }
 
-// send delivers a chunk unless the caller has gone away. False means stop.
+// send delivers a chunk unless the caller has gone away. False means stop, and
+// that ctx is done.
 func send(ctx context.Context, out chan<- ai.StreamChunk, chunk ai.StreamChunk) bool {
 	select {
 	case out <- chunk:

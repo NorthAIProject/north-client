@@ -172,94 +172,106 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		defer close(out)
 		defer func() { _ = resp.Body.Close() }()
 
-		scanner := bufio.NewScanner(resp.Body)
-		// A single SSE frame can carry a large delta; the default 64KB limit
-		// would turn that into a spurious "token too long" mid-answer.
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-		// Tool calls arrive in fragments: the first delta for an index carries
-		// the id and name, and the argument JSON is appended across the ones
-		// that follow. They are accumulated by index and emitted once whole,
-		// because half an argument object cannot be acted on.
-		accumulator := newToolCallAccumulator()
-		flushed := false
-		flush := func() bool {
-			if flushed {
-				return true
-			}
-			flushed = true
-			calls := accumulator.calls()
-			if len(calls) == 0 {
-				return true
-			}
-			return send(ctx, out, ai.StreamChunk{ToolCalls: calls})
+		// Sent whatever became of ctx. A send that also selected on it would
+		// drop the error exactly when ctx had expired, and a truncated reply
+		// would read as a finished one. A reader drains to close, so this
+		// cannot block for ever.
+		if err := c.relay(ctx, resp.Body, out); err != nil {
+			out <- ai.StreamChunk{Err: err}
 		}
-
-		// The model rides on every frame, but the usage frame is the one the
-		// meter reads, and a provider is not obliged to repeat it there. Keep
-		// the last one seen.
-		var streamModel string
-
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-
-			// Blank lines separate frames; comment lines (": OPENROUTER
-			// PROCESSING" and friends) are keep-alives sent while a slow model
-			// warms up.
-			if line == "" || strings.HasPrefix(line, ":") {
-				continue
-			}
-			data, found := strings.CutPrefix(line, "data: ")
-			if !found {
-				continue
-			}
-			if data == "[DONE]" {
-				flush()
-				return
-			}
-
-			var chunk streamChunk
-			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-				// A frame we cannot parse is not worth killing the answer over.
-				continue
-			}
-
-			if chunk.Model != "" {
-				streamModel = chunk.Model
-			}
-
-			if chunk.Usage != nil {
-				usage := ai.Usage{
-					InputTokens:  chunk.Usage.PromptTokens,
-					OutputTokens: chunk.Usage.CompletionTokens,
-				}
-				if !send(ctx, out, ai.StreamChunk{Usage: &usage, Model: streamModel}) {
-					return
-				}
-			}
-
-			for _, choice := range chunk.Choices {
-				accumulator.add(choice.Delta.ToolCalls)
-
-				if choice.Delta.Content == "" {
-					continue
-				}
-				if !send(ctx, out, ai.StreamChunk{Text: choice.Delta.Content}) {
-					return
-				}
-			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			send(ctx, out, ai.StreamChunk{Err: apperr.Wrap(err, "%s: read stream", c.name)})
-			return
-		}
-
-		// Reached when the stream ends without a [DONE] frame.
-		flush()
 	}()
 
 	return out, nil
+}
+
+// relay parses the stream and sends the reply to out as it arrives, and returns
+// what ended it. nil means the reply is complete.
+func (c *Client) relay(ctx context.Context, body io.Reader, out chan<- ai.StreamChunk) error {
+	scanner := bufio.NewScanner(body)
+	// A single SSE frame can carry a large delta; the default 64KB limit
+	// would turn that into a spurious "token too long" mid-answer.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	// Tool calls arrive in fragments: the first delta for an index carries
+	// the id and name, and the argument JSON is appended across the ones
+	// that follow. They are accumulated by index and emitted once whole,
+	// because half an argument object cannot be acted on.
+	accumulator := newToolCallAccumulator()
+	flush := func() error {
+		calls := accumulator.calls()
+		if len(calls) == 0 || send(ctx, out, ai.StreamChunk{ToolCalls: calls}) {
+			return nil
+		}
+		return c.gone(ctx)
+	}
+
+	// The model rides on every frame, but the usage frame is the one the
+	// meter reads, and a provider is not obliged to repeat it there. Keep
+	// the last one seen.
+	var streamModel string
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Blank lines separate frames; comment lines (": OPENROUTER
+		// PROCESSING" and friends) are keep-alives sent while a slow model
+		// warms up.
+		if line == "" || strings.HasPrefix(line, ":") {
+			continue
+		}
+		data, found := strings.CutPrefix(line, "data: ")
+		if !found {
+			continue
+		}
+		if data == "[DONE]" {
+			return flush()
+		}
+
+		var chunk streamChunk
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			// A frame we cannot parse is not worth killing the answer over.
+			continue
+		}
+
+		if chunk.Model != "" {
+			streamModel = chunk.Model
+		}
+
+		if chunk.Usage != nil {
+			// Sent whatever became of ctx, for the meter: the tokens were
+			// spent either way, and a reader drains to close.
+			out <- ai.StreamChunk{
+				Usage: &ai.Usage{
+					InputTokens:  chunk.Usage.PromptTokens,
+					OutputTokens: chunk.Usage.CompletionTokens,
+				},
+				Model: streamModel,
+			}
+		}
+
+		for _, choice := range chunk.Choices {
+			accumulator.add(choice.Delta.ToolCalls)
+
+			if choice.Delta.Content == "" {
+				continue
+			}
+			if !send(ctx, out, ai.StreamChunk{Text: choice.Delta.Content}) {
+				return c.gone(ctx)
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return apperr.Wrap(err, "%s: read stream", c.name)
+	}
+
+	// Reached when the stream ends without a [DONE] frame.
+	return flush()
+}
+
+// gone is the error for a stream abandoned because ctx ended.
+func (c *Client) gone(ctx context.Context) error {
+	return apperr.Wrap(ctx.Err(), "%s: read stream", c.name)
 }
 
 // UploadFile has no counterpart in the OpenAI chat dialect, which takes

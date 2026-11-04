@@ -85,6 +85,37 @@ func newFakeAPIWith(t *testing.T, opts anthropic.Options, responses ...cannedRes
 	return f, client
 }
 
+// newStallingAPI answers every request with the given events, flushed, and then
+// holds the connection open without another byte until the client gives up. It
+// is the provider that has gone quiet mid-reply, or before its first word.
+func newStallingAPI(t *testing.T, opts anthropic.Options, events ...string) *anthropic.Client {
+	t.Helper()
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, sse(events...).body)
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	t.Cleanup(func() {
+		close(release)
+		srv.Close()
+	})
+
+	opts.APIKey = "sk-ant-test"
+	opts.BaseURL = srv.URL
+	opts.HTTPClient = srv.Client()
+	client, err := anthropic.New(opts)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	return client
+}
+
 func (f *fakeAPI) body(t *testing.T, i int) map[string]any {
 	t.Helper()
 	f.mu.Lock()

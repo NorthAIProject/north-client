@@ -98,7 +98,7 @@ func (c *meteredClient) Chat(ctx context.Context, req Request) (<-chan StreamChu
 	out := make(chan StreamChunk)
 
 	go func() {
-		usage, model := forward(ctx, inner, out)
+		usage, model := forward(inner, out)
 		c.record(ctx, model, usage, req)
 	}()
 
@@ -107,7 +107,12 @@ func (c *meteredClient) Chat(ctx context.Context, req Request) (<-chan StreamChu
 
 // forward passes a stream on and closes out before it returns, so the caller
 // is never kept waiting on the spend row that follows.
-func forward(ctx context.Context, inner <-chan StreamChunk, out chan<- StreamChunk) (usage Usage, model string) {
+//
+// It does not select on the context. The chunks that matter most, the usage and
+// the error ending a reply that timed out, arrive after the context is done, and
+// a reader drains to close, so nothing here can block for ever. The adapter
+// underneath stops producing when the context ends.
+func forward(inner <-chan StreamChunk, out chan<- StreamChunk) (usage Usage, model string) {
 	defer close(out)
 
 	for chunk := range inner {
@@ -117,23 +122,7 @@ func forward(ctx context.Context, inner <-chan StreamChunk, out chan<- StreamChu
 		if chunk.Model != "" {
 			model = chunk.Model
 		}
-
-		select {
-		case out <- chunk:
-		case <-ctx.Done():
-			// The caller has gone. Keep draining so the provider's own
-			// goroutine can finish and close, then record what was spent:
-			// the tokens were consumed whether or not anyone read them.
-			for rest := range inner {
-				if rest.Usage != nil {
-					usage = *rest.Usage
-				}
-				if rest.Model != "" {
-					model = rest.Model
-				}
-			}
-			return usage, model
-		}
+		out <- chunk
 	}
 
 	return usage, model
