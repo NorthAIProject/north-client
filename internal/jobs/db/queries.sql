@@ -3,6 +3,16 @@ INSERT INTO jobs (kind, payload, run_after, max_attempts, request_id)
 VALUES ($1, $2, coalesce(sqlc.narg('run_after')::timestamptz, now()), $3, sqlc.narg('request_id'))
 RETURNING *;
 
+-- name: EnqueuePeriodicJob :execrows
+-- Adds a periodic sweep unless a copy is already pending or running. The conflict
+-- target repeats the predicate of jobs_periodic_active_kind_idx exactly, because
+-- that is how Postgres picks the partial index to arbitrate on. A non-empty
+-- payload falls outside the predicate and is always inserted.
+INSERT INTO jobs (kind, payload, max_attempts)
+VALUES ($1, $2, $3)
+ON CONFLICT (kind) WHERE status IN ('pending', 'running') AND payload = '{}'::jsonb
+DO NOTHING;
+
 -- name: ClaimJob :one
 -- Claims one eligible job for this worker.
 --

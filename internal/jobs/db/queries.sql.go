@@ -101,6 +101,31 @@ func (q *Queries) EnqueueJob(ctx context.Context, arg EnqueueJobParams) (Job, er
 	return i, err
 }
 
+const enqueuePeriodicJob = `-- name: EnqueuePeriodicJob :execrows
+INSERT INTO jobs (kind, payload, max_attempts)
+VALUES ($1, $2, $3)
+ON CONFLICT (kind) WHERE status IN ('pending', 'running') AND payload = '{}'::jsonb
+DO NOTHING
+`
+
+type EnqueuePeriodicJobParams struct {
+	Kind        string
+	Payload     []byte
+	MaxAttempts int16
+}
+
+// Adds a periodic sweep unless a copy is already pending or running. The conflict
+// target repeats the predicate of jobs_periodic_active_kind_idx exactly, because
+// that is how Postgres picks the partial index to arbitrate on. A non-empty
+// payload falls outside the predicate and is always inserted.
+func (q *Queries) EnqueuePeriodicJob(ctx context.Context, arg EnqueuePeriodicJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enqueuePeriodicJob, arg.Kind, arg.Payload, arg.MaxAttempts)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const failJob = `-- name: FailJob :exec
 UPDATE jobs
 SET status = 'failed', last_error = $2, updated_at = now()

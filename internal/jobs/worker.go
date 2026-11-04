@@ -99,7 +99,9 @@ func (w *Worker) WithMetrics(m *metrics.Registry) *Worker {
 	return w
 }
 
-// RegisterPeriodic enqueues a job on a fixed interval until ctx is cancelled.
+// RegisterPeriodic enqueues a job on a fixed interval until ctx is cancelled. A
+// tick is skipped while a copy of the job is pending or running, as long as the
+// payload is empty; see Queue.EnqueuePeriodic.
 func (w *Worker) RegisterPeriodic(interval time.Duration, kind Kind, payload any) {
 	w.periodics = append(w.periodics, periodicEnqueue{interval: interval, kind: kind, payload: payload})
 }
@@ -280,8 +282,15 @@ func (w *Worker) runPeriodic(ctx context.Context, p periodicEnqueue) {
 		case <-ctx.Done():
 			return
 		case <-time.After(untilNext(w.now(), p.interval)):
-			if _, err := w.queue.Enqueue(ctx, p.kind, p.payload); err != nil {
+			enqueued, err := w.queue.EnqueuePeriodic(ctx, p.kind, p.payload)
+			if err != nil {
 				w.log.Error("periodic enqueue failed", slog.String("kind", string(p.kind)), slog.Any("error", err))
+				continue
+			}
+			if !enqueued {
+				// Logged because repeated skips of one kind are the visible sign
+				// of a stalled lane or a run that keeps overlapping its interval.
+				w.log.Info("periodic tick skipped, a copy is still queued or running", slog.String("kind", string(p.kind)))
 			}
 		}
 	}

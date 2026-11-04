@@ -317,6 +317,31 @@ func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, kind Kind, payload any
 	return (&Queue{q: q.q.WithTx(tx)}).Enqueue(ctx, kind, payload)
 }
 
+// EnqueuePeriodic adds a sweep unless a copy of it is already pending or running,
+// and reports whether it added one.
+//
+// A skipped tick loses nothing: a sweep reads the current state when it runs, and
+// the next tick follows within one interval.
+//
+// Only an empty payload is deduplicated, which is what every sweep uses. Anything
+// else is inserted every time, as Enqueue would.
+func (q *Queue) EnqueuePeriodic(ctx context.Context, kind Kind, payload any) (bool, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return false, apperr.Wrap(err, "encode periodic job payload")
+	}
+
+	n, err := q.q.EnqueuePeriodicJob(ctx, jobsdb.EnqueuePeriodicJobParams{
+		Kind:        string(kind),
+		Payload:     body,
+		MaxAttempts: 3,
+	})
+	if err != nil {
+		return false, apperr.Wrap(err, "enqueue periodic %s", kind)
+	}
+	return n > 0, nil
+}
+
 // Claim takes one eligible job, or returns false when the queue is empty.
 func (q *Queue) Claim(ctx context.Context) (Job, bool, error) {
 	row, err := q.q.ClaimJob(ctx)
