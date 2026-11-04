@@ -3,6 +3,7 @@ package spend_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -13,10 +14,17 @@ import (
 
 // captureRecorder records in memory, so the metering path can be asserted
 // without a database.
-type captureRecorder struct{ got []spend.Generation }
+type captureRecorder struct {
+	got []spend.Generation
+
+	// recorded says a row has landed. A stream closes before its row is
+	// written, so a test that reads got after a stream has to wait for this.
+	recorded chan struct{}
+}
 
 func (c *captureRecorder) Record(_ context.Context, g spend.Generation) {
 	c.got = append(c.got, g)
+	c.recorded <- struct{}{}
 }
 
 // stubClient answers with fixed usage and a model the "provider" chose, which
@@ -52,7 +60,7 @@ func (s stubClient) UploadFile(_ context.Context, _ ai.UploadRequest) (*ai.File,
 
 func metered(t *testing.T, byok bool) (ai.Client, *captureRecorder) {
 	t.Helper()
-	rec := &captureRecorder{}
+	rec := &captureRecorder{recorded: make(chan struct{}, 8)}
 	client := ai.Metered(stubClient{
 		name:   "openrouter",
 		model:  "nvidia/nemotron-3-super-120b-a12b:free",
@@ -114,6 +122,11 @@ func TestChatIsRecordedOnceTheStreamEnds(t *testing.T) {
 	}
 	if seen != 4 {
 		t.Errorf("caller saw %d chunks, want 4; the decorator swallowed some", seen)
+	}
+	select {
+	case <-rec.recorded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream ended and nothing was recorded")
 	}
 	if len(rec.got) != 1 {
 		t.Fatalf("recorded %d generations, want 1", len(rec.got))
