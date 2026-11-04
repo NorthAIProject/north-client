@@ -3,6 +3,7 @@ package notifications_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -39,6 +40,47 @@ func TestGetReturnsDefaultsWithoutARow(t *testing.T) {
 	if !got.NudgeMissedCheckIn || !got.NudgeGoalDeadline || got.WeeklyReportAuto {
 		t.Fatalf("defaults = %+v", got)
 	}
+}
+
+// The read and the claim have to agree on what a window is, including for a
+// period that starts at local midnight far from UTC. If they did not, the sweep
+// would compute a digest it had already sent, or skip one it had not.
+func TestDigestClaimedSeesWhatClaimDigestBooked(t *testing.T) {
+	pool := testdb.New(t)
+	repo := notifications.NewRepository(pool)
+	user := seedUser(t, pool, "digest-claimed@north.test")
+	ctx := context.Background()
+
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	period := time.Date(2026, 9, 14, 0, 0, 0, 0, tokyo)
+
+	assertClaimed := func(cadence string, at time.Time, want bool) {
+		t.Helper()
+		got, claimErr := repo.DigestClaimed(ctx, user.ID, cadence, at)
+		if claimErr != nil {
+			t.Fatalf("digest claimed: %v", claimErr)
+		}
+		if got != want {
+			t.Errorf("DigestClaimed(%s, %s) = %v, want %v", cadence, at.Format(time.DateOnly), got, want)
+		}
+	}
+
+	assertClaimed(notifications.CadenceWeekly, period, false)
+
+	claimed, err := repo.ClaimDigest(ctx, user.ID, notifications.CadenceWeekly, period)
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if !claimed {
+		t.Fatal("the first claim of a window lost")
+	}
+
+	assertClaimed(notifications.CadenceWeekly, period, true)
+	assertClaimed(notifications.CadenceDaily, period, false)
+	assertClaimed(notifications.CadenceWeekly, period.AddDate(0, 0, 7), false)
 }
 
 func TestUpsertRoundTrips(t *testing.T) {

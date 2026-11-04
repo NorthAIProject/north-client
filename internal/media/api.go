@@ -111,14 +111,19 @@ func (a *API) show(c *echo.Context) error {
 func (a *API) upload(c *echo.Context) error {
 	r := c.Request()
 	r.Body = http.MaxBytesReader(c.Response(), r.Body, MaxVideoBytes+(1<<20))
+	// Explicit, because FormFile on its own parses with net/http's default of
+	// 32 MiB in memory per upload. Past this the part spills to disk, as in every
+	// other multipart handler.
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		return httpx.Fail(apperr.FieldErrors{}.Add("video", "Choose a video under 90 MB."), "Choose a video under 90 MB.")
+	}
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
+
 	file, header, err := r.FormFile("video")
 	if err != nil {
 		return httpx.Fail(apperr.FieldErrors{}.Add("video", "Choose a video under 90 MB."), "Choose a video under 90 MB.")
 	}
 	defer func() { _ = file.Close() }()
-	if r.MultipartForm != nil {
-		defer func() { _ = r.MultipartForm.RemoveAll() }()
-	}
 
 	ctx := r.Context()
 	an, err := a.svc.UploadVideo(ctx, auth.MustUser(ctx).ID, header.Filename, header.Size, file)

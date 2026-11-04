@@ -2,7 +2,15 @@ package ai
 
 import (
 	"context"
+	"time"
+
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
+
+// recordTimeout bounds one spend write. A saturated pool loses the row and logs
+// it, which is better than holding a goroutine or a caller until it clears.
+const recordTimeout = 2 * time.Second
 
 // Meter is told what a completed model call consumed.
 //
@@ -74,7 +82,7 @@ func (c *meteredClient) Generate(ctx context.Context, req Request) (*Response, e
 		return resp, err
 	}
 
-	c.meter.Record(ctx, c.inner.Name(), c.resolveModel(resp.Model, req), resp.Usage, c.byok)
+	c.write(ctx, resp.Model, resp.Usage, req)
 	return resp, err
 }
 
@@ -93,44 +101,38 @@ func (c *meteredClient) Chat(ctx context.Context, req Request) (<-chan StreamChu
 	out := make(chan StreamChunk)
 
 	go func() {
-		defer close(out)
+		// forward closes out itself, so a panic there or in the recorder after
+		// it still leaves the reader with a closed channel.
+		defer lifecycle.Recover(middleware.FromContext(ctx), "ai meter")
 
-		var (
-			usage Usage
-			model string
-		)
-
-		for chunk := range inner {
-			if chunk.Usage != nil {
-				usage = *chunk.Usage
-			}
-			if chunk.Model != "" {
-				model = chunk.Model
-			}
-
-			select {
-			case out <- chunk:
-			case <-ctx.Done():
-				// The caller has gone. Keep draining so the provider's own
-				// goroutine can finish and close, then record what was spent:
-				// the tokens were consumed whether or not anyone read them.
-				for rest := range inner {
-					if rest.Usage != nil {
-						usage = *rest.Usage
-					}
-					if rest.Model != "" {
-						model = rest.Model
-					}
-				}
-				c.record(ctx, model, usage, req)
-				return
-			}
-		}
-
+		usage, model := forward(inner, out)
 		c.record(ctx, model, usage, req)
 	}()
 
 	return out, nil
+}
+
+// forward passes a stream on and closes out before it returns, so the caller
+// is never kept waiting on the spend row that follows.
+//
+// It does not select on the context. The chunks that matter most, the usage and
+// the error ending a reply that timed out, arrive after the context is done, and
+// a reader drains to close, so nothing here can block for ever. The adapter
+// underneath stops producing when the context ends.
+func forward(inner <-chan StreamChunk, out chan<- StreamChunk) (usage Usage, model string) {
+	defer close(out)
+
+	for chunk := range inner {
+		if chunk.Usage != nil {
+			usage = *chunk.Usage
+		}
+		if chunk.Model != "" {
+			model = chunk.Model
+		}
+		out <- chunk
+	}
+
+	return usage, model
 }
 
 func (c *meteredClient) record(ctx context.Context, model string, usage Usage, req Request) {
@@ -140,11 +142,20 @@ func (c *meteredClient) record(ctx context.Context, model string, usage Usage, r
 		// bury the real ones without adding a number.
 		return
 	}
-	// The context may already be cancelled here — the caller may have gone —
-	// so the recorder is handed a context that cannot be used for a database
-	// call. Detaching is the recorder's business, not this layer's, but it has
-	// to be told the values, which is what WithoutCancel preserves.
-	c.meter.Record(context.WithoutCancel(ctx), c.inner.Name(), c.resolveModel(model, req), usage, c.byok)
+	c.write(ctx, model, usage, req)
+}
+
+// write hands one call's usage to the meter.
+//
+// The caller may already have gone, so its cancellation is stripped: the tokens
+// were spent either way. Its values stay, because that is who the row belongs
+// to. The deadline is what WithoutCancel takes away and Record must not block
+// without one.
+func (c *meteredClient) write(ctx context.Context, model string, usage Usage, req Request) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recordTimeout)
+	defer cancel()
+
+	c.meter.Record(ctx, c.inner.Name(), c.resolveModel(model, req), usage, c.byok)
 }
 
 // resolveModel prefers what the provider said it used, falling back to what was

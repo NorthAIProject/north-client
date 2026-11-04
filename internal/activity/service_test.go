@@ -323,8 +323,16 @@ func TestCountAndListCompleted(t *testing.T) {
 		t.Fatalf("before the middle one = %+v, want only the oldest", older)
 	}
 
-	byID, err := svc.CompletedByIDs(ctx, []uuid.UUID{oldest.ID, cancelled.ID})
+	byID, err := svc.CompletedByIDs(ctx, []uuid.UUID{user.ID}, []uuid.UUID{oldest.ID, cancelled.ID})
 	if err != nil || len(byID) != 1 || byID[0].ID != oldest.ID {
 		t.Fatalf("by ids = %+v, %v; want only the completed one", byID, err)
+	}
+
+	// The same session asked for under anyone else, or under no one, is not read.
+	for label, owners := range map[string][]uuid.UUID{"another owner": {uuid.New()}, "no owner": nil} {
+		byID, err = svc.CompletedByIDs(ctx, owners, []uuid.UUID{oldest.ID})
+		if err != nil || len(byID) != 0 {
+			t.Fatalf("%s: by ids = %+v, %v; want nothing", label, byID, err)
+		}
 	}
 }

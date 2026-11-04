@@ -13,8 +13,12 @@ SET value      = EXCLUDED.value,
 RETURNING *;
 
 -- name: LatestHealthMetric :one
+-- The newest reading in the half-open window [since, until). The upper bound is
+-- not decoration: nothing stops a device with a wrong clock from delivering a
+-- reading dated in the future.
 SELECT * FROM health_metrics
-WHERE user_id = $1 AND metric = $2
+WHERE user_id = sqlc.arg(user_id) AND metric = sqlc.arg(metric)
+  AND started_at >= sqlc.arg(since) AND started_at < sqlc.arg(until)
 ORDER BY started_at DESC
 LIMIT 1;
 

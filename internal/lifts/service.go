@@ -9,7 +9,6 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/awards/award"
 	"github.com/NorthAIProject/north-client/internal/bodymap"
@@ -17,6 +16,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n/fieldmsg"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -78,7 +78,7 @@ type Repository interface {
 	ListForExercises(ctx context.Context, userID uuid.UUID, keys []string, since time.Time) ([]Set, error)
 	ListForSession(ctx context.Context, userID, sessionID uuid.UUID) ([]Set, error)
 	ListForExercisesBefore(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error)
-	ListForSessions(ctx context.Context, sessionIDs []uuid.UUID) ([]Set, error)
+	ListForSessions(ctx context.Context, ownerIDs, sessionIDs []uuid.UUID) ([]Set, error)
 	ListForExercisesBetween(ctx context.Context, userID uuid.UUID, keys []string, since, before time.Time) ([]Set, error)
 }
 
@@ -236,7 +236,7 @@ func (st Stats) VolumeKg() float64 {
 
 func (s *Service) Stats(ctx context.Context, user users.User, rg timerange.Range) (Stats, error) {
 	var all, prior []Set
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	g.Go(func() (err error) {
 		all, err = s.repo.ListBetween(gctx, user.ID, rg.Since.Add(-history), rg.Until)
 		return

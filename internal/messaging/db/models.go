@@ -11,10 +11,11 @@ import (
 )
 
 type MessagingLink struct {
-	ID           uuid.UUID
-	UserID       uuid.UUID
-	Platform     string
-	ExternalID   string
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Platform   string
+	ExternalID string
+	// The highest update id answered for this link, for operators. Nothing decides on it: messaging_seen_updates is the redelivery check.
 	LastUpdateID int64
 	CreatedAt    time.Time
 	LastSeenAt   *time.Time

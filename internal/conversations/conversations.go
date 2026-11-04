@@ -252,6 +252,8 @@ func (m Message) ExerciseSlugs() []string {
 // past photo would blow the context window; the current turn is hydrated by
 // the coach after this, once, from storage.
 func ToAIMessages(messages []Message) []ai.Message {
+	messages = trimWindowEdge(messages)
+
 	out := make([]ai.Message, 0, len(messages))
 	for _, m := range messages {
 		// A tool turn carries no text, so the emptiness rule below would drop
@@ -284,6 +286,35 @@ func ToAIMessages(messages []Message) []ai.Message {
 		})
 	}
 	return out
+}
+
+// trimWindowEdge drops the tool rows a window of history starts with.
+//
+// Recent is a plain LIMIT, so the cut can land anywhere in a tool turn. A result
+// whose call fell outside it is refused with a 400 by every provider, and the
+// thread stays broken until the window slides past the cut. A call and result
+// that both survived go too: with the question that prompted them gone they say
+// little, and Gemini refuses a function call that does not follow a user turn.
+//
+// A window with no words in it at all, a long chain of approvals, is what a
+// resumed turn is made of, so there only leading results are dropped.
+func trimWindowEdge(messages []Message) []Message {
+	firstCall := -1
+	for i, m := range messages {
+		switch {
+		case len(m.ToolResults) > 0:
+		case len(m.ToolCalls) > 0:
+			if firstCall < 0 {
+				firstCall = i
+			}
+		case len(messageParts(m)) > 0:
+			return messages[i:]
+		}
+	}
+	if firstCall < 0 {
+		return nil
+	}
+	return messages[firstCall:]
 }
 
 // proactiveOpening stands in for the question nobody asked when a thread

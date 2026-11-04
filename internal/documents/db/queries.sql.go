@@ -268,8 +268,8 @@ type DeleteChunksNotInParams struct {
 }
 
 // Removes what the latest chunking no longer produces: the passages of a
-// document that were edited away. Runs after the upserts, so a chunk is never
-// absent from the index in between.
+// document that were edited away. Runs before the inserts, in the same
+// transaction: an edited chunk reuses an ordinal the stale row still holds.
 func (q *Queries) DeleteChunksNotIn(ctx context.Context, arg DeleteChunksNotInParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteChunksNotIn, arg.DocumentID, arg.Keep)
 	if err != nil {

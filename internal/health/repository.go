@@ -2,9 +2,11 @@ package health
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	healthdb "github.com/NorthAIProject/north-client/internal/health/db"
@@ -83,6 +85,24 @@ func (r *PostgresRepository) Between(ctx context.Context, userID uuid.UUID, metr
 		out = append(out, fromDB(row))
 	}
 	return out, nil
+}
+
+// Latest is the newest of one metric's readings in a half-open window; false
+// when the window holds none.
+func (r *PostgresRepository) Latest(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) (Stored, bool, error) {
+	row, err := r.q.LatestHealthMetric(ctx, healthdb.LatestHealthMetricParams{
+		UserID: userID,
+		Metric: metric,
+		Since:  since,
+		Until:  until,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Stored{}, false, nil
+	}
+	if err != nil {
+		return Stored{}, false, apperr.Wrap(err, "latest health reading")
+	}
+	return fromDB(row), true, nil
 }
 
 // metricStats is one metric's window, aggregated.

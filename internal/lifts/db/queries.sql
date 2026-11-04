@@ -53,10 +53,13 @@ ORDER BY performed_at DESC
 LIMIT 500;
 
 -- name: ListSetsForSessions :many
--- Every set logged against these workouts, in the order they were done. Not
--- owner-scoped: the caller decides whose workouts the reader may see.
+-- Every set the named owners logged against these workouts, in the order they
+-- were done. The caller decides whose workouts the reader may see before
+-- asking. The insert above only links a set to its own user's session, so this
+-- leaves out nothing a workout's owner logged.
 SELECT * FROM set_logs
 WHERE activity_session_id = ANY(sqlc.arg(ids)::uuid[])
+  AND user_id = ANY(sqlc.arg(owner_ids)::uuid[])
 ORDER BY performed_at, set_number;
 
 -- name: ListSetsForExercisesBetween :many

@@ -18,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/notifications"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/push"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/toolaudit"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -27,6 +28,7 @@ import (
 const probeBudget = 2 * time.Minute
 
 type Handler struct {
+	background    *lifecycle.Tracker
 	users         *users.Service
 	preferences   *preferences.Service
 	notifications *notifications.Service
@@ -58,6 +60,13 @@ type Handler struct {
 	// push is Web Push. Nil, or a service without keys, leaves the row off
 	// the notifications card.
 	push *push.Service
+}
+
+// WithBackground lets a shutdown wait for work the handler detaches. Without it
+// the work still runs and still recovers panics.
+func (h *Handler) WithBackground(t *lifecycle.Tracker) *Handler {
+	h.background = t
+	return h
 }
 
 // WithIntegrations wires the calendar connection card.

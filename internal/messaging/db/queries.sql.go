@@ -13,21 +13,35 @@ import (
 )
 
 const claimMessagingUpdate = `-- name: ClaimMessagingUpdate :one
-UPDATE messaging_links
-SET last_update_id = $3,
-    account_id     = $4,
+WITH link AS (
+    SELECT l.id FROM messaging_links l
+    WHERE l.platform = $2 AND l.external_id = $3
+),
+seen AS (
+    INSERT INTO messaging_seen_updates (platform, account_id, update_id)
+    SELECT $2::text, $1::text, $4::bigint
+    FROM link
+    ON CONFLICT DO NOTHING
+    RETURNING update_id
+)
+UPDATE messaging_links ml
+SET last_update_id = CASE
+                         WHEN ml.account_id IS DISTINCT FROM $1
+                             THEN seen.update_id
+                         ELSE greatest(ml.last_update_id, seen.update_id)
+                     END,
+    account_id     = $1,
     last_seen_at   = now()
-WHERE platform = $1
-  AND external_id = $2
-  AND ($3 > last_update_id OR account_id IS DISTINCT FROM $4)
-RETURNING id, user_id, platform, external_id, last_update_id, created_at, last_seen_at, account_id
+FROM link, seen
+WHERE ml.id = link.id
+RETURNING ml.id, ml.user_id, ml.platform, ml.external_id, ml.last_update_id, ml.created_at, ml.last_seen_at, ml.account_id
 `
 
 type ClaimMessagingUpdateParams struct {
-	Platform     string
-	ExternalID   string
-	LastUpdateID int64
-	AccountID    string
+	AccountID  string
+	Platform   string
+	ExternalID string
+	UpdateID   int64
 }
 
 // ClaimMessagingUpdate resolves the sender and rejects a redelivery in one
@@ -35,27 +49,31 @@ type ClaimMessagingUpdateParams struct {
 //
 // These are the same question. An adapter acknowledges an update before it
 // answers it, so the platform will redeliver anything whose acknowledgement
-// was lost; doing the watermark check separately from the lookup would leave a
-// window where two deliveries of one message both pass it. The predicate on
-// last_update_id makes the advance the claim.
+// was lost; doing the redelivery check separately from the lookup would leave
+// a window where two deliveries of one message both pass it. Inserting the
+// update into messaging_seen_updates is the claim: its primary key lets
+// exactly one delivery through, and a concurrent second one waits for the
+// first and then conflicts.
+//
+// A set rather than a high-water mark because updates are not handled in the
+// order they were sent. Under a watermark, a text that claimed before the
+// photo sent ahead of it made the photo look like a redelivery, and it was
+// dropped. An id never seen before is new, whatever its size.
+//
+// Updates are keyed by account because ids are a sequence per bot, so a
+// different bot's ids are a new sequence, not old ones running backwards.
+// last_update_id is still kept, as the highest id this link has answered, for
+// operators; nothing decides on it any more.
 //
 // No rows means one of two things — not linked, or already seen — and the
 // caller distinguishes them with GetMessagingLink. Cheap, because that only
 // happens off the common path.
-// The account check is what makes a bot change safe. Update ids are a sequence
-// per bot, so a different bot's ids are not comparable with this row's
-// watermark at all — they are a new sequence that happens to start lower.
-// Without this, swapping bots makes every existing link permanently deaf, and
-// silently, because a lower id is indistinguishable from a redelivery.
-//
-// IS DISTINCT FROM rather than <>: it is the form that treats a first-ever
-// claim on a legacy row the same as a genuine change.
 func (q *Queries) ClaimMessagingUpdate(ctx context.Context, arg ClaimMessagingUpdateParams) (MessagingLink, error) {
 	row := q.db.QueryRow(ctx, claimMessagingUpdate,
+		arg.AccountID,
 		arg.Platform,
 		arg.ExternalID,
-		arg.LastUpdateID,
-		arg.AccountID,
+		arg.UpdateID,
 	)
 	var i MessagingLink
 	err := row.Scan(
@@ -237,6 +255,21 @@ func (q *Queries) ListMessagingLinksByUser(ctx context.Context, userID uuid.UUID
 		return nil, err
 	}
 	return items, nil
+}
+
+const purgeSeenMessagingUpdates = `-- name: PurgeSeenMessagingUpdates :execrows
+DELETE FROM messaging_seen_updates
+WHERE seen_at < now() - make_interval(secs => $1::double precision)
+`
+
+// Forgets updates too old for any platform to resend. Telegram keeps an
+// undelivered update for 24 hours, so two days leaves room for a slow sweep.
+func (q *Queries) PurgeSeenMessagingUpdates(ctx context.Context, olderThanSeconds float64) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeSeenMessagingUpdates, olderThanSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const redeemMessagingLinkCode = `-- name: RedeemMessagingLinkCode :one

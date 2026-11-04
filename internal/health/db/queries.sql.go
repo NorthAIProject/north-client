@@ -139,6 +139,7 @@ func (q *Queries) HealthMetricStats(ctx context.Context, arg HealthMetricStatsPa
 const latestHealthMetric = `-- name: LatestHealthMetric :one
 SELECT id, user_id, source, metric, value, unit, started_at, ended_at, created_at, updated_at FROM health_metrics
 WHERE user_id = $1 AND metric = $2
+  AND started_at >= $3 AND started_at < $4
 ORDER BY started_at DESC
 LIMIT 1
 `
@@ -146,10 +147,20 @@ LIMIT 1
 type LatestHealthMetricParams struct {
 	UserID uuid.UUID
 	Metric string
+	Since  time.Time
+	Until  time.Time
 }
 
+// The newest reading in the half-open window [since, until). The upper bound is
+// not decoration: nothing stops a device with a wrong clock from delivering a
+// reading dated in the future.
 func (q *Queries) LatestHealthMetric(ctx context.Context, arg LatestHealthMetricParams) (HealthMetric, error) {
-	row := q.db.QueryRow(ctx, latestHealthMetric, arg.UserID, arg.Metric)
+	row := q.db.QueryRow(ctx, latestHealthMetric,
+		arg.UserID,
+		arg.Metric,
+		arg.Since,
+		arg.Until,
+	)
 	var i HealthMetric
 	err := row.Scan(
 		&i.ID,

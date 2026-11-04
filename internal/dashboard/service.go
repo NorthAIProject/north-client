@@ -7,7 +7,6 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/caffeine"
@@ -23,6 +22,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
 	"github.com/NorthAIProject/north-client/internal/reports/report"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/supplements"
@@ -246,7 +246,7 @@ func (s *Service) Load(ctx context.Context, user users.User, rg timerange.Range)
 	chartRg := widen(rg, minChartDays)
 	prev := rg.Previous()
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 
 	if s.newsTicker != nil {
 		g.Go(func() error {

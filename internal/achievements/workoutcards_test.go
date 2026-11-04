@@ -9,12 +9,14 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/achievements"
+	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
 	"github.com/NorthAIProject/north-client/internal/lifts"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
 	"github.com/NorthAIProject/north-client/internal/social"
+	"github.com/NorthAIProject/north-client/internal/users"
 )
 
 type bodyweight struct{}
@@ -61,11 +63,78 @@ func TestFeedAttachesWorkoutCards(t *testing.T) {
 	}
 }
 
+// The feed's cards cross people: a page holds the viewer's own workouts and
+// those of everyone they may see. Each visible workout keeps its card, down to
+// its sets, and nobody else's reaches the viewer.
+func TestFeedCardsFollowWhoTheViewerMaySee(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	acts := activity.NewService(activity.NewRepository(pool), bodyweight{})
+	liftSvc := lifts.NewService(lifts.NewRepository(pool), nil).WithRecaps(acts, nil)
+	ach := achievements.NewService(achievements.NewRepository(pool)).WithWorkoutCards(liftSvc)
+	soc := social.NewService(social.NewRepository(pool))
+
+	viewer := person(t, pool, "viewer-fv@north.test", "Viewer")
+	friend := person(t, pool, "friend-fv@north.test", "Friend")
+	unshared := person(t, pool, "unshared-fv@north.test", "Unshared")
+	blocked := person(t, pool, "blocked-fv@north.test", "Blocked")
+	stranger := person(t, pool, "stranger-fv@north.test", "Stranger")
+	follow(t, soc, viewer, friend, "friend")
+	follow(t, soc, viewer, unshared, "unshared")
+	follow(t, soc, viewer, blocked, "blocked")
+	if _, err := ach.SetSharing(ctx, unshared.ID, achievements.Sharing{Training: false}); err != nil {
+		t.Fatal(err)
+	}
+	if err := soc.Block(ctx, blocked.ID, viewer.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Every person's set count is their own, so a card built from anybody
+	// else's rows shows up as the wrong number.
+	sets := map[uuid.UUID]int{viewer.ID: 1, friend.ID: 2, unshared.ID: 3, blocked.ID: 4, stranger.ID: 5}
+	start := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	sessions := map[uuid.UUID]uuid.UUID{}
+	for _, u := range []users.User{viewer, friend, unshared, blocked, stranger} {
+		se, err := acts.Log(ctx, u.ID, activity.LogInput{ActivityCode: "strength_training_light", StartedAt: start, Duration: time.Hour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sessions[u.ID] = se.ID
+		at := start.Add(10 * time.Minute)
+		for i := range sets[u.ID] {
+			if _, err = liftSvc.Log(ctx, u, lifts.LogInput{ExerciseName: "Squat", SetNumber: i + 1, WeightKg: 100, Reps: 5, PerformedAt: &at, ActivitySessionID: &se.ID}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ach.WorkoutCompleted(ctx, u.ID, se.ID, "Strength", 60, start.Add(time.Hour))
+	}
+
+	items, err := ach.Feed(ctx, viewer.ID, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[uuid.UUID]*lift.Card{}
+	for _, it := range items {
+		if it.Kind == achievement.KindWorkoutCompleted {
+			got[it.UserID] = it.Workout
+		}
+	}
+	if len(got) != 2 {
+		t.Fatalf("workout items from %d people, want the viewer and the friend: %+v", len(got), got)
+	}
+	for _, u := range []users.User{viewer, friend} {
+		c := got[u.ID]
+		if c == nil || c.ID != sessions[u.ID] || c.UserID != u.ID || c.Sets != sets[u.ID] {
+			t.Fatalf("card of %s = %+v, want session %v with %d sets", u.DisplayName, c, sessions[u.ID], sets[u.ID])
+		}
+	}
+}
+
 var errBoom = errors.New("boom")
 
 type failingCards struct{}
 
-func (failingCards) CardsFor(context.Context, []uuid.UUID) (map[uuid.UUID]lift.Card, error) {
+func (failingCards) CardsFor(context.Context, []uuid.UUID, []uuid.UUID) (map[uuid.UUID]lift.Card, error) {
 	return nil, errBoom
 }
 

@@ -18,12 +18,19 @@ import (
 	"github.com/NorthAIProject/north-client/internal/media"
 	"github.com/NorthAIProject/north-client/internal/shared/database"
 	"github.com/NorthAIProject/north-client/internal/shared/echox"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/profiling"
 	"github.com/NorthAIProject/north-client/internal/social/phone"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/joho/godotenv"
 )
+
+// drainTimeout bounds waiting for detached work at shutdown: replies being
+// generated and Telegram turns. Longer than most replies take and shorter than
+// the pod's grace period once the 30 second graceful stop has been taken out. A
+// turn that outlasts it is cut off, exactly as every turn was before this.
+const drainTimeout = 75 * time.Second
 
 // run owns the process lifecycle. Keeping it separate from main means every
 // exit path runs deferred cleanup, which os.Exit inside main would skip.
@@ -106,6 +113,7 @@ func run() error {
 	var metricsReg *metrics.Registry
 	if cfg.MetricsListenAddr != "" {
 		metricsReg = metrics.New()
+		metricsReg.WatchPool(func() metrics.PoolStats { return database.PoolStats(pool) })
 
 		metricsSrv := &http.Server{
 			Addr:              cfg.MetricsListenAddr,
@@ -125,28 +133,38 @@ func run() error {
 		defer profiling.Start(cfg.PprofListenAddr, log)()
 	}
 
-	handler, runBackground := routes(cfg, pool, registry, storage, embedder, posthogClient, metricsReg)
+	background := lifecycle.NewTracker(log)
+
+	handler, runBackground := routes(cfg, background, pool, registry, storage, embedder, posthogClient, metricsReg)
 
 	if runBackground != nil {
-		go func() {
+		background.Go("background worker", func() {
 			if err := runBackground(ctx); err != nil {
 				log.Error("background worker stopped", slog.Any("error", err))
 			}
-		}()
+		})
 	}
 
 	// Serve returns once ctx is cancelled and the requests in flight have had
-	// their 30 seconds to finish: the same budget Kubernetes gives a pod
-	// between SIGTERM and SIGKILL.
+	// their 30 seconds to finish. Detached work then gets drainTimeout. The pod's
+	// terminationGracePeriodSeconds in the infra repo has to cover both.
 	log.Info("server starting", slog.String("addr", cfg.Addr()), slog.String("env", string(cfg.Env)))
-	if err := echox.Serve(ctx, handler, echox.ServerConfig{
+	serveErr := echox.Serve(ctx, handler, echox.ServerConfig{
 		Addr:            cfg.Addr(),
 		GracefulTimeout: 30 * time.Second,
 		Logger:          log,
-	}); err != nil {
-		return fmt.Errorf("server: %w", err)
+	})
+
+	// Before the deferred closes: replies and Telegram turns detached from their
+	// requests still need the pool and PostHog to finish.
+	log.Info("draining background work", slog.Duration("limit", drainTimeout))
+	if !background.Drain(drainTimeout) {
+		log.Warn("background work was still running at the drain limit")
 	}
 
+	if serveErr != nil {
+		return fmt.Errorf("server: %w", serveErr)
+	}
 	log.Info("server stopped")
 	return nil
 }

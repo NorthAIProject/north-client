@@ -16,6 +16,7 @@ run:
 
 linters:
   enable:
+    - depguard
     - errcheck
     - govet
     - ineffassign
@@ -23,6 +24,15 @@ linters:
     - unused
 
   settings:
+    depguard:
+      rules:
+        errgroup:
+          # A panic in a raw errgroup goroutine ends the process.
+          files:
+            - "!**/internal/shared/lifecycle/**"
+          deny:
+            - pkg: golang.org/x/sync/errgroup
+              desc: use internal/shared/lifecycle.WithContext, which recovers panics
     govet:
       enable:
         - shadow

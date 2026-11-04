@@ -3,8 +3,7 @@ package insights
 import (
 	"context"
 
-	"golang.org/x/sync/errgroup"
-
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/spend"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -31,7 +30,7 @@ func (s *Service) Spend(ctx context.Context, user users.User, rg timerange.Range
 
 	window := spend.Range{From: rg.Since, To: rg.Until}
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	g.Go(func() (err error) {
 		out.Surfaces, err = s.spend.UserSurfaces(gctx, user.ID, window)
 		return

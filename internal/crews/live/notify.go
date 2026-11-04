@@ -35,6 +35,12 @@ type Event struct {
 	MessageID uuid.UUID `json:"messageId,omitzero"`
 	UserID    uuid.UUID `json:"userId,omitzero"`
 	Seq       int64     `json:"seq,omitempty"`
+
+	// AuthorID lets a stream apply its block list without a query per event. It
+	// travels between processes and never reaches a client, which is told that a
+	// message exists rather than who wrote it. Zero for a message with no author,
+	// and for an event written by a process older than this field.
+	AuthorID uuid.UUID `json:"authorId,omitzero"`
 }
 
 // Execer is a transaction, or a pool for an event that follows a write

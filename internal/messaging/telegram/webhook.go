@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 )
 
 // secretHeader is the header Telegram echoes back the secret_token given to
@@ -31,6 +33,9 @@ type WebhookConfig struct {
 	Messages Handler
 	Client   *Client
 
+	// Background lets a shutdown wait for turns. Nil is valid.
+	Background *lifecycle.Tracker
+
 	// Secret is the value given to Telegram's setWebhook. Required: an empty
 	// secret would make the endpoint an open door, so NewWebhook refuses one.
 	Secret string
@@ -49,7 +54,7 @@ func NewWebhook(cfg WebhookConfig) *Webhook {
 		log = slog.Default()
 	}
 	return &Webhook{
-		bridge: bridge{messages: cfg.Messages, client: cfg.Client, log: log},
+		bridge: bridge{messages: cfg.Messages, client: cfg.Client, log: log, background: cfg.Background},
 		secret: cfg.Secret,
 		log:    log,
 	}
@@ -79,8 +84,8 @@ func (h *Webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Acknowledged before it is answered. Telegram retries anything that is not
 	// a prompt 200 and a coach turn takes minutes, so holding the request open
-	// would guarantee both a timeout and a redelivery. The watermark in
-	// messaging_links is what makes that redelivery harmless if it happens
+	// would guarantee both a timeout and a redelivery. The seen-set behind
+	// messaging.ClaimUpdate is what makes that redelivery harmless if it happens
 	// anyway.
 	h.bridge.dispatchRaw(r.Context(), raw)
 	w.WriteHeader(http.StatusOK)

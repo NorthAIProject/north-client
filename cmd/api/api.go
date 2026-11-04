@@ -84,9 +84,11 @@ var apiStreams = []string{
 //   - capture: its own nk_ connection token, for agents and shortcuts
 //   - uploads: bearer too, with a body cap that fits a file
 //
+// Both bearer groups share one limiter: see auth.RouteLimiter.
+//
 // The body caps live here rather than around the mount, because one cap does
 // not fit both: JSON is a few kilobytes and a filmed set is up to 90 MB.
-func mountAPI(e *echo.Echo, sessions auth.SessionResolver, apis apiSet) {
+func mountAPI(e *echo.Echo, sessions auth.SessionResolver, limiter *auth.RouteLimiter, apis apiSet) {
 	// A guess from Accept-Language for the signed-out routes, so an account
 	// created from the app starts in the phone's language. auth.Bearer
 	// replaces it with the account's own setting.
@@ -102,9 +104,9 @@ func mountAPI(e *echo.Echo, sessions auth.SessionResolver, apis apiSet) {
 	apis.crews.RegisterPublic(json)
 	apis.capture.Register(json)
 	apis.fitness.RegisterPublic(json)
-	registerBearer(json.Group("", auth.Bearer(sessions)), apis)
+	registerBearer(json.Group("", limiter.PerAddress(), auth.Bearer(sessions), limiter.PerAccount()), apis)
 
-	uploads := api.Group("", echomw.BodyLimit(maxUploadBody), auth.Bearer(sessions))
+	uploads := api.Group("", echomw.BodyLimit(maxUploadBody), limiter.PerAddress(), auth.Bearer(sessions), limiter.PerAccount())
 	apis.knowledge.RegisterUploads(uploads)
 	apis.coach.RegisterUploads(uploads)
 	apis.voice.RegisterUploads(uploads)

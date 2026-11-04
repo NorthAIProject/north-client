@@ -3,10 +3,14 @@ package anthropic_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/ai/anthropic"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
@@ -87,5 +91,65 @@ func TestTheManagedClientStillParksOnBilling(t *testing.T) {
 	_, err := client.Generate(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("hi")}})
 	if !apperr.Is(err, apperr.ErrPaymentRequired) {
 		t.Fatalf("err = %v, want ErrPaymentRequired", err)
+	}
+}
+
+// Anthropic can refuse inside a stream it has already answered 200 to. The
+// SDK surfaces that with the HTTP status of the stream, so the error type in
+// the body is the only thing that says the provider is overloaded.
+func TestAnOverloadInsideTheStreamFailsOver(t *testing.T) {
+	const overloaded = `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`
+	for name, managed := range map[string]bool{"managed": true, "personal key": false} {
+		t.Run(name, func(t *testing.T) {
+			res := sse(evStart, overloaded)
+			var client *anthropic.Client
+			if managed {
+				_, client = newManagedFakeAPI(t, res)
+			} else {
+				_, client = newFakeAPI(t, res)
+			}
+			ch, err := client.Chat(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("squat?")}})
+			if ch != nil {
+				t.Error("a channel was returned alongside the error")
+			}
+			if !apperr.Is(err, apperr.ErrUnavailable) || !ai.Failover(err) {
+				t.Fatalf("err = %v, want ErrUnavailable so the runner fails over", err)
+			}
+		})
+	}
+}
+
+// A connection that never reaches Anthropic says nothing about the request,
+// so the next provider should get it.
+func TestANetworkFailureFailsOver(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	url := srv.URL
+	srv.Close() // nothing listens here any more
+
+	client, err := anthropic.New(anthropic.Options{
+		APIKey: "sk-ant-test", BaseURL: url, DefaultModel: "claude-haiku-5-5", Managed: true,
+		HTTPClient: &http.Client{Timeout: 2 * time.Second},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Generate(context.Background(), ai.Request{Messages: []ai.Message{ai.UserText("hi")}})
+	if !apperr.Is(err, apperr.ErrUnavailable) || !ai.Failover(err) {
+		t.Fatalf("err = %v, want ErrUnavailable so the runner fails over", err)
+	}
+	if strings.Contains(err.Error(), "sk-ant-test") {
+		t.Error("the error carries the key")
+	}
+}
+
+// The caller going away is not a provider failure. Walking the chain for a
+// closed tab would spend every remaining provider on nobody.
+func TestACancelledRequestDoesNotFailOver(t *testing.T) {
+	_, client := newManagedFakeAPI(t, textMessage("hello"))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := client.Generate(ctx, ai.Request{Messages: []ai.Message{ai.UserText("hi")}})
+	if err == nil || ai.Failover(err) {
+		t.Fatalf("err = %v; a cancelled request must not fail over", err)
 	}
 }

@@ -47,8 +47,8 @@ type InboundMessage struct {
 	// AccountID identifies the platform account the update arrived through —
 	// the bot, not the person. It scopes UpdateID.
 	//
-	// Empty when the platform has no such notion, which leaves the watermark
-	// behaving exactly as it did before this field existed.
+	// Empty when the platform has no such notion: every update is then claimed
+	// under the one empty account.
 	AccountID string
 
 	ReceivedAt time.Time

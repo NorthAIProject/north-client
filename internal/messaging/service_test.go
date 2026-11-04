@@ -214,6 +214,27 @@ func TestARedeliveredUpdateIsIgnored(t *testing.T) {
 	}
 }
 
+// A photo is downloaded before it is claimed, so the text sent after it can
+// claim first. The older update was never answered, so it is not a redelivery
+// and must still reach the coach.
+func TestAnUpdateClaimedOutOfOrderStillReachesTheCoach(t *testing.T) {
+	client := fake.Text("answered")
+	h := newHarness(t, client, harnessOptions{})
+	h.link(t, chat)
+
+	if later := h.sendUpdate(t, chat, "what do you think?", 6001); later.Silent {
+		t.Fatal("the later update was ignored")
+	}
+	before := len(client.Calls())
+
+	if earlier := h.sendUpdate(t, chat, "here is my lunch", 6000); earlier.Silent {
+		t.Fatal("the earlier update was dropped as a redelivery")
+	}
+	if len(client.Calls()) == before {
+		t.Fatal("the earlier update never reached the model")
+	}
+}
+
 func TestAQuotaRefusalNeverReachesTheModel(t *testing.T) {
 	client := fake.Text("this should never be generated")
 	quotas := &stubQuotas{allowed: false, retryAfter: 20 * time.Minute}

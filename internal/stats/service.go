@@ -12,7 +12,6 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/biometrics"
@@ -24,6 +23,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
@@ -185,7 +185,7 @@ type CardioStats struct {
 func (s *Service) Cardio(ctx context.Context, user users.User, rg timerange.Range) (CardioStats, error) {
 	var out CardioStats
 	var sessions []activity.Session
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	if s.src.Activity != nil {
 		g.Go(func() (err error) {
 			sessions, err = s.src.Activity.ListBetween(gctx, user.ID, rg)
@@ -472,7 +472,7 @@ func (s *Service) Patterns(ctx context.Context, user users.User, rg timerange.Ra
 		acts    []activity.Session
 		healthy = make([][]health.Stored, len(patternMetrics))
 	)
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	g.Go(func() (err error) { nights, err = s.Nights(gctx, user, window); return })
 	g.Go(func() (err error) { food, err = s.food(gctx, user, window); return })
 	if s.src.Caffeine != nil {

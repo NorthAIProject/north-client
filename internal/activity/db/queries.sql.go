@@ -109,13 +109,20 @@ func (q *Queries) CompleteActivitySession(ctx context.Context, arg CompleteActiv
 
 const completedSessionsByIDs = `-- name: CompletedSessionsByIDs :many
 SELECT id, user_id, activity_code, source, status, weight_kg_snapshot, started_at, paused_at, total_paused_seconds, ended_at, calories_burned, external_id, created_at, updated_at, distance_m, plan_weekday, avg_hr, max_hr, elevation_m, indoor FROM activity_sessions
-WHERE id = ANY($1::uuid[]) AND status = 'completed'
+WHERE id = ANY($1::uuid[])
+  AND user_id = ANY($2::uuid[])
+  AND status = 'completed'
 `
 
-// Completed sessions by id, whoever owns them. Not owner-scoped: the caller
-// decides whose workouts the reader may see before asking.
-func (q *Queries) CompletedSessionsByIDs(ctx context.Context, ids []uuid.UUID) ([]ActivitySession, error) {
-	rows, err := q.db.Query(ctx, completedSessionsByIDs, ids)
+type CompletedSessionsByIDsParams struct {
+	Ids      []uuid.UUID
+	OwnerIds []uuid.UUID
+}
+
+// Completed sessions by id, of the named owners only. The caller decides whose
+// workouts the reader may see before asking, and this never reads anyone else's.
+func (q *Queries) CompletedSessionsByIDs(ctx context.Context, arg CompletedSessionsByIDsParams) ([]ActivitySession, error) {
+	rows, err := q.db.Query(ctx, completedSessionsByIDs, arg.Ids, arg.OwnerIds)
 	if err != nil {
 		return nil, err
 	}

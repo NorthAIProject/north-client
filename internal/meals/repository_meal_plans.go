@@ -137,8 +137,7 @@ func (tx *PlanTx) createPortion(ctx context.Context, mealID uuid.UUID, p NewPort
 }
 
 // GetPlan loads a plan with its days, their meals and each meal's
-// ingredients. A meal plan realistically has a handful of meals, so the one
-// query per meal here is not the hot path the coach's per-message reads are.
+// ingredients.
 func (r *PostgresRepository) GetPlan(ctx context.Context, id, userID uuid.UUID) (MealPlan, error) {
 	row, err := r.q.GetMealPlan(ctx, mealsdb.GetMealPlanParams{ID: id, UserID: userID})
 	if err != nil {
@@ -467,16 +466,20 @@ func loadPlan(ctx context.Context, q *mealsdb.Queries, row mealsdb.MealPlan, wit
 	if err != nil {
 		return MealPlan{}, apperr.Wrap(err, "list meals by plan")
 	}
+	var ingredients map[uuid.UUID][]MealIngredient
+	if withIngredients {
+		ingredients, err = ingredientsByMeal(ctx, q, row.ID)
+		if err != nil {
+			return MealPlan{}, err
+		}
+	}
 	for _, mealRow := range mealRows {
 		m := mealFromDB(mealRow)
 		if withIngredients {
-			ingredientRows, err := q.ListMealIngredients(ctx, m.ID)
-			if err != nil {
-				return MealPlan{}, apperr.Wrap(err, "list meal ingredients")
-			}
-			m.Ingredients = make([]MealIngredient, 0, len(ingredientRows))
-			for _, ingredientRow := range ingredientRows {
-				m.Ingredients = append(m.Ingredients, mealIngredientFromListRow(ingredientRow))
+			m.Ingredients = ingredients[m.ID]
+			// Empty rather than nil for a meal with none: the API serialises it.
+			if m.Ingredients == nil {
+				m.Ingredients = []MealIngredient{}
 			}
 		}
 		day := &plan.Days[byID[m.DayID]]
@@ -491,6 +494,20 @@ func loadPlan(ctx context.Context, q *mealsdb.Queries, row mealsdb.MealPlan, wit
 		day.Meals = append(day.Meals, m)
 	}
 	return plan, nil
+}
+
+// ingredientsByMeal reads every ingredient of a plan in one query and groups
+// them by meal, each meal's in the order the query returned them.
+func ingredientsByMeal(ctx context.Context, q *mealsdb.Queries, planID uuid.UUID) (map[uuid.UUID][]MealIngredient, error) {
+	rows, err := q.ListMealIngredientsByPlan(ctx, planID)
+	if err != nil {
+		return nil, apperr.Wrap(err, "list meal ingredients")
+	}
+	out := make(map[uuid.UUID][]MealIngredient)
+	for _, row := range rows {
+		out[row.MealID] = append(out[row.MealID], mealIngredientFromListRow(row))
+	}
+	return out, nil
 }
 
 // recalculateTotals sums a meal's ingredients into its total_macros, then
@@ -598,7 +615,7 @@ func mealIngredientFromDB(row mealsdb.MealIngredient) MealIngredient {
 	}
 }
 
-func mealIngredientFromListRow(row mealsdb.ListMealIngredientsRow) MealIngredient {
+func mealIngredientFromListRow(row mealsdb.ListMealIngredientsByPlanRow) MealIngredient {
 	return MealIngredient{
 		ID: row.ID, MealID: row.MealID, IngredientID: row.IngredientID,
 		IngredientName: row.IngredientName,

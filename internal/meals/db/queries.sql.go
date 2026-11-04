@@ -961,15 +961,20 @@ func (q *Queries) ListFoodLogsByRange(ctx context.Context, arg ListFoodLogsByRan
 	return items, nil
 }
 
-const listMealIngredients = `-- name: ListMealIngredients :many
-SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, mi.source_text, mi.estimated, mi.optional, i.name AS ingredient_name
-FROM meal_ingredients mi
-JOIN ingredients i ON i.id = mi.ingredient_id
-WHERE mi.meal_id = $1
-ORDER BY mi.created_at
+const listMealIngredientsByPlan = `-- name: ListMealIngredientsByPlan :many
+SELECT portion.id, portion.meal_id, portion.ingredient_id, portion.quantity_grams, portion.calories, portion.protein_g, portion.fat_g, portion.carbs_g, portion.created_at, portion.source_text, portion.estimated, portion.optional, portion.ingredient_name
+FROM meals m
+CROSS JOIN LATERAL (
+    SELECT mi.id, mi.meal_id, mi.ingredient_id, mi.quantity_grams, mi.calories, mi.protein_g, mi.fat_g, mi.carbs_g, mi.created_at, mi.source_text, mi.estimated, mi.optional, i.name AS ingredient_name
+    FROM meal_ingredients mi
+    JOIN ingredients i ON i.id = mi.ingredient_id
+    WHERE mi.meal_id = m.id
+    ORDER BY mi.created_at
+) portion
+WHERE m.meal_plan_id = $1
 `
 
-type ListMealIngredientsRow struct {
+type ListMealIngredientsByPlanRow struct {
 	ID             uuid.UUID
 	MealID         uuid.UUID
 	IngredientID   uuid.UUID
@@ -985,16 +990,22 @@ type ListMealIngredientsRow struct {
 	IngredientName string
 }
 
+// Every ingredient of a plan, sorted one meal at a time. A plan written in one
+// transaction gives all its portions the same created_at, so that sort leaves
+// them in the order they were written, which is what the plan shows and what
+// "the first portion of a food" means. Sorting the plan's rows together instead
+// (meal_id IN (...) ORDER BY meal_id, created_at) shuffles those ties, and
+// differently on each read.
 // ingredient_name is denormalized for display without a second round trip.
-func (q *Queries) ListMealIngredients(ctx context.Context, mealID uuid.UUID) ([]ListMealIngredientsRow, error) {
-	rows, err := q.db.Query(ctx, listMealIngredients, mealID)
+func (q *Queries) ListMealIngredientsByPlan(ctx context.Context, mealPlanID uuid.UUID) ([]ListMealIngredientsByPlanRow, error) {
+	rows, err := q.db.Query(ctx, listMealIngredientsByPlan, mealPlanID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListMealIngredientsRow{}
+	items := []ListMealIngredientsByPlanRow{}
 	for rows.Next() {
-		var i ListMealIngredientsRow
+		var i ListMealIngredientsByPlanRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.MealID,

@@ -6,8 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"golang.org/x/sync/errgroup"
-
 	activitysvc "github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/checkins"
@@ -21,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
 	"github.com/NorthAIProject/north-client/internal/meals"
 	"github.com/NorthAIProject/north-client/internal/mind"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/spend"
@@ -222,7 +221,7 @@ type BodyData struct {
 func (s *Service) Body(ctx context.Context, user users.User, rg timerange.Range) (BodyData, error) {
 	out := BodyData{Range: rg, HydrationGoal: hydration.DefaultDailyTargetML}
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 
 	g.Go(func() (err error) {
 		out.Hydration, err = s.hydration.DaysBetween(gctx, user, rg)
@@ -258,7 +257,7 @@ type MindData struct {
 func (s *Service) Mind(ctx context.Context, user users.User, rg timerange.Range) (MindData, error) {
 	out := MindData{Range: rg}
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 
 	g.Go(func() (err error) {
 		out.CheckIns, err = s.checkins.ListBetween(gctx, user.ID, rg)
@@ -290,7 +289,7 @@ type ProgressData struct {
 func (s *Service) Progress(ctx context.Context, user users.User, rg timerange.Range) (ProgressData, error) {
 	out := ProgressData{Range: rg}
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 
 	g.Go(func() (err error) {
 		out.Active, err = s.goals.List(gctx, user.ID)
@@ -350,7 +349,7 @@ func (s *Service) Training(ctx context.Context, user users.User, rg timerange.Ra
 	out := TrainingData{Range: rg, Now: time.Now().In(user.Location())}
 	prev := rg.Previous()
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 
 	g.Go(func() (err error) {
 		out.Sessions, err = s.activity.ListBetween(gctx, user.ID, rg)

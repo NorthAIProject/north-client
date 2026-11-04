@@ -2,6 +2,7 @@ package messaging_test
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	"github.com/NorthAIProject/north-client/internal/quota"
 	"github.com/NorthAIProject/north-client/internal/shared/database/testdb"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
 
@@ -37,6 +39,19 @@ type harness struct {
 	voice     *stubVoice
 	user      users.User
 	pool      *pgxpool.Pool
+
+	// background is the coach's detached work. A turn's follow-ups, naming the
+	// thread among them, run after its reply is delivered, so settle waits for
+	// them to keep a scripted client's calls in a fixed order.
+	background *lifecycle.Tracker
+}
+
+// settle waits for what the last turn set off in the background.
+func (h harness) settle(t *testing.T) {
+	t.Helper()
+	if !h.background.Drain(30 * time.Second) {
+		t.Fatal("the coach's follow-ups never finished")
+	}
 }
 
 type harnessOptions struct {
@@ -93,7 +108,9 @@ func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness 
 
 	convos := conversations.NewService(conversations.NewRepository(pool))
 
+	background := lifecycle.NewTracker(slog.New(slog.DiscardHandler))
 	coachOpts := coach.Options{
+		Background:     background,
 		Registry:       registry,
 		Conversations:  convos,
 		ContextBuilder: coach.NewContextBuilder(convos),
@@ -139,6 +156,8 @@ func newHarness(t *testing.T, client *fake.Client, opts harnessOptions) harness 
 		voice:     opts.voice,
 		user:      user,
 		pool:      pool,
+
+		background: background,
 	}
 }
 
@@ -188,6 +207,7 @@ func (h harness) sendUpdate(t *testing.T, chat, text string, updateID int64) mes
 	if err != nil {
 		t.Fatalf("handle %q: %v", text, err)
 	}
+	h.settle(t)
 	return out
 }
 

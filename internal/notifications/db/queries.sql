@@ -48,6 +48,14 @@ SET nudge_missed_checkin = EXCLUDED.nudge_missed_checkin,
     updated_at           = now()
 RETURNING *;
 
+-- name: StatsDigestClaimed :one
+-- Whether this window is already booked, so a sweep can avoid computing a digest
+-- it would not be allowed to send. Never the lock: see ClaimStatsDigest.
+SELECT EXISTS(
+    SELECT 1 FROM stats_digest_sends
+    WHERE user_id = $1 AND cadence = $2 AND period_start = $3
+)::bool;
+
 -- name: ClaimStatsDigest :one
 -- Records that a digest is going out, and reports whether this call is the one
 -- that gets to send it.

@@ -108,8 +108,12 @@ type ConversationList struct {
 type ConversationDetail struct {
 	Conversation ConversationSummary `json:"conversation"`
 	// Summary is a finished reflection's write-up.
-	Summary  string    `json:"summary,omitempty"`
+	Summary string `json:"summary,omitempty"`
+	// Messages is the newest page of the thread in reading order, oldest first.
 	Messages []Message `json:"messages"`
+	// NextBefore is set when older messages exist; pass it as ?before= for the
+	// page before this one. Absent means this page reaches the thread's start.
+	NextBefore *uuid.UUID `json:"nextBefore,omitempty"`
 	// PendingApproval is set when the coach stopped to ask before changing
 	// something; answer it with POST .../tools/{messageId}.
 	PendingApproval *Approval `json:"pendingApproval,omitempty"`
@@ -258,11 +262,18 @@ func (a *API) show(c *echo.Context) error {
 		return err
 	}
 
+	var before uuid.UUID
+	if raw := c.QueryParam("before"); raw != "" {
+		if before, err = uuid.Parse(raw); err != nil {
+			return httpx.Fail(apperr.FieldErrors{}.Add("before", "Use the nextBefore of an earlier page."), "That page could not be read.")
+		}
+	}
+
 	conversation, err := a.svc.Conversations().Get(ctx, id, user.ID)
 	if err != nil {
 		return httpx.Fail(err, "That conversation was not found.")
 	}
-	history, err := a.svc.Conversations().History(ctx, conversation.ID)
+	page, err := a.svc.Conversations().Thread(ctx, conversation.ID, before)
 	if err != nil {
 		return httpx.Fail(err, "The conversation could not be loaded.")
 	}
@@ -274,14 +285,16 @@ func (a *API) show(c *echo.Context) error {
 	detail := ConversationDetail{
 		Conversation: projectSummary(conversation),
 		Summary:      conversation.Summary,
-		Messages:     projectMessages(history),
+		Messages:     projectMessages(page.Messages),
+		NextBefore:   page.NextBefore,
 	}
 	if waiting {
 		detail.PendingApproval = projectApproval(pending)
 	}
-	// Same rule the web page uses: a trailing tool result means the model
-	// was handed an answer and has not replied yet.
-	detail.AwaitingResume = !waiting && len(history) > 0 && len(history[len(history)-1].ToolResults) > 0
+	detail.AwaitingResume, err = a.svc.AwaitingResume(ctx, conversation.ID)
+	if err != nil {
+		return httpx.Fail(err, "The conversation could not be loaded.")
+	}
 	return c.JSON(http.StatusOK, detail)
 }
 
@@ -452,6 +465,9 @@ func (a *API) resume(c *echo.Context) error {
 		return err
 	}
 	stream, err := a.svc.Resume(ctx, user, id)
+	if apperr.Is(err, apperr.ErrConflict) {
+		return httpx.Fail(err, "This reply has already been written, or is being written now.")
+	}
 	if err != nil {
 		return httpx.Fail(err, friendly(err))
 	}
@@ -586,13 +602,8 @@ func (a *API) relay(c *echo.Context, conversationID uuid.UUID, stream <-chan ai.
 		}
 		if pending, waiting, err := a.svc.PendingApproval(ctx, user, conversationID); err == nil && waiting {
 			writeEvent(w, rc, EventApproval, projectApproval(pending))
-		} else if history, err := a.svc.Conversations().History(ctx, conversationID); err == nil {
-			for i := len(history) - 1; i >= 0; i-- {
-				if history[i].IsModel() && !history[i].IsToolTurn() {
-					done.MessageID = &history[i].ID
-					break
-				}
-			}
+		} else if id, ok, err := a.svc.LatestReplyID(ctx, conversationID); err == nil && ok {
+			done.MessageID = &id
 		}
 	}
 	writeEvent(w, rc, EventDone, done)

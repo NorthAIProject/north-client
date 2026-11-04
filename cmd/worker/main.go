@@ -248,10 +248,14 @@ func run() error {
 	var metricsReg *metrics.Registry
 	if cfg.MetricsListenAddr != "" {
 		metricsReg = metrics.New()
+		metricsReg.WatchPool(func() metrics.PoolStats { return database.PoolStats(pool) })
+	}
+	worker := jobs.NewWorker(queue, log).WithMetrics(metricsReg)
 
+	if metricsReg != nil {
 		metricsSrv := &http.Server{
 			Addr:              cfg.MetricsListenAddr,
-			Handler:           metricsReg.Handler(),
+			Handler:           worker.ProbeHandler(metricsReg.Handler()),
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		go func() {
@@ -267,7 +271,6 @@ func run() error {
 		defer profiling.Start(cfg.PprofListenAddr, log)()
 	}
 
-	worker := jobs.NewWorker(queue, log).WithMetrics(metricsReg)
 	worker.Register(jobs.KindAnalyzeFormVideo, mediaSvc.AnalyzeVideo)
 	worker.Register(jobs.KindExtractMemories, memoryExtract.HandleExtractJob)
 	worker.Register(jobs.KindSyncStrava, syncStravaHandler(stravaSvc))
@@ -419,6 +422,8 @@ func run() error {
 			WithLogger(log).HandleSweep)
 	worker.Register(jobs.KindSweepQuotas,
 		quota.NewService(quota.NewRepository(pool), quota.Limits{}, nil).HandleSweep)
+	worker.Register(jobs.KindSweepMessagingUpdates,
+		messaging.NewUpdateSweeper(messaging.NewRepository(pool), log).HandleSweep)
 
 	// The nudges this process raises are the ones the funnel needs to count,
 	// so the worker reports to PostHog under the same rules as the web binary.
@@ -654,6 +659,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})
+	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepMessagingUpdates, struct{}{})
 
 	// Daily. Nothing here is urgent — the rows it removes are already expired
 	// and unusable — and one replica runs this, so a shorter interval would

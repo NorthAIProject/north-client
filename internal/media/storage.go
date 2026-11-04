@@ -77,11 +77,17 @@ func NewS3Storage(ctx context.Context, opts S3Options) (*S3Storage, error) {
 
 	return &S3Storage{
 		client:   client,
-		uploader: transfermanager.New(client),
+		uploader: transfermanager.New(client, func(o *transfermanager.Options) { o.Concurrency = uploadConcurrency }),
 		presign:  s3.NewPresignClient(client),
 		bucket:   opts.Bucket,
 	}, nil
 }
+
+// uploadConcurrency is how many parts of one object are in flight at once. Each
+// holds a part-sized buffer, 8 MiB by default, so this is memory rather than
+// speed: the SDK's default of five is 40 MiB per upload in a 768 Mi pod with no
+// global cap on concurrent uploads.
+const uploadConcurrency = 2
 
 // Put streams an object into the bucket.
 //

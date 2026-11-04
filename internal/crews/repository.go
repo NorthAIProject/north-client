@@ -537,7 +537,7 @@ func (r *PostgresRepository) InsertMessage(ctx context.Context, m newMessage, qu
 	if err != nil {
 		return uuid.Nil, apperr.Wrap(err, "insert message")
 	}
-	if err = live.Notify(ctx, tx, live.Event{Type: live.EventMessage, CrewID: m.CrewID, ChannelID: m.ChannelID, MessageID: row.ID, Seq: row.Seq}); err != nil {
+	if err = live.Notify(ctx, tx, live.Event{Type: live.EventMessage, CrewID: m.CrewID, ChannelID: m.ChannelID, MessageID: row.ID, Seq: row.Seq, AuthorID: m.AuthorID}); err != nil {
 		return uuid.Nil, err
 	}
 	if _, err = queue.EnqueueTx(ctx, tx, jobs.KindCrewMessagePush, jobs.CrewMessagePushPayload{UserID: m.AuthorID, MessageID: row.ID}); err != nil {
@@ -634,7 +634,7 @@ func (r *PostgresRepository) SetHidden(ctx context.Context, messageID uuid.UUID,
 	if err != nil {
 		return apperr.Wrap(err, "hide message")
 	}
-	if err = live.Notify(ctx, tx, live.Event{Type: live.EventUpdate, CrewID: row.CrewID, ChannelID: row.ChannelID, MessageID: row.ID}); err != nil {
+	if err = live.Notify(ctx, tx, live.Event{Type: live.EventUpdate, CrewID: row.CrewID, ChannelID: row.ChannelID, MessageID: row.ID, AuthorID: authorOf(row.AuthorID)}); err != nil {
 		return err
 	}
 	return apperr.Wrap(tx.Commit(ctx), "commit hide")
@@ -686,6 +686,24 @@ func (r *PostgresRepository) PushRecipients(ctx context.Context, messageID uuid.
 	return to, nil
 }
 
+// BlockedEitherWay lists everyone viewerID has blocked or been blocked by.
+func (r *PostgresRepository) BlockedEitherWay(ctx context.Context, viewerID uuid.UUID) ([]uuid.UUID, error) {
+	ids, err := r.q.BlockedEitherWay(ctx, viewerID)
+	if err != nil {
+		return nil, apperr.Wrap(err, "blocked either way")
+	}
+	return ids, nil
+}
+
+// authorOf is the author an event names: zero for a message nobody wrote, such
+// as the welcome message.
+func authorOf(id *uuid.UUID) uuid.UUID {
+	if id == nil {
+		return uuid.Nil
+	}
+	return *id
+}
+
 // AuthorBlockedFor says whether the message's author and viewerID have
 // blocked each other, either way.
 func (r *PostgresRepository) AuthorBlockedFor(ctx context.Context, viewerID, messageID uuid.UUID) (bool, error) {
@@ -703,7 +721,7 @@ func (r *PostgresRepository) update(ctx context.Context, meta messageMeta, write
 	if err = write(r.q.WithTx(tx)); err != nil {
 		return apperr.Wrap(err, "update message")
 	}
-	if err = live.Notify(ctx, tx, live.Event{Type: live.EventUpdate, CrewID: meta.CrewID, ChannelID: meta.ChannelID, MessageID: meta.ID}); err != nil {
+	if err = live.Notify(ctx, tx, live.Event{Type: live.EventUpdate, CrewID: meta.CrewID, ChannelID: meta.ChannelID, MessageID: meta.ID, AuthorID: authorOf(meta.AuthorID)}); err != nil {
 		return err
 	}
 	return apperr.Wrap(tx.Commit(ctx), "commit message update")

@@ -66,6 +66,33 @@ func (q *Queries) AuthorBlockedFor(ctx context.Context, arg AuthorBlockedForPara
 	return exists, err
 }
 
+const blockedEitherWay = `-- name: BlockedEitherWay :many
+SELECT (CASE WHEN b.blocker_id = $1 THEN b.blocked_id ELSE b.blocker_id END)::uuid AS user_id
+FROM blocks b
+WHERE b.blocker_id = $1 OR b.blocked_id = $1
+`
+
+// Everyone @viewer has blocked, and everyone who has blocked @viewer.
+func (q *Queries) BlockedEitherWay(ctx context.Context, viewer uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, blockedEitherWay, viewer)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const challengesOf = `-- name: ChallengesOf :many
 SELECT c.id, c.name, ch.kind, ch.target, ch.created_at
 FROM crew_members m
@@ -1312,7 +1339,7 @@ func (q *Queries) SetChallenge(ctx context.Context, arg SetChallengeParams) erro
 const setHidden = `-- name: SetHidden :one
 UPDATE crew_messages SET hidden_at = CASE WHEN $1::boolean THEN coalesce(hidden_at, now()) END
 WHERE id = $2
-RETURNING id, crew_id, channel_id
+RETURNING id, crew_id, channel_id, author_id
 `
 
 type SetHiddenParams struct {
@@ -1324,12 +1351,18 @@ type SetHiddenRow struct {
 	ID        uuid.UUID
 	CrewID    uuid.UUID
 	ChannelID uuid.UUID
+	AuthorID  *uuid.UUID
 }
 
 func (q *Queries) SetHidden(ctx context.Context, arg SetHiddenParams) (SetHiddenRow, error) {
 	row := q.db.QueryRow(ctx, setHidden, arg.Hide, arg.ID)
 	var i SetHiddenRow
-	err := row.Scan(&i.ID, &i.CrewID, &i.ChannelID)
+	err := row.Scan(
+		&i.ID,
+		&i.CrewID,
+		&i.ChannelID,
+		&i.AuthorID,
+	)
 	return i, err
 }
 

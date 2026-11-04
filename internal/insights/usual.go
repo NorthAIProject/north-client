@@ -4,8 +4,7 @@ import (
 	"context"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -73,7 +72,7 @@ func (s *Service) Health(ctx context.Context, user users.User, now time.Time) ([
 		}
 	}
 	loaded := make([][]point, len(catalog))
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	for i, m := range catalog {
 		g.Go(func() (err error) {
 			loaded[i], err = m.load(gctx, s, user, window)

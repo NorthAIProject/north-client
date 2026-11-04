@@ -107,10 +107,12 @@ INSERT INTO activity_sessions (
 RETURNING *;
 
 -- name: CompletedSessionsByIDs :many
--- Completed sessions by id, whoever owns them. Not owner-scoped: the caller
--- decides whose workouts the reader may see before asking.
+-- Completed sessions by id, of the named owners only. The caller decides whose
+-- workouts the reader may see before asking, and this never reads anyone else's.
 SELECT * FROM activity_sessions
-WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND status = 'completed';
+WHERE id = ANY(sqlc.arg(ids)::uuid[])
+  AND user_id = ANY(sqlc.arg(owner_ids)::uuid[])
+  AND status = 'completed';
 
 -- name: ListCompletedSessions :many
 -- One person's completed sessions that ended before a point, newest first;

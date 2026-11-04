@@ -27,7 +27,7 @@ func painted(img *image.RGBA) int {
 
 func TestTextPaintsGlyphs(t *testing.T) {
 	img := textCanvas()
-	drawText(img, 10, 50, "Last 7 days", colorForeground, textRegular, 24)
+	newFaces().drawText(img, 10, 50, "Last 7 days", colorForeground, textRegular, 24)
 
 	if painted(img) == 0 {
 		t.Error("nothing was drawn — the font did not load or the baseline is off-canvas")
@@ -36,7 +36,7 @@ func TestTextPaintsGlyphs(t *testing.T) {
 
 func TestTextOfNothingDrawsNothing(t *testing.T) {
 	img := textCanvas()
-	drawText(img, 10, 50, "", colorForeground, textRegular, 24)
+	newFaces().drawText(img, 10, 50, "", colorForeground, textRegular, 24)
 
 	if got := painted(img); got != 0 {
 		t.Errorf("an empty string painted %d pixels", got)
@@ -44,8 +44,9 @@ func TestTextOfNothingDrawsNothing(t *testing.T) {
 }
 
 func TestTextWidthGrowsWithTheString(t *testing.T) {
-	short := textWidth("7", textRegular, 24)
-	long := textWidth("Last 7 days", textRegular, 24)
+	f := newFaces()
+	short := f.textWidth("7", textRegular, 24)
+	long := f.textWidth("Last 7 days", textRegular, 24)
 
 	if short <= 0 {
 		t.Fatalf("width of a single character = %d, want more than nothing", short)
@@ -59,8 +60,9 @@ func TestBoldIsWiderThanRegularAtTheSameSize(t *testing.T) {
 	// Not a typographic law, but it is true of this typeface, and it is the
 	// cheapest assertion that proves two distinct faces actually loaded
 	// rather than one being silently substituted for the other.
-	regular := textWidth("Strong", textRegular, 24)
-	bold := textWidth("Strong", textBold, 24)
+	f := newFaces()
+	regular := f.textWidth("Strong", textRegular, 24)
+	bold := f.textWidth("Strong", textBold, 24)
 
 	if bold <= regular {
 		t.Errorf("bold %d is not wider than regular %d — the faces may be the same", bold, regular)
@@ -69,7 +71,7 @@ func TestBoldIsWiderThanRegularAtTheSameSize(t *testing.T) {
 
 func TestTextCentresOnAPoint(t *testing.T) {
 	left := textCanvas()
-	drawTextCentred(left, 200, 50, "88", colorForeground, textBold, 32)
+	newFaces().drawTextCentred(left, 200, 50, "88", colorForeground, textBold, 32)
 
 	// The drawn ink should straddle the centre rather than start at it.
 	minX, maxX := 400, 0

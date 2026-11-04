@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	caffeinecalc "github.com/NorthAIProject/north-client/internal/caffeine/caffeine"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -111,7 +111,7 @@ func (k EntryKind) Label() string {
 // hole in it is worse than an error message.
 func (s *Service) Timeline(ctx context.Context, user users.User, rg timerange.Range, limit int) ([]Entry, error) {
 	var (
-		g, gctx = errgroup.WithContext(ctx)
+		g, gctx = lifecycle.WithContext(ctx)
 		parts   = make([][]Entry, 12)
 	)
 

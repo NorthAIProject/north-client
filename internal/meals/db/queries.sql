@@ -189,13 +189,24 @@ INSERT INTO meal_ingredients (meal_id, ingredient_id, quantity_grams, calories, 
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
--- name: ListMealIngredients :many
+-- name: ListMealIngredientsByPlan :many
+-- Every ingredient of a plan, sorted one meal at a time. A plan written in one
+-- transaction gives all its portions the same created_at, so that sort leaves
+-- them in the order they were written, which is what the plan shows and what
+-- "the first portion of a food" means. Sorting the plan's rows together instead
+-- (meal_id IN (...) ORDER BY meal_id, created_at) shuffles those ties, and
+-- differently on each read.
 -- ingredient_name is denormalized for display without a second round trip.
-SELECT mi.*, i.name AS ingredient_name
-FROM meal_ingredients mi
-JOIN ingredients i ON i.id = mi.ingredient_id
-WHERE mi.meal_id = $1
-ORDER BY mi.created_at;
+SELECT portion.*
+FROM meals m
+CROSS JOIN LATERAL (
+    SELECT mi.*, i.name AS ingredient_name
+    FROM meal_ingredients mi
+    JOIN ingredients i ON i.id = mi.ingredient_id
+    WHERE mi.meal_id = m.id
+    ORDER BY mi.created_at
+) portion
+WHERE m.meal_plan_id = $1;
 
 -- name: GetMealIngredientOwned :one
 -- Ownership is via meal -> plan, two joins deep.

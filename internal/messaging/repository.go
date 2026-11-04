@@ -46,15 +46,15 @@ func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
 // costs a query off the common path. See the query's comment for why the two
 // checks cannot be split.
 //
-// updateID of 0 means the platform has no delivery counter, so the watermark
-// is skipped and this is a plain lookup with a touch.
+// updateID of 0 means the platform has no delivery counter, so the
+// redelivery check is skipped and this is a plain lookup.
 func (r *PostgresRepository) ClaimUpdate(ctx context.Context, platform, externalID string, updateID int64, accountID string) (Link, error) {
 	if updateID == 0 {
 		return r.Get(ctx, platform, externalID)
 	}
 
 	row, err := r.q.ClaimMessagingUpdate(ctx, messagingdb.ClaimMessagingUpdateParams{
-		Platform: platform, ExternalID: externalID, LastUpdateID: updateID,
+		Platform: platform, ExternalID: externalID, UpdateID: updateID,
 		AccountID: accountID,
 	})
 	if err != nil {
@@ -64,6 +64,14 @@ func (r *PostgresRepository) ClaimUpdate(ctx context.Context, platform, external
 		return Link{}, apperr.Wrap(err, "claim messaging update")
 	}
 	return linkFromDB(row), nil
+}
+
+// PurgeSeenUpdates forgets claimed updates older than olderThan. Past the
+// platform's redelivery window a row can never match again, so keeping it buys
+// nothing but table growth.
+func (r *PostgresRepository) PurgeSeenUpdates(ctx context.Context, olderThan time.Duration) (int64, error) {
+	n, err := r.q.PurgeSeenMessagingUpdates(ctx, olderThan.Seconds())
+	return n, apperr.Wrap(err, "purge seen messaging updates")
 }
 
 func (r *PostgresRepository) Get(ctx context.Context, platform, externalID string) (Link, error) {
