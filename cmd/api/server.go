@@ -113,6 +113,7 @@ func run() error {
 	var metricsReg *metrics.Registry
 	if cfg.MetricsListenAddr != "" {
 		metricsReg = metrics.New()
+		metricsReg.WatchPool(func() metrics.PoolStats { return database.PoolStats(pool) })
 
 		metricsSrv := &http.Server{
 			Addr:              cfg.MetricsListenAddr,

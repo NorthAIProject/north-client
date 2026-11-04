@@ -194,3 +194,48 @@ func TestVoiceMetricsTolerateNoRegistry(t *testing.T) {
 	var r *metrics.Registry
 	r.VoiceTranscription("telegram_voice", time.Second, 100, metrics.OutcomeSuccess)
 }
+
+// The pool's numbers are read at scrape time, so the four that answer "are
+// requests queueing for a connection" are always current and cost nothing
+// between scrapes.
+func TestThePoolIsReadWhenScraped(t *testing.T) {
+	r := metrics.New()
+
+	if body := scrape(t, r); strings.Contains(body, "north_db_pool_") {
+		t.Fatalf("pool series exported before a pool was watched:\n%s", body)
+	}
+
+	stats := metrics.PoolStats{
+		AcquireDuration:   1500 * time.Millisecond,
+		EmptyAcquireCount: 7,
+		AcquiredConns:     3,
+		MaxConns:          10,
+	}
+	r.WatchPool(func() metrics.PoolStats { return stats })
+
+	body := scrape(t, r)
+	for _, want := range []string{
+		"north_db_pool_acquire_duration_seconds_total 1.5",
+		"north_db_pool_empty_acquire_total 7",
+		"north_db_pool_acquired_conns 3",
+		"north_db_pool_max_conns 10",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in:\n%s", want, body)
+		}
+	}
+
+	stats.AcquiredConns = 9
+	if body := scrape(t, r); !strings.Contains(body, "north_db_pool_acquired_conns 9") {
+		t.Errorf("a later scrape did not read the pool again:\n%s", body)
+	}
+}
+
+// Metrics off is a supported configuration, here as everywhere else.
+func TestWatchingAPoolOnANilRegistryIsSafe(t *testing.T) {
+	var r *metrics.Registry
+	r.WatchPool(func() metrics.PoolStats {
+		t.Error("a nil registry read the pool")
+		return metrics.PoolStats{}
+	})
+}
