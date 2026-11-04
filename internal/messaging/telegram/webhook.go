@@ -79,8 +79,8 @@ func (h *Webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Acknowledged before it is answered. Telegram retries anything that is not
 	// a prompt 200 and a coach turn takes minutes, so holding the request open
-	// would guarantee both a timeout and a redelivery. The watermark in
-	// messaging_links is what makes that redelivery harmless if it happens
+	// would guarantee both a timeout and a redelivery. The seen-set behind
+	// messaging.ClaimUpdate is what makes that redelivery harmless if it happens
 	// anyway.
 	h.bridge.dispatchRaw(r.Context(), raw)
 	w.WriteHeader(http.StatusOK)

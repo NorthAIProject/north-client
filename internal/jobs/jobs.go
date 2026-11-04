@@ -128,6 +128,11 @@ const (
 	// per account per guarded action per window, forever.
 	KindSweepQuotas Kind = "sweep_quotas"
 
+	// KindSweepMessagingUpdates forgets claimed platform updates too old for
+	// the platform to resend. Without it messaging_seen_updates keeps one row
+	// per update, forever.
+	KindSweepMessagingUpdates Kind = "sweep_messaging_updates"
+
 	// KindSweepNudges evaluates missed check-ins and approaching deadlines
 	// for onboarded accounts and stores any new in-app notes.
 	KindSweepNudges Kind = "sweep_nudges"

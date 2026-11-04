@@ -58,9 +58,8 @@ func NewPoller(cfg PollerConfig) *Poller {
 //
 // The offset is held in memory rather than persisted, and that is deliberate:
 // Telegram already forgets an update once the next offset acknowledges it, and
-// the few that a restart replays are caught by the last_update_id watermark in
-// messaging_links. Two mechanisms for one guarantee would be one more place
-// for them to disagree.
+// the few that a restart replays are caught by messaging_seen_updates. Two
+// mechanisms for one guarantee would be one more place for them to disagree.
 func (p *Poller) Run(ctx context.Context) error {
 	p.log.Info("telegram poller started")
 

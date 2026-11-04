@@ -419,6 +419,8 @@ func run() error {
 			WithLogger(log).HandleSweep)
 	worker.Register(jobs.KindSweepQuotas,
 		quota.NewService(quota.NewRepository(pool), quota.Limits{}, nil).HandleSweep)
+	worker.Register(jobs.KindSweepMessagingUpdates,
+		messaging.NewUpdateSweeper(messaging.NewRepository(pool), log).HandleSweep)
 
 	// The nudges this process raises are the ones the funnel needs to count,
 	// so the worker reports to PostHog under the same rules as the web binary.
@@ -654,6 +656,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepQuotas, struct{}{})
+	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepMessagingUpdates, struct{}{})
 
 	// Daily. Nothing here is urgent — the rows it removes are already expired
 	// and unusable — and one replica runs this, so a shorter interval would

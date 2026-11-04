@@ -2,6 +2,7 @@ package messaging_test
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -195,5 +196,22 @@ func TestLegacyRowsAndAccountlessPlatformsStillWork(t *testing.T) {
 	}
 	if _, err = repo.ClaimUpdate(ctx, messaging.PlatformTelegram, chat, 51, ""); err != nil {
 		t.Errorf("a newer update was rejected with no account set: %v", err)
+	}
+}
+
+// The sweep may only forget what can no longer be redelivered. A claim younger
+// than Telegram's window has to survive it, or a redelivery is answered twice.
+func TestTheSweepKeepsAnythingThatCouldStillBeRedelivered(t *testing.T) {
+	repo, chat, bot, ctx := linkedChat(t, "sweep@north.test")
+
+	if _, err := repo.ClaimUpdate(ctx, messaging.PlatformTelegram, chat, 9, bot); err != nil {
+		t.Fatal(err)
+	}
+	sweep := messaging.NewUpdateSweeper(repo, slog.New(slog.DiscardHandler))
+	if err := sweep.HandleSweep(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ClaimUpdate(ctx, messaging.PlatformTelegram, chat, 9, bot); err == nil {
+		t.Error("the sweep forgot a fresh claim, so its redelivery was accepted")
 	}
 }

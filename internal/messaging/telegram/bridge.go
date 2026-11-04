@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/messaging"
@@ -21,6 +22,9 @@ const replyTimeout = 6 * time.Minute
 // needs nothing like the budget an answer does.
 const leaveTimeout = 30 * time.Second
 
+// callbackTimeout bounds acknowledging a tapped button: one API call.
+const callbackTimeout = 30 * time.Second
+
 // Handler is the messaging behaviour a bridge needs. An interface so the two
 // edges can be tested without a database behind them.
 type Handler interface {
@@ -38,6 +42,9 @@ type bridge struct {
 	// typingInterval; a test sets it small so it does not have to wait out a
 	// real one.
 	typingEvery time.Duration
+
+	// chats serialises turns per chat. Its zero value is ready to use.
+	chats chatQueue
 }
 
 func (b *bridge) typingTick() time.Duration {
@@ -63,7 +70,12 @@ func (b *bridge) dispatchRaw(ctx context.Context, raw []byte) {
 // the poller has to keep polling. This is the same trade the coach itself
 // makes in SendMessage, and it fails the same way — a restart mid-generation
 // loses the outbound push while the reply is still persisted and still shows
-// up in the web thread. What is lost is the notification, not the answer.
+// up in the web thread. What is lost is the notification, not the answer. A
+// turn still queued at that moment has not been saved either, so it is lost
+// outright: the update was already acknowledged, and nothing will resend it.
+//
+// Turns in one chat run one at a time (see chatQueue). The budget starts when a
+// turn does, so time spent behind a slow turn does not count against the next.
 func (b *bridge) dispatch(ctx context.Context, u update) {
 	in, callbackID, what := u.inbound()
 
@@ -71,25 +83,56 @@ func (b *bridge) dispatch(ctx context.Context, u update) {
 	// bot received it, and the client is the only thing that knows.
 	in.AccountID = b.client.BotID()
 
+	detached := context.WithoutCancel(ctx)
+
 	switch what {
 	case ignoreUpdate:
 		// A sticker, someone joining. Not an error and not a question.
 		return
 
 	case leaveChat:
-		detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), leaveTimeout)
 		go func() {
+			defer b.recoverTurn(in.ExternalID)
+
+			turn, cancel := context.WithTimeout(detached, leaveTimeout)
 			defer cancel()
-			b.declineGroup(detached, in.ExternalID)
+			b.declineGroup(turn, in.ExternalID)
 		}()
 		return
 	}
 
-	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), replyTimeout)
-	go func() {
+	// Outside the queue, so the tapped button stops spinning now rather than
+	// after whatever turn is already running in this chat.
+	if callbackID != "" {
+		go func() {
+			defer b.recoverTurn(in.ExternalID)
+
+			ack, cancel := context.WithTimeout(detached, callbackTimeout)
+			defer cancel()
+			if err := b.client.AnswerCallback(ack, callbackID); err != nil {
+				b.log.Warn("telegram could not answer a callback query", "error", err)
+			}
+		}()
+	}
+
+	b.chats.add(in.ExternalID, func() {
+		defer b.recoverTurn(in.ExternalID)
+
+		turn, cancel := context.WithTimeout(detached, replyTimeout)
 		defer cancel()
-		b.answer(detached, in, callbackID)
-	}()
+		b.answer(turn, in)
+	})
+}
+
+// recoverTurn keeps one bad update from ending the process. These goroutines
+// are outside Echo's recover, so a panic would otherwise take down every turn
+// in flight and the rest of this chat's queue with it. Deferred directly by the
+// goroutine or queued function it protects.
+func (b *bridge) recoverTurn(externalID string) {
+	if r := recover(); r != nil {
+		b.log.Error("telegram turn panicked",
+			"panic", r, "chat", externalID, "stack", string(debug.Stack()))
+	}
 }
 
 // declineGroup explains itself once, then removes the bot from the chat.
@@ -161,14 +204,7 @@ func (b *bridge) keepTyping(ctx context.Context, externalID string) (stop func()
 	return cancel
 }
 
-func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callbackID string) {
-	// First, so the tapped button stops spinning while the coach thinks.
-	if callbackID != "" {
-		if err := b.client.AnswerCallback(ctx, callbackID); err != nil {
-			b.log.Warn("telegram could not answer a callback query", "error", err)
-		}
-	}
-
+func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage) {
 	if err := b.fillAttachment(ctx, &in); err != nil {
 		// Only photos and documents are fetched here now, so this copy names
 		// one of them. A recording that cannot be downloaded is answered by the

@@ -68,5 +68,7 @@
 // ready. The cost is that a restart mid-generation loses the push; the reply
 // is still persisted and still appears in the web thread, so what is lost is
 // the notification rather than the answer. Redeliveries are made harmless by
-// the last_update_id watermark on messaging_links.
+// messaging_seen_updates: claiming an update inserts its id there, and a second
+// delivery of that id conflicts and is dropped. A set rather than a high-water
+// mark, because updates are not handled in the order they were sent.
 package messaging

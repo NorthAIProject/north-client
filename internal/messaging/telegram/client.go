@@ -67,9 +67,9 @@ func (c *Client) Platform() string { return messaging.PlatformTelegram }
 // getMe returns. Parsing it costs nothing and, unlike a call, cannot fail at the
 // moment an update needs answering.
 //
-// It scopes the redelivery watermark. Update ids count up per bot, so two bots
-// produce two sequences, and a deployment pointed at a new bot must not compare
-// its ids against the old bot's high-water mark.
+// It scopes the redelivery check. Update ids count up per bot, so two bots
+// produce two sequences, and an id from a new bot must not be mistaken for the
+// same id already seen from the old one.
 func (c *Client) BotID() string {
 	id, _, found := strings.Cut(c.token, ":")
 	if !found {
