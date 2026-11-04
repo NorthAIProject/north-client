@@ -61,7 +61,7 @@ func apiRouter(t *testing.T) *echo.Echo {
 	t.Helper()
 	sessions := resolverThatMustNotRun{t: t}
 	e := echox.New(echox.Config{})
-	mountAPI(e, sessions, apiSet{
+	mountAPI(e, sessions, auth.NewRouteLimiter(auth.RouteLimits{}, nil), apiSet{
 		auth:         auth.NewAPI(sessions).WithAuthService(&auth.Service{}, &auth.Middleware{}),
 		mcpAuth:      mcpauth.NewAPI(nil, nil, nil, nil, nil),
 		capture:      capture.NewAPI(nil, nil, nil, nil),

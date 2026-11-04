@@ -1076,7 +1076,7 @@ func routes(
 		}
 		return mediaSvc.PlaybackURL(ctx, m)
 	})
-	mountAPI(e, sessions, apiSet{
+	mountAPI(e, sessions, auth.NewRouteLimiter(auth.RouteLimits{}, slog.Default()), apiSet{
 		auth:         authAPI,
 		mcpAuth:      mcpAuthAPI,
 		capture:      captureAPI,
