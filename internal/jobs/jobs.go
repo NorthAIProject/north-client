@@ -378,9 +378,20 @@ func (q *Queue) RequeueFailedEmbedJobsForUser(ctx context.Context, userID uuid.U
 func (q *Queue) HasPendingJobForUser(ctx context.Context, kind Kind, userID uuid.UUID) (bool, error) {
 	ok, err := q.q.HasPendingJobForUser(ctx, jobsdb.HasPendingJobForUserParams{
 		Kind:   string(kind),
-		UserID: userID,
+		UserID: userID.String(),
 	})
 	return ok, apperr.Wrap(err, "check pending job")
+}
+
+// HasRecentFailedJobForUser reports whether a job of this kind ran out of
+// attempts for a user within the given window.
+func (q *Queue) HasRecentFailedJobForUser(ctx context.Context, kind Kind, userID uuid.UUID, within time.Duration) (bool, error) {
+	ok, err := q.q.HasRecentFailedJobForUser(ctx, jobsdb.HasRecentFailedJobForUserParams{
+		Kind:          string(kind),
+		UserID:        userID.String(),
+		WithinSeconds: within.Seconds(),
+	})
+	return ok, apperr.Wrap(err, "check recent failed job")
 }
 
 // Backoff is the delay before a job's next attempt.

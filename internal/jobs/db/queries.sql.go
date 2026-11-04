@@ -122,18 +122,45 @@ SELECT EXISTS(
     SELECT 1 FROM jobs
     WHERE kind = $1::text
       AND status IN ('pending', 'running')
-      AND (payload->>'user_id')::uuid = $2::uuid
+      AND payload->>'user_id' = $2::text
 )::bool
 `
 
 type HasPendingJobForUserParams struct {
 	Kind   string
-	UserID uuid.UUID
+	UserID string
 }
 
-// Same casting rule as RequeueFailedEmbedJobsForUser above.
+// Compares text to text, unlike RequeueFailedEmbedJobsForUser above. A cast on
+// the column hides it from jobs_active_kind_user_idx, which indexes the text
+// value, and this runs once per candidate user in four sweeps.
 func (q *Queries) HasPendingJobForUser(ctx context.Context, arg HasPendingJobForUserParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasPendingJobForUser, arg.Kind, arg.UserID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const hasRecentFailedJobForUser = `-- name: HasRecentFailedJobForUser :one
+SELECT EXISTS(
+    SELECT 1 FROM jobs
+    WHERE kind = $1::text
+      AND status = 'failed'
+      AND payload->>'user_id' = $2::text
+      AND updated_at > now() - make_interval(secs => $3::double precision)
+)::bool
+`
+
+type HasRecentFailedJobForUserParams struct {
+	Kind          string
+	UserID        string
+	WithinSeconds float64
+}
+
+// The cutoff is computed here for the reason ReleaseStaleJobs gives: updated_at
+// is the database's clock, so the comparison should not depend on ours agreeing.
+func (q *Queries) HasRecentFailedJobForUser(ctx context.Context, arg HasRecentFailedJobForUserParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasRecentFailedJobForUser, arg.Kind, arg.UserID, arg.WithinSeconds)
 	var column_1 bool
 	err := row.Scan(&column_1)
 	return column_1, err

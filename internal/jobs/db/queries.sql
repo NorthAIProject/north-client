@@ -68,12 +68,25 @@ WHERE kind = 'embed_chunks'
   AND (payload->>'user_id')::uuid = sqlc.arg(user_id)::uuid;
 
 -- name: HasPendingJobForUser :one
--- Same casting rule as RequeueFailedEmbedJobsForUser above.
+-- Compares text to text, unlike RequeueFailedEmbedJobsForUser above. A cast on
+-- the column hides it from jobs_active_kind_user_idx, which indexes the text
+-- value, and this runs once per candidate user in four sweeps.
 SELECT EXISTS(
     SELECT 1 FROM jobs
     WHERE kind = sqlc.arg(kind)::text
       AND status IN ('pending', 'running')
-      AND (payload->>'user_id')::uuid = sqlc.arg(user_id)::uuid
+      AND payload->>'user_id' = sqlc.arg(user_id)::text
+)::bool;
+
+-- name: HasRecentFailedJobForUser :one
+-- The cutoff is computed here for the reason ReleaseStaleJobs gives: updated_at
+-- is the database's clock, so the comparison should not depend on ours agreeing.
+SELECT EXISTS(
+    SELECT 1 FROM jobs
+    WHERE kind = sqlc.arg(kind)::text
+      AND status = 'failed'
+      AND payload->>'user_id' = sqlc.arg(user_id)::text
+      AND updated_at > now() - make_interval(secs => sqlc.arg('within_seconds')::double precision)
 )::bool;
 
 -- name: ReleaseStaleJobs :execrows
