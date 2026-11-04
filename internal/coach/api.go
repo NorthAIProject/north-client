@@ -279,9 +279,10 @@ func (a *API) show(c *echo.Context) error {
 	if waiting {
 		detail.PendingApproval = projectApproval(pending)
 	}
-	// Same rule the web page uses: a trailing tool result means the model
-	// was handed an answer and has not replied yet.
-	detail.AwaitingResume = !waiting && len(history) > 0 && len(history[len(history)-1].ToolResults) > 0
+	detail.AwaitingResume, err = a.svc.AwaitingResume(ctx, conversation.ID)
+	if err != nil {
+		return httpx.Fail(err, "The conversation could not be loaded.")
+	}
 	return c.JSON(http.StatusOK, detail)
 }
 
@@ -452,6 +453,9 @@ func (a *API) resume(c *echo.Context) error {
 		return err
 	}
 	stream, err := a.svc.Resume(ctx, user, id)
+	if apperr.Is(err, apperr.ErrConflict) {
+		return httpx.Fail(err, "This reply has already been written, or is being written now.")
+	}
 	if err != nil {
 		return httpx.Fail(err, friendly(err))
 	}

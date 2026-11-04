@@ -271,6 +271,12 @@ func AwaitingTool(history []Message) bool {
 	return len(history) > 0 && len(history[len(history)-1].ToolCalls) > 0
 }
 
+// AwaitingReply reports whether a conversation's last turn is tool results: the
+// model was handed an answer and has not replied to it yet.
+func AwaitingReply(history []Message) bool {
+	return len(history) > 0 && len(history[len(history)-1].ToolResults) > 0
+}
+
 // PostProactive appends a turn nobody asked for to the thread
 // ProactiveTarget picks, and returns it (its ConversationID is the link a
 // notification should open).

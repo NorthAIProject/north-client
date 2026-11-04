@@ -142,10 +142,13 @@ type Service struct {
 	// Nil disables it.
 	away Inbox
 
-	// resolving holds the conversations whose approval is being run right
-	// now, so a second tap on Allow cannot run the same write twice. In
-	// memory because khepri-web runs one replica; a second one needs a lock
-	// in the database instead.
+	// resolving holds the conversations whose approval is being run or whose
+	// resumed reply is being written right now, so a second tap on Allow cannot
+	// run the same write twice and a second resume cannot write a second reply.
+	// One map because the two must also exclude each other: between the results
+	// and a standing task's sentence being stored, the thread reads as owed a
+	// reply it will never need. In memory because khepri-web runs one replica; a
+	// second one needs a lock in the database instead.
 	resolving sync.Map
 
 	model     string
@@ -683,6 +686,11 @@ type pumpTarget struct {
 	// startedAt is when the provider was first asked, which bounds the MCP
 	// lookups that can belong to this turn.
 	startedAt time.Time
+
+	// release gives up a guard the caller took for this turn. Nil when there is
+	// none. Called before the stream closes, so a caller told the turn failed can
+	// ask again at once.
+	release func()
 }
 
 // pump forwards the provider's stream to the caller while accumulating the full
@@ -716,6 +724,9 @@ func (s *Service) pump(
 ) {
 	defer cancelGen()
 	defer close(out)
+	if target.release != nil {
+		defer target.release()
+	}
 
 	log := middleware.FromContext(callerCtx)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -246,11 +247,44 @@ func describeCall(call ai.ToolCall) string {
 // requires.
 //
 // Nothing is appended as a user turn and no quota is spent: the person asked
-// once, and answering a confirmation is not a second question.
+// once, and answering a confirmation is not a second question. That makes it a
+// free model turn, so it runs only when a reply is owed, and only once at a time:
+// anything else answers ErrConflict without reaching a model.
+//
+// A confirmed standing task is the exception. It is answered already, by
+// ResolvePending, but iOS and Telegram resume after every approval, so they are
+// handed that sentence rather than told their approval failed.
 func (s *Service) Resume(ctx context.Context, user users.User, conversationID uuid.UUID) (<-chan ai.StreamChunk, error) {
+	// Before the guard: a stranger is told this thread does not exist, and must
+	// not be able to hold it or learn from a conflict that it does.
 	conversation, err := s.conversations.Get(ctx, conversationID, user.ID)
 	if err != nil {
 		return nil, err
+	}
+
+	if _, busy := s.resolving.LoadOrStore(conversationID, struct{}{}); busy {
+		return nil, apperr.Wrap(apperr.ErrConflict, "this reply is already being written")
+	}
+	release := func() { s.resolving.Delete(conversationID) }
+
+	// From here the pump owns the guard, because the reply is written after this
+	// function returns and until it is stored the thread still reads as owed one.
+	pumping := false
+	defer func() {
+		if !pumping {
+			release()
+		}
+	}()
+
+	history, err := s.latestTurn(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if sentences, ok := confirmedStandingTasks(history); ok {
+		return replayed(sentences), nil
+	}
+	if !conversations.AwaitingReply(history) {
+		return nil, apperr.Wrap(apperr.ErrConflict, "no reply is owed on this conversation")
 	}
 
 	coachCtx, err := s.contextB.Build(ctx, ContextRequest{
@@ -283,6 +317,7 @@ func (s *Service) Resume(ctx context.Context, user users.User, conversationID uu
 	}
 
 	out := make(chan ai.StreamChunk)
+	pumping = true
 	s.startPump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
 		conversation: conversation,
 		user:         user,
@@ -292,7 +327,51 @@ func (s *Service) Resume(ctx context.Context, user users.User, conversationID uu
 		offeredRefs:  coachCtx.OfferedRefs(),
 		traceID:      uuid.New().String(),
 		startedAt:    startedAt,
+		release:      release,
 	})
 
 	return out, nil
+}
+
+// AwaitingResume reports whether a reply is owed and nobody is writing it, which
+// is when a client should open the resume stream.
+//
+// False while a resume is running: clients open the stream whenever this says
+// true, and a device opening the thread mid-reply should wait for it rather than
+// ask for it and be refused.
+func (s *Service) AwaitingResume(ctx context.Context, conversationID uuid.UUID) (bool, error) {
+	if _, running := s.resolving.Load(conversationID); running {
+		return false, nil
+	}
+	last, err := s.conversations.Recent(ctx, conversationID, 1)
+	if err != nil {
+		return false, err
+	}
+	return conversations.AwaitingReply(last), nil
+}
+
+// confirmedStandingTasks returns the sentences a thread's end was answered with
+// when an approved create_watch is how it ends.
+//
+// Read from the results rather than from the last row alone, because a standing
+// task firing on its schedule posts under the same label and nobody approved
+// that.
+func confirmedStandingTasks(history []conversations.Message) ([]string, bool) {
+	i := len(history) - 1
+	for i >= 0 && history[i].IsProactive() && history[i].SourceLabel == conversations.SourceStandingTask {
+		i--
+	}
+	if i < 0 || i == len(history)-1 {
+		return nil, false
+	}
+	return standingTaskConfirmations(history[i].ToolResults)
+}
+
+// replayed is a stream of words already stored, which reaches no model and has
+// nothing to wait for.
+func replayed(sentences []string) <-chan ai.StreamChunk {
+	out := make(chan ai.StreamChunk, 1)
+	out <- ai.StreamChunk{Text: strings.Join(sentences, "\n\n")}
+	close(out)
+	return out
 }

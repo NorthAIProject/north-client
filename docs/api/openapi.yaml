@@ -613,7 +613,11 @@ paths:
     post:
       operationId: resumeConversation
       summary: Stream the rest of a reply after an approval was answered
-      description: Same events as replyInConversation. Spends no message quota.
+      description: >-
+        Same events as replyInConversation. Spends no message quota. Answers 409
+        when no reply is owed or one is already being written. After an approved
+        standing task it streams the confirmation already stored, without asking
+        a model.
       responses:
         '200':
           $ref: '#/components/responses/ReplyStream'
@@ -621,6 +625,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /conversations/{id}/tools/{messageID}:
     parameters:
       - $ref: '#/components/parameters/ConversationID'
