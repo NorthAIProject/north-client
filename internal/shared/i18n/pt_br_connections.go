@@ -87,7 +87,7 @@ var portugueseBrazilianConnections = map[string]string{
 
 	"conn.provider.note.openrouter": "Uma chave só, quase todos os modelos — incluindo Claude e GPT. A opção mais simples.",
 	"conn.provider.note.openai":     "Não precisa de código novo: o openaicompat já fala o dialeto da OpenAI.",
-	"conn.provider.note.nvidia":     "Modelos gratuitos, e o que o plano gratuito do Khepri já usa.",
+	"conn.provider.note.nvidia":     "Modelos gratuitos.",
 	"conn.provider.note.hermes":     "Sua própria instância do Hermes — tailnet, rede local ou pública. A URL e a chave ficam nesta conta.",
 	"conn.provider.note.anthropic":  "O Claude na sua própria conta da Anthropic. Cobrado nessa conta.",
 }

@@ -100,7 +100,7 @@ var englishConnections = map[string]string{
 	// One line under each provider in the AI settings, from providers.Catalog.
 	"conn.provider.note.openrouter": "One key, most models — including Claude and GPT. The simplest choice.",
 	"conn.provider.note.openai":     "Needs no new code: openaicompat speaks OpenAI's dialect already.",
-	"conn.provider.note.nvidia":     "Free models, and what Khepri's own free tier already runs on.",
+	"conn.provider.note.nvidia":     "Free models.",
 	"conn.provider.note.hermes":     "Your own Hermes instance — tailnet, LAN, or public. URL and key stay on this account.",
 	"conn.provider.note.anthropic":  "Claude on your own Anthropic account. Billed to that account.",
 }
