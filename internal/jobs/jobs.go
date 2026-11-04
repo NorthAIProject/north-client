@@ -317,6 +317,31 @@ func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, kind Kind, payload any
 	return (&Queue{q: q.q.WithTx(tx)}).Enqueue(ctx, kind, payload)
 }
 
+// EnqueuePeriodic adds a sweep unless a copy of it is already pending or running,
+// and reports whether it added one.
+//
+// A skipped tick loses nothing: a sweep reads the current state when it runs, and
+// the next tick follows within one interval.
+//
+// Only an empty payload is deduplicated, which is what every sweep uses. Anything
+// else is inserted every time, as Enqueue would.
+func (q *Queue) EnqueuePeriodic(ctx context.Context, kind Kind, payload any) (bool, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return false, apperr.Wrap(err, "encode periodic job payload")
+	}
+
+	n, err := q.q.EnqueuePeriodicJob(ctx, jobsdb.EnqueuePeriodicJobParams{
+		Kind:        string(kind),
+		Payload:     body,
+		MaxAttempts: 3,
+	})
+	if err != nil {
+		return false, apperr.Wrap(err, "enqueue periodic %s", kind)
+	}
+	return n > 0, nil
+}
+
 // Claim takes one eligible job, or returns false when the queue is empty.
 func (q *Queue) Claim(ctx context.Context) (Job, bool, error) {
 	row, err := q.q.ClaimJob(ctx)
@@ -344,6 +369,15 @@ func (q *Queue) Retry(ctx context.Context, id uuid.UUID, after time.Time, reason
 	}), "retry job")
 }
 
+// Requeue returns a job a shutdown interrupted to the queue, ready at once and
+// with its attempt given back.
+func (q *Queue) Requeue(ctx context.Context, id uuid.UUID, reason string) error {
+	return apperr.Wrap(q.q.RequeueInterruptedJob(ctx, jobsdb.RequeueInterruptedJobParams{
+		ID:        id,
+		LastError: reason,
+	}), "requeue job")
+}
+
 // Fail marks a job permanently failed.
 func (q *Queue) Fail(ctx context.Context, id uuid.UUID, reason string) error {
 	return apperr.Wrap(q.q.FailJob(ctx, jobsdb.FailJobParams{ID: id, LastError: reason}), "fail job")
@@ -369,9 +403,20 @@ func (q *Queue) RequeueFailedEmbedJobsForUser(ctx context.Context, userID uuid.U
 func (q *Queue) HasPendingJobForUser(ctx context.Context, kind Kind, userID uuid.UUID) (bool, error) {
 	ok, err := q.q.HasPendingJobForUser(ctx, jobsdb.HasPendingJobForUserParams{
 		Kind:   string(kind),
-		UserID: userID,
+		UserID: userID.String(),
 	})
 	return ok, apperr.Wrap(err, "check pending job")
+}
+
+// HasRecentFailedJobForUser reports whether a job of this kind ran out of
+// attempts for a user within the given window.
+func (q *Queue) HasRecentFailedJobForUser(ctx context.Context, kind Kind, userID uuid.UUID, within time.Duration) (bool, error) {
+	ok, err := q.q.HasRecentFailedJobForUser(ctx, jobsdb.HasRecentFailedJobForUserParams{
+		Kind:          string(kind),
+		UserID:        userID.String(),
+		WithinSeconds: within.Seconds(),
+	})
+	return ok, apperr.Wrap(err, "check recent failed job")
 }
 
 // Backoff is the delay before a job's next attempt.

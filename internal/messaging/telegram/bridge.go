@@ -3,12 +3,12 @@ package telegram
 import (
 	"context"
 	"log/slog"
-	"runtime/debug"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 )
 
 // replyTimeout bounds one detached turn.
@@ -45,6 +45,10 @@ type bridge struct {
 
 	// chats serialises turns per chat. Its zero value is ready to use.
 	chats chatQueue
+
+	// background lets a shutdown wait for turns. Nil recovers panics all the
+	// same and simply has nothing to wait for.
+	background *lifecycle.Tracker
 }
 
 func (b *bridge) typingTick() time.Duration {
@@ -73,6 +77,7 @@ func (b *bridge) dispatchRaw(ctx context.Context, raw []byte) {
 // up in the web thread. What is lost is the notification, not the answer. A
 // turn still queued at that moment has not been saved either, so it is lost
 // outright: the update was already acknowledged, and nothing will resend it.
+// The server drains tracked work before it exits to make both rare.
 //
 // Turns in one chat run one at a time (see chatQueue). The budget starts when a
 // turn does, so time spent behind a slow turn does not count against the next.
@@ -91,32 +96,30 @@ func (b *bridge) dispatch(ctx context.Context, u update) {
 		return
 
 	case leaveChat:
-		go func() {
-			defer b.recoverTurn(in.ExternalID)
-
+		b.background.Go("telegram leave", func() {
 			turn, cancel := context.WithTimeout(detached, leaveTimeout)
 			defer cancel()
 			b.declineGroup(turn, in.ExternalID)
-		}()
+		})
 		return
 	}
 
 	// Outside the queue, so the tapped button stops spinning now rather than
 	// after whatever turn is already running in this chat.
 	if callbackID != "" {
-		go func() {
-			defer b.recoverTurn(in.ExternalID)
-
+		b.background.Go("telegram callback", func() {
 			ack, cancel := context.WithTimeout(detached, callbackTimeout)
 			defer cancel()
 			if err := b.client.AnswerCallback(ack, callbackID); err != nil {
 				b.log.Warn("telegram could not answer a callback query", "error", err)
 			}
-		}()
+		})
 	}
 
-	b.chats.add(in.ExternalID, func() {
-		defer b.recoverTurn(in.ExternalID)
+	b.chats.add(in.ExternalID, b.startDrain, func() {
+		// Here as well as in the tracker: a turn that panics must not take the
+		// rest of its chat's queue with it.
+		defer lifecycle.Recover(b.log, "telegram turn")
 
 		turn, cancel := context.WithTimeout(detached, replyTimeout)
 		defer cancel()
@@ -124,15 +127,10 @@ func (b *bridge) dispatch(ctx context.Context, u update) {
 	})
 }
 
-// recoverTurn keeps one bad update from ending the process. These goroutines
-// are outside Echo's recover, so a panic would otherwise take down every turn
-// in flight and the rest of this chat's queue with it. Deferred directly by the
-// goroutine or queued function it protects.
-func (b *bridge) recoverTurn(externalID string) {
-	if r := recover(); r != nil {
-		b.log.Error("telegram turn panicked",
-			"panic", r, "chat", externalID, "stack", string(debug.Stack()))
-	}
+// startDrain runs a chat's queue as tracked work, so a shutdown waits for the
+// turn in progress and the ones queued behind it.
+func (b *bridge) startDrain(drain func()) {
+	b.background.Go("telegram chat", drain)
 }
 
 // declineGroup explains itself once, then removes the bot from the chat.

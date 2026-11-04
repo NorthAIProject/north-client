@@ -4,9 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/calculator"
 	"github.com/NorthAIProject/north-client/internal/meals"
@@ -50,7 +49,7 @@ func (s *Service) Nutrition(ctx context.Context, user users.User, rg timerange.R
 
 	var entries []meals.FoodLogEntry
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	g.Go(func() (err error) {
 		entries, err = s.food.Range(gctx, user.ID, rg.Since, rg.Until)
 		return

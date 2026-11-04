@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/achievements/achievement"
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
@@ -23,6 +22,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/meals/meal"
 	"github.com/NorthAIProject/north-client/internal/recaps/recap"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -124,7 +124,7 @@ func (s *Service) Load(ctx context.Context, user users.User, key string) (recap.
 		streak     int
 		highlights []achievement.Item
 	)
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	g.Go(func() (err error) {
 		sessions, err = s.sessions.ListBetween(gctx, user.ID, span)
 		return apperr.Wrap(err, "recap sessions")

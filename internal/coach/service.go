@@ -18,6 +18,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/nudges/nudge"
 	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/shared/toolsurface"
 	"github.com/NorthAIProject/north-client/internal/spend"
@@ -78,8 +79,13 @@ const generationTimeout = 5 * time.Minute
 // started answering "something went wrong" with credits still in the account.
 const replyMaxTokens = 8192
 
-// persistTimeout bounds the write that saves a completed reply.
+// persistTimeout bounds the write that saves a completed reply, and each small
+// step that follows one.
 const persistTimeout = 15 * time.Second
+
+// titleTimeout bounds naming a thread, which is a model call and may walk the
+// provider chain. Well inside what a shutdown waits for.
+const titleTimeout = 30 * time.Second
 
 // toolRounds bounds how many times the coach may run tools and go back to the
 // model within one turn.
@@ -90,12 +96,18 @@ const persistTimeout = 15 * time.Second
 // answer — and low enough that a loop costs a few calls rather than a budget.
 const toolRounds = 5
 
+// toolRoundRetryWait is the pause before asking again when the model could not
+// take a round that follows tools. Managed clients make one attempt each, because
+// the chain is their retry, and these rounds have no chain.
+const toolRoundRetryWait = time.Second
+
 // Service turns a user's message into a coached reply.
 //
 // Everything conversational passes through here: the web handler, and later the
 // Telegram and MCP adapters, all call SendMessage. None of them builds a prompt
 // or touches a provider.
 type Service struct {
+	background    *lifecycle.Tracker
 	conversations *conversations.Service
 	contextB      *ContextBuilder
 	promptB       *PromptBuilder
@@ -140,10 +152,13 @@ type Service struct {
 	// Nil disables it.
 	away Inbox
 
-	// resolving holds the conversations whose approval is being run right
-	// now, so a second tap on Allow cannot run the same write twice. In
-	// memory because khepri-web runs one replica; a second one needs a lock
-	// in the database instead.
+	// resolving holds the conversations whose approval is being run or whose
+	// resumed reply is being written right now, so a second tap on Allow cannot
+	// run the same write twice and a second resume cannot write a second reply.
+	// One map because the two must also exclude each other: between the results
+	// and a standing task's sentence being stored, the thread reads as owed a
+	// reply it will never need. In memory because khepri-web runs one replica; a
+	// second one needs a lock in the database instead.
 	resolving sync.Map
 
 	model     string
@@ -209,6 +224,10 @@ func (f AttachmentTextFunc) AttachmentText(ctx context.Context, userID, mediaID 
 }
 
 type Options struct {
+	// Background lets a shutdown wait for replies being generated. Nil still
+	// recovers panics and simply has nothing to wait for.
+	Background *lifecycle.Tracker
+
 	Registry       *ai.Registry
 	Conversations  *conversations.Service
 	ContextBuilder *ContextBuilder
@@ -287,6 +306,7 @@ func (s *Service) WithAway(in Inbox) *Service {
 
 func NewService(opts Options) *Service {
 	return &Service{
+		background:     opts.Background,
 		conversations:  opts.Conversations,
 		contextB:       opts.ContextBuilder,
 		promptB:        opts.PromptBuilder,
@@ -359,10 +379,7 @@ func (s *Service) SendIncoming(ctx context.Context, user users.User, conversatio
 		return nil, err
 	}
 
-	// Detached from the request so a disconnect does not abort generation. The
-	// logger is preserved, so these lines stay attached to the request that
-	// started them.
-	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+	genCtx, cancelGen := generationContext(ctx, user)
 
 	messages := conversations.ToAIMessages(coachCtx.RecentMessages)
 	messages = s.hydrateCurrentTurn(ctx, user, coachCtx.RecentMessages, messages)
@@ -386,7 +403,7 @@ func (s *Service) SendIncoming(ctx context.Context, user users.User, conversatio
 	// One trace id per turn: every generation and tool span this message
 	// produces, however many rounds it takes, shares it — that is what lets
 	// PostHog group them into one trace instead of one row per model call.
-	go s.pump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
+	s.startPump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
 		conversation: conversation,
 		user:         user,
 		provider:     client.Name(),
@@ -494,6 +511,18 @@ func (s *Service) documentText(ctx context.Context, user users.User, part conver
 	return attachmentBlock(name, text)
 }
 
+// generationContext is what a coach turn generates on, from the first provider
+// call to the last tool round.
+//
+// Detached from the request, so a disconnect does not abort generation, with the
+// logger preserved so those lines stay attached to the request that started
+// them. Attributed here rather than in startChat because the pump's later rounds
+// use this context too, and they carry the largest prompts of the turn.
+func generationContext(ctx context.Context, user users.User) (context.Context, context.CancelFunc) {
+	genCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+	return aiattr.WithUser(genCtx, user.ID, spend.SurfaceCoach), cancel
+}
+
 // startChat asks each provider in the user's chain until one of them begins a
 // reply, and returns the client that did so the answer can be attributed.
 //
@@ -508,11 +537,6 @@ func (s *Service) startChat(
 	req ai.Request,
 ) (<-chan ai.StreamChunk, ai.Client, error) {
 	var stream <-chan ai.StreamChunk
-
-	// On genCtx, because that is the context the client is handed. Attributing
-	// ctx here would be invisible to the meter.
-
-	genCtx = aiattr.WithUser(genCtx, user.ID, spend.SurfaceCoach)
 
 	req = capReplyTokens(req)
 
@@ -672,10 +696,48 @@ type pumpTarget struct {
 	// startedAt is when the provider was first asked, which bounds the MCP
 	// lookups that can belong to this turn.
 	startedAt time.Time
+
+	// release gives up a guard the caller took for this turn. Nil when there is
+	// none. Called before the stream closes, so a caller told the turn failed can
+	// ask again at once.
+	release func()
+}
+
+// storedReply is what the work after a saved reply needs to know about it.
+type storedReply struct {
+	id   uuid.UUID
+	text string
+
+	// callerGone is whether the request had ended when the reply was saved. Read
+	// before the stream closes, because the handler returns as soon as it does
+	// and that cancels the request for every reply, read or not.
+	callerGone bool
+
+	// ended is whether this reply finished a reflection.
+	ended bool
+}
+
+// startPump runs pump detached from the request, then the work that follows a
+// saved reply. Tracked, so a shutdown can let both finish.
+func (s *Service) startPump(
+	callerCtx context.Context,
+	genCtx context.Context,
+	cancelGen context.CancelFunc,
+	stream <-chan ai.StreamChunk,
+	out chan<- ai.StreamChunk,
+	target pumpTarget,
+) {
+	s.background.Go("coach reply", func() {
+		if reply, ok := s.pump(callerCtx, genCtx, cancelGen, stream, out, target); ok {
+			s.afterReply(genCtx, target, reply)
+		}
+	})
 }
 
 // pump forwards the provider's stream to the caller while accumulating the full
-// reply, then saves it.
+// reply, then saves it. It reports the reply it stored, if any, and the stream is
+// closed by the time it returns, so the caller's done does not wait on anything
+// that comes after the save.
 //
 // callerCtx governs delivery; genCtx governs generation. When the caller goes
 // away the loop keeps draining so the reply still completes and is persisted —
@@ -687,9 +749,19 @@ func (s *Service) pump(
 	stream <-chan ai.StreamChunk,
 	out chan<- ai.StreamChunk,
 	target pumpTarget,
-) {
-	defer cancelGen()
+) (storedReply, bool) {
+	// Providers send a stream's last chunks whatever became of the context,
+	// counting on the reader to drain to close. Ordinary exits have already done
+	// that. A panic here has not, and would strand the provider's goroutine.
+	defer func() {
+		cancelGen()
+		for range stream {
+		}
+	}()
 	defer close(out)
+	if target.release != nil {
+		defer target.release()
+	}
 
 	log := middleware.FromContext(callerCtx)
 
@@ -875,7 +947,7 @@ func (s *Service) pump(
 				slog.Any("error", err))
 		}
 
-		next, err := target.client.Chat(genCtx, request)
+		next, err := continueAfterTools(genCtx, target.client, request)
 		if err != nil {
 			streamErr = apperr.Wrap(err, "coach: continue after tools")
 			if listening {
@@ -912,11 +984,11 @@ func (s *Service) pump(
 		// A partial answer is still worth keeping: the user saw it, and losing
 		// it would make the conversation history disagree with what happened.
 		if text == "" {
-			return
+			return storedReply{}, false
 		}
 	}
 	if text == "" {
-		return
+		return storedReply{}, false
 	}
 
 	// Detached and fresh: by now the request context is very likely cancelled,
@@ -930,32 +1002,95 @@ func (s *Service) pump(
 	if err != nil {
 		log.Error("could not save the coach's reply", slog.Any("error", err),
 			slog.String("conversation_id", target.conversation.ID.String()))
-		return
+		return storedReply{}, false
+	}
+
+	return storedReply{
+		id:         saved.ID,
+		text:       text,
+		callerGone: callerCtx.Err() != nil,
+		// Before the stream closes, unlike the rest: clients read the conversation
+		// as soon as it does, and a finished reflection has to read as finished by
+		// then or it offers a composer that refuses.
+		ended: s.maybeEndReflection(saveCtx, target.conversation, text),
+	}, true
+}
+
+// continueAfterTools asks the model for the round after a tool call, once more if
+// it was unavailable. The tools have already run and been stored, so a brief 429
+// here would otherwise end the turn. It stays on the same client because the
+// request carries that provider's opaque state for the calls.
+func continueAfterTools(ctx context.Context, client ai.Client, req ai.Request) (<-chan ai.StreamChunk, error) {
+	stream, err := client.Chat(ctx, req)
+	if err == nil || !ai.Failover(err) || !apperr.Is(err, apperr.ErrUnavailable) {
+		return stream, err
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, err
+	case <-time.After(toolRoundRetryWait):
+	}
+	return client.Chat(ctx, req)
+}
+
+// afterReply is the work a saved reply sets off, none of which the person is
+// waiting for.
+//
+// Each step gets its own detached context, so one using up its time costs the
+// others nothing. The title goes last because it is a whole model call: a slow
+// provider then holds up nothing else.
+func (s *Service) afterReply(genCtx context.Context, target pumpTarget, reply storedReply) {
+	step := func(limit time.Duration, run func(ctx context.Context)) {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(genCtx), limit)
+		defer cancel()
+		run(ctx)
 	}
 
 	// The request that asked is gone: the app was backgrounded or the tab
 	// closed. The answer is saved, but nobody knows it arrived.
-	if callerCtx.Err() != nil {
-		s.tellAway(saveCtx, target, saved.ID, text)
+	if reply.callerGone {
+		step(persistTimeout, func(ctx context.Context) { s.tellAway(ctx, target, reply.id, reply.text) })
 	}
 
 	// A completed, persisted reply — the funnel's only honest definition of
 	// the coach having answered. Activation is two of these on different days.
-	s.funnel.CoachReplied(saveCtx, target.user.ID, string(target.source))
+	step(persistTimeout, func(ctx context.Context) {
+		s.funnel.CoachReplied(ctx, target.user.ID, string(target.source))
+	})
 
-	s.noteTelegramReply(saveCtx, target, text)
-
-	if s.conversations.NeedsTitle(saveCtx, target.conversation) {
-		s.titleConversation(saveCtx, target.user, target.conversation.ID, target.firstMessage)
-	}
+	step(persistTimeout, func(ctx context.Context) { s.noteTelegramReply(ctx, target, reply.text) })
 
 	// Threshold trigger: the turn that pushes a thread past the context window
 	// is the one that makes its beginning invisible, so compact it now rather
 	// than waiting for the sweep an hour later.
-	s.enqueueSummary(saveCtx, target.user.ID, target.conversation.ID)
+	step(persistTimeout, func(ctx context.Context) {
+		s.enqueueSummary(ctx, target.user.ID, target.conversation.ID)
+	})
 
-	ended := s.maybeEndReflection(saveCtx, target.conversation, text)
-	s.enqueueMemoryExtraction(saveCtx, target, ended)
+	step(persistTimeout, func(ctx context.Context) { s.enqueueMemoryExtraction(ctx, target, reply.ended) })
+
+	step(titleTimeout, func(ctx context.Context) { s.titleIfUnnamed(ctx, target) })
+}
+
+// titleIfUnnamed names a thread that still has no name.
+//
+// Read again rather than trusting target: done no longer waits for the title, so a
+// second turn can start, holding its own copy of the conversation, before the first
+// turn's title lands. Naming it twice would replace the name with one taken from
+// the second message.
+func (s *Service) titleIfUnnamed(ctx context.Context, target pumpTarget) {
+	if !s.conversations.NeedsTitle(ctx, target.conversation) {
+		return
+	}
+	current, err := s.conversations.Get(ctx, target.conversation.ID, target.user.ID)
+	if err != nil {
+		middleware.FromContext(ctx).Warn("could not read the conversation to name it", slog.Any("error", err))
+		return
+	}
+	if s.conversations.NeedsTitle(ctx, current) {
+		s.titleConversation(ctx, target.user, target.conversation.ID, target.firstMessage)
+	}
 }
 
 const reflectionSummaryHeading = "## Reflection summary"
@@ -1041,7 +1176,7 @@ func (s *Service) BeginReflection(ctx context.Context, user users.User, conversa
 		return nil, err
 	}
 
-	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+	genCtx, cancelGen := generationContext(ctx, user)
 
 	req := ai.Request{
 		Model:  s.model,
@@ -1059,7 +1194,7 @@ func (s *Service) BeginReflection(ctx context.Context, user users.User, conversa
 	}
 
 	out := make(chan ai.StreamChunk)
-	go s.pump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
+	s.startPump(ctx, genCtx, cancelGen, stream, out, pumpTarget{
 		conversation: conversation,
 		user:         user,
 		provider:     client.Name(),

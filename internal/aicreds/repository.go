@@ -3,6 +3,7 @@ package aicreds
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -118,10 +119,16 @@ func fromDB(row aicredsdb.UserAiCredential) Credential {
 	}
 }
 
-// RecordToolSupport stores what the tools probe found.
-func (r *PostgresRepository) RecordToolSupport(ctx context.Context, userID uuid.UUID, supported bool) error {
-	return r.q.RecordUserAICredentialToolSupport(ctx, aicredsdb.RecordUserAICredentialToolSupportParams{
+// RecordToolSupport stores what the tools probe found about the credential saved
+// at version, and reports whether that credential is still the stored one.
+func (r *PostgresRepository) RecordToolSupport(ctx context.Context, userID uuid.UUID, version time.Time, supported bool) (bool, error) {
+	rows, err := r.q.RecordUserAICredentialToolSupport(ctx, aicredsdb.RecordUserAICredentialToolSupportParams{
 		UserID:        userID,
 		SupportsTools: &supported,
+		SavedVersion:  version,
 	})
+	if err != nil {
+		return false, apperr.Wrap(err, "record tool support")
+	}
+	return rows > 0, nil
 }

@@ -499,7 +499,7 @@ func (q *Queries) MessagesBetween(ctx context.Context, arg MessagesBetweenParams
 const recentMessages = `-- name: RecentMessages :many
 SELECT id, conversation_id, role, content, parts, usage, model, provider, created_at, evidence_refs, tool_calls, tool_results, helpful, origin, source_label, provider_state FROM messages
 WHERE conversation_id = $1
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $2
 `
 
@@ -512,8 +512,66 @@ type RecentMessagesParams struct {
 // the limit keeps the most recent turns, then reversed in Go into reading
 // order. Ordering oldest-first with a limit would return the beginning of the
 // conversation, which is the opposite of what context needs.
+//
+// id breaks ties in created_at, so this and RecentMessagesBefore agree on where
+// a page ends and no row falls between two pages.
 func (q *Queries) RecentMessages(ctx context.Context, arg RecentMessagesParams) ([]Message, error) {
 	rows, err := q.db.Query(ctx, recentMessages, arg.ConversationID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConversationID,
+			&i.Role,
+			&i.Content,
+			&i.Parts,
+			&i.Usage,
+			&i.Model,
+			&i.Provider,
+			&i.CreatedAt,
+			&i.EvidenceRefs,
+			&i.ToolCalls,
+			&i.ToolResults,
+			&i.Helpful,
+			&i.Origin,
+			&i.SourceLabel,
+			&i.ProviderState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recentMessagesBefore = `-- name: RecentMessagesBefore :many
+SELECT m.id, m.conversation_id, m.role, m.content, m.parts, m.usage, m.model, m.provider, m.created_at, m.evidence_refs, m.tool_calls, m.tool_results, m.helpful, m.origin, m.source_label, m.provider_state
+FROM messages m
+JOIN messages anchor ON anchor.id = $1 AND anchor.conversation_id = m.conversation_id
+WHERE m.conversation_id = $2
+  AND (m.created_at, m.id) < (anchor.created_at, anchor.id)
+ORDER BY m.created_at DESC, m.id DESC
+LIMIT $3
+`
+
+type RecentMessagesBeforeParams struct {
+	BeforeID       uuid.UUID
+	ConversationID uuid.UUID
+	PageSize       int32
+}
+
+// The page older than a given message, newest-first like RecentMessages. A cursor
+// from another conversation matches no anchor and so finds nothing.
+func (q *Queries) RecentMessagesBefore(ctx context.Context, arg RecentMessagesBeforeParams) ([]Message, error) {
+	rows, err := q.db.Query(ctx, recentMessagesBefore, arg.BeforeID, arg.ConversationID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}

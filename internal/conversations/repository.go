@@ -261,6 +261,22 @@ func (r *PostgresRepository) Recent(ctx context.Context, conversationID uuid.UUI
 	return messagesFromDB(rows), nil
 }
 
+// RecentBefore returns the turns just older than a message, oldest first, for
+// paging back through a thread with the same order Recent uses.
+func (r *PostgresRepository) RecentBefore(ctx context.Context, conversationID, before uuid.UUID, limit int) ([]Message, error) {
+	rows, err := r.q.RecentMessagesBefore(ctx, conversationsdb.RecentMessagesBeforeParams{
+		ConversationID: conversationID,
+		BeforeID:       before,
+		PageSize:       int32(limit),
+	})
+	if err != nil {
+		return nil, apperr.Wrap(err, "recent messages before")
+	}
+
+	slices.Reverse(rows)
+	return messagesFromDB(rows), nil
+}
+
 // RecentUserMessages returns what the user has said lately across every
 // conversation, so a brand new thread still has continuity.
 func (r *PostgresRepository) RecentUserMessages(ctx context.Context, userID uuid.UUID, limit int) ([]Message, error) {

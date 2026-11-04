@@ -3,6 +3,16 @@ INSERT INTO jobs (kind, payload, run_after, max_attempts, request_id)
 VALUES ($1, $2, coalesce(sqlc.narg('run_after')::timestamptz, now()), $3, sqlc.narg('request_id'))
 RETURNING *;
 
+-- name: EnqueuePeriodicJob :execrows
+-- Adds a periodic sweep unless a copy is already pending or running. The conflict
+-- target repeats the predicate of jobs_periodic_active_kind_idx exactly, because
+-- that is how Postgres picks the partial index to arbitrate on. A non-empty
+-- payload falls outside the predicate and is always inserted.
+INSERT INTO jobs (kind, payload, max_attempts)
+VALUES ($1, $2, $3)
+ON CONFLICT (kind) WHERE status IN ('pending', 'running') AND payload = '{}'::jsonb
+DO NOTHING;
+
 -- name: ClaimJob :one
 -- Claims one eligible job for this worker.
 --
@@ -36,6 +46,17 @@ SET status     = 'pending',
     updated_at = now()
 WHERE id = $1;
 
+-- name: RequeueInterruptedJob :exec
+-- Returns a job a shutdown interrupted, ready to run at once and with the attempt
+-- given back: a deploy says nothing about whether the job can succeed.
+UPDATE jobs
+SET status     = 'pending',
+    attempts   = greatest(attempts - 1, 0),
+    run_after  = now(),
+    last_error = $2,
+    updated_at = now()
+WHERE id = $1;
+
 -- name: FailJob :exec
 UPDATE jobs
 SET status = 'failed', last_error = $2, updated_at = now()
@@ -57,12 +78,25 @@ WHERE kind = 'embed_chunks'
   AND (payload->>'user_id')::uuid = sqlc.arg(user_id)::uuid;
 
 -- name: HasPendingJobForUser :one
--- Same casting rule as RequeueFailedEmbedJobsForUser above.
+-- Compares text to text, unlike RequeueFailedEmbedJobsForUser above. A cast on
+-- the column hides it from jobs_active_kind_user_idx, which indexes the text
+-- value, and this runs once per candidate user in four sweeps.
 SELECT EXISTS(
     SELECT 1 FROM jobs
     WHERE kind = sqlc.arg(kind)::text
       AND status IN ('pending', 'running')
-      AND (payload->>'user_id')::uuid = sqlc.arg(user_id)::uuid
+      AND payload->>'user_id' = sqlc.arg(user_id)::text
+)::bool;
+
+-- name: HasRecentFailedJobForUser :one
+-- The cutoff is computed here for the reason ReleaseStaleJobs gives: updated_at
+-- is the database's clock, so the comparison should not depend on ours agreeing.
+SELECT EXISTS(
+    SELECT 1 FROM jobs
+    WHERE kind = sqlc.arg(kind)::text
+      AND status = 'failed'
+      AND payload->>'user_id' = sqlc.arg(user_id)::text
+      AND updated_at > now() - make_interval(secs => sqlc.arg('within_seconds')::double precision)
 )::bool;
 
 -- name: ReleaseStaleJobs :execrows

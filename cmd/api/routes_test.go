@@ -62,7 +62,7 @@ func testRoutesAndPool(t *testing.T, configure func(*config.Config)) (http.Handl
 
 	// nil metrics: these tests exercise routing, and a nil registry is a
 	// supported configuration that counts nothing.
-	handler, _ := routes(cfg, pool, registry, stubStorage{}, nil, nil, nil)
+	handler, _ := routes(cfg, nil, pool, registry, stubStorage{}, nil, nil, nil)
 	return handler, pool
 }
 

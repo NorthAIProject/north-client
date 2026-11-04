@@ -474,6 +474,19 @@ paths:
     get:
       operationId: getConversation
       summary: One conversation with its messages and any pending approval
+      description: >-
+        Messages are the newest page, oldest first. When older ones exist the
+        answer carries nextBefore; pass it back as before for the page before
+        this one. pendingApproval and awaitingResume always describe the end of
+        the thread, whichever page is asked for.
+      parameters:
+        - name: before
+          in: query
+          required: false
+          description: The nextBefore of a later page. Omit it for the newest page.
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: The conversation
@@ -613,7 +626,11 @@ paths:
     post:
       operationId: resumeConversation
       summary: Stream the rest of a reply after an approval was answered
-      description: Same events as replyInConversation. Spends no message quota.
+      description: >-
+        Same events as replyInConversation. Spends no message quota. Answers 409
+        when no reply is owed or one is already being written. After an approved
+        standing task it streams the confirmation already stored, without asking
+        a model.
       responses:
         '200':
           $ref: '#/components/responses/ReplyStream'
@@ -621,6 +638,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /conversations/{id}/tools/{messageID}:
     parameters:
       - $ref: '#/components/parameters/ConversationID'
@@ -13037,6 +13056,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChatMessage'
+        nextBefore:
+          type: string
+          format: uuid
+          description: Set when older messages exist. Pass it as before for the page before this one.
         pendingApproval:
           $ref: '#/components/schemas/Approval'
         awaitingResume:

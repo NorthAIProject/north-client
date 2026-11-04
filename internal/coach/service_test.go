@@ -252,8 +252,8 @@ func TestAReplyFinishedAfterTheUserLeftSaysItIsReady(t *testing.T) {
 		t.Fatal("nobody was told the reply is ready")
 	}
 
-	// Staying to the end: the pump finishes before the stream closes, so an
-	// empty channel afterwards means nothing was raised.
+	// Staying to the end. TestAReplyReadToTheEndIsNotAnnounced covers the request
+	// being cancelled as the handler returns.
 	stream, err = h.coach.SendMessage(context.Background(), h.user, conversation.ID, "And tomorrow?")
 	if err != nil {
 		t.Fatalf("send: %v", err)
@@ -373,7 +373,14 @@ func TestConversationHistoryIsSentToTheModel(t *testing.T) {
 		waitForReply(t, h, conversation.ID, 3*time.Second)
 	}
 
-	last := h.client.Calls()[len(h.client.Calls())-1]
+	// The latest reply, not the latest call: naming the thread runs after a reply
+	// has been delivered, on the fast model, so it can land after this one.
+	var last ai.Request
+	for _, req := range h.client.Calls() {
+		if req.Model == "test-model" {
+			last = req
+		}
+	}
 
 	var transcript strings.Builder
 	for _, m := range last.Messages {

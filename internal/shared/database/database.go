@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 )
 
 // Connect opens a connection pool and verifies it can reach the database.
@@ -41,4 +43,15 @@ func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	}
 
 	return pool, nil
+}
+
+// PoolStats reads the pool for the metrics listener: see metrics.Registry.WatchPool.
+func PoolStats(pool *pgxpool.Pool) metrics.PoolStats {
+	s := pool.Stat()
+	return metrics.PoolStats{
+		AcquireDuration:   s.AcquireDuration(),
+		EmptyAcquireCount: s.EmptyAcquireCount(),
+		AcquiredConns:     s.AcquiredConns(),
+		MaxConns:          s.MaxConns(),
+	}
 }

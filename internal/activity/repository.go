@@ -165,10 +165,10 @@ func (r *PostgresRepository) ListBetween(ctx context.Context, userID uuid.UUID, 
 	return out, nil
 }
 
-// CompletedByIDs is the completed sessions among ids, whoever owns them.
-// Callers authorize: nothing here checks that the reader may see them.
-func (r *PostgresRepository) CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]Session, error) {
-	rows, err := r.q.CompletedSessionsByIDs(ctx, ids)
+// CompletedByIDs is the completed sessions among ids that belong to ownerIDs.
+// Callers authorize: nothing here checks that the reader may see those owners.
+func (r *PostgresRepository) CompletedByIDs(ctx context.Context, ownerIDs, ids []uuid.UUID) ([]Session, error) {
+	rows, err := r.q.CompletedSessionsByIDs(ctx, activitydb.CompletedSessionsByIDsParams{Ids: ids, OwnerIds: ownerIDs})
 	if err != nil {
 		return nil, apperr.Wrap(err, "completed activity sessions by ids")
 	}

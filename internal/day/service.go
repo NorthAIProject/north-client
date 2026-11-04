@@ -14,7 +14,6 @@ import (
 
 	"github.com/FACorreiaa/go-utils/pkg/util"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/NorthAIProject/north-client/internal/activity/activity"
 	"github.com/NorthAIProject/north-client/internal/biometrics/biometric"
@@ -33,6 +32,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/sleep"
 	"github.com/NorthAIProject/north-client/internal/soreness"
@@ -87,6 +87,7 @@ type (
 	}
 	Health interface {
 		Between(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) ([]health.Stored, error)
+		Latest(ctx context.Context, userID uuid.UUID, metric string, since, until time.Time) (health.Stored, bool, error)
 	}
 	Activity interface {
 		ListBetween(ctx context.Context, userID uuid.UUID, rg timerange.Range) ([]activity.Session, error)
@@ -311,7 +312,7 @@ func (s *Service) Load(ctx context.Context, user users.User, date time.Time) (Sn
 		IsToday: rg.Contains(now),
 	}
 
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 
 	g.Go(func() error { return s.loadFood(gctx, user, date, &snap) })
 	g.Go(func() error { return s.loadWater(gctx, user, rg, &snap) })
@@ -744,14 +745,12 @@ func (s *Service) loadBody(ctx context.Context, user users.User, snap *Snapshot)
 		}
 	}
 	if s.health != nil {
-		now := s.now()
-		rows, err := s.health.Between(ctx, user.ID, metricBodyMass, now.AddDate(0, 0, -90), now.Add(time.Minute))
+		latest, ok, err := s.latestReading(ctx, user.ID, metricBodyMass)
 		if err != nil {
 			return err
 		}
-		// Newest first.
-		if len(rows) > 0 && rows[0].StartedAt.After(weighed) {
-			weight = util.Ptr(rows[0].Value)
+		if ok && latest.StartedAt.After(weighed) {
+			weight = util.Ptr(latest.Value)
 		}
 	}
 
@@ -775,18 +774,17 @@ func (s *Service) loadBody(ctx context.Context, user users.User, snap *Snapshot)
 		}
 	}
 	if s.health != nil {
-		now := s.now()
-		sys, err := s.health.Between(ctx, user.ID, metricSystolic, now.AddDate(0, 0, -90), now.Add(time.Minute))
+		sys, hasSys, err := s.latestReading(ctx, user.ID, metricSystolic)
 		if err != nil {
 			return err
 		}
-		dia, err := s.health.Between(ctx, user.ID, metricDiastolic, now.AddDate(0, 0, -90), now.Add(time.Minute))
+		dia, hasDia, err := s.latestReading(ctx, user.ID, metricDiastolic)
 		if err != nil {
 			return err
 		}
-		if len(sys) > 0 && len(dia) > 0 {
+		if hasSys && hasDia {
 			snap.Body.BloodPressure = &day.BloodPressure{
-				Systolic: int(math.Round(sys[0].Value)), Diastolic: int(math.Round(dia[0].Value)), At: sys[0].StartedAt,
+				Systolic: int(math.Round(sys.Value)), Diastolic: int(math.Round(dia.Value)), At: sys.StartedAt,
 			}
 		}
 	}
@@ -795,6 +793,13 @@ func (s *Service) loadBody(ctx context.Context, user users.User, snap *Snapshot)
 		snap.Body.BMI = util.Ptr(*weight / (m * m))
 	}
 	return nil
+}
+
+// latestReading is the newest reading of a metric the body card may show: from
+// the last 90 days, and not dated ahead of now beyond a minute of clock skew.
+func (s *Service) latestReading(ctx context.Context, userID uuid.UUID, metric string) (health.Stored, bool, error) {
+	now := s.now()
+	return s.health.Latest(ctx, userID, metric, now.AddDate(0, 0, -90), now.Add(time.Minute))
 }
 
 // loadEnergy estimates today's charge. Only for today: "how charged were you
@@ -899,7 +904,7 @@ func (s *Service) CheckInVersion(ctx context.Context, userID uuid.UUID) (string,
 // refresh: three small queries rather than the whole day.
 func (s *Service) LoadStreakTile(ctx context.Context, user users.User) (StreakTile, error) {
 	var tile StreakTile
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	if s.streaks != nil {
 		g.Go(func() (err error) { tile.Streak, err = s.streaks.Streak(gctx, user); return })
 	}

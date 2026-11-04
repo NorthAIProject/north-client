@@ -13,6 +13,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -24,6 +25,20 @@ import (
 // considered answer is not cut off, low enough to stay under the SDK's
 // non-streaming timeout.
 const defaultMaxTokens = 16000
+
+// managedMaxRetries is zero because the chain is a managed client's retry. The
+// SDK's default is two, and it honours Retry-After with no cap, so one 429 could
+// sleep for a minute in front of a provider able to answer now. One retry would
+// still sleep out that header.
+const managedMaxRetries = 0
+
+// firstTokenBudget is how long one attempt by a managed client may take to
+// produce the reply's first visible output, thinking included, before the next
+// provider is asked.
+//
+// A starting point rather than a measurement: 45 s is the top of the audit's
+// 30-45 s range and has not been checked against production time to first token.
+const firstTokenBudget = 45 * time.Second
 
 type Options struct {
 	APIKey       string
@@ -44,12 +59,18 @@ type Options struct {
 	Thinking string
 
 	// Managed marks Khepri's own client, the first rung of a chain rather than
-	// a key a person brought. It changes two things. A model name meant for
+	// a key a person brought. It changes four things. A model name meant for
 	// another provider (AI_FAST_MODEL is an OpenRouter slug) is replaced with
-	// DefaultModel instead of being sent to a 404. And every 4xx fails over,
-	// because the chain behind it is the one that has always answered: a
-	// request Claude rejects is not evidence that the request is malformed.
+	// DefaultModel instead of being sent to a 404. Every 4xx fails over, because
+	// the chain behind it is the one that has always answered: a request Claude
+	// rejects is not evidence that the request is malformed. The SDK does not
+	// retry, and a reply that does not start within firstTokenBudget fails over,
+	// because in both cases the next provider is the better use of the wait.
 	Managed bool
+
+	// FirstTokenBudget replaces firstTokenBudget on a managed client. Tests
+	// only; a personal client has no budget whatever this says.
+	FirstTokenBudget time.Duration
 }
 
 type Client struct {
@@ -58,6 +79,9 @@ type Client struct {
 	effort       sdk.OutputConfigEffort
 	thinking     string
 	managed      bool
+
+	// firstTokenBudget is zero for a personal client, which has no budget.
+	firstTokenBudget time.Duration
 }
 
 // minThinkingTokens is the smallest max_tokens worth thinking under. Thinking
@@ -78,16 +102,26 @@ func New(opts Options) (*Client, error) {
 		reqOpts = append(reqOpts, option.WithHTTPClient(opts.HTTPClient))
 	}
 
+	var budget time.Duration
+	if opts.Managed {
+		reqOpts = append(reqOpts, option.WithMaxRetries(managedMaxRetries))
+		budget = firstTokenBudget
+		if opts.FirstTokenBudget > 0 {
+			budget = opts.FirstTokenBudget
+		}
+	}
+
 	model := opts.DefaultModel
 	if model == "" {
 		model = "claude-opus-5-5"
 	}
 	return &Client{
-		sdk:          sdk.NewClient(reqOpts...),
-		defaultModel: model,
-		effort:       sdk.OutputConfigEffort(opts.Effort),
-		thinking:     opts.Thinking,
-		managed:      opts.Managed,
+		sdk:              sdk.NewClient(reqOpts...),
+		defaultModel:     model,
+		effort:           sdk.OutputConfigEffort(opts.Effort),
+		thinking:         opts.Thinking,
+		managed:          opts.Managed,
+		firstTokenBudget: budget,
 	}, nil
 }
 

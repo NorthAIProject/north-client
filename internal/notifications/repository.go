@@ -101,6 +101,19 @@ func (r *PostgresRepository) UpsertSchedule(ctx context.Context, userID uuid.UUI
 	return scheduleFromDB(row), nil
 }
 
+// DigestClaimed reports whether a digest for this window has already been booked.
+//
+// A hint for skipping work and nothing more: a false here can be out of date by
+// the time the digest is ready, so ClaimDigest still decides who sends.
+func (r *PostgresRepository) DigestClaimed(ctx context.Context, userID uuid.UUID, cadence string, periodStart time.Time) (bool, error) {
+	claimed, err := r.q.StatsDigestClaimed(ctx, notificationsdb.StatsDigestClaimedParams{
+		UserID:      userID,
+		Cadence:     cadence,
+		PeriodStart: pgtype.Date{Time: periodStart, Valid: true},
+	})
+	return claimed, apperr.Wrap(err, "check stats digest claim")
+}
+
 // ClaimDigest records that a digest for this window is going out, and reports
 // whether this caller is the one that gets to send it.
 //

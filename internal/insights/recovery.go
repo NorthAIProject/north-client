@@ -5,11 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/NorthAIProject/north-client/internal/coach"
 	"github.com/NorthAIProject/north-client/internal/insights/score"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/stats/stat"
 	"github.com/NorthAIProject/north-client/internal/users"
@@ -55,7 +54,7 @@ func (s *Service) Recovery(ctx context.Context, user users.User, now time.Time) 
 	}
 
 	loaded := make([][]point, len(sources))
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 	for i, src := range sources {
 		g.Go(func() (err error) {
 			loaded[i], err = src.load(gctx)

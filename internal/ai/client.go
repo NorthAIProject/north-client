@@ -158,7 +158,8 @@ type Usage struct {
 // StreamChunk is one piece of a streamed reply.
 //
 // A chunk carries either text or an error, never both. The channel is closed
-// when the reply is complete; a chunk with a non-nil Err is always the last.
+// when the reply is complete; a chunk with a non-nil Err is always the last, and
+// whatever usage the provider had reported comes before it.
 type StreamChunk struct {
 	Text  string
 	Usage *Usage
@@ -205,6 +206,11 @@ type Client interface {
 
 	// Chat streams a reply. The returned channel is always closed by the
 	// implementation, including on error, so a caller may safely range over it.
+	//
+	// A caller must read until the channel closes, or until it takes a chunk
+	// with a non-nil Err, even after ctx ends. The usage and the error that end
+	// a reply are sent without regard to ctx, because a reply that ran out of
+	// time still has to say so and still spent the tokens.
 	Chat(ctx context.Context, req Request) (<-chan StreamChunk, error)
 
 	// Generate returns a complete reply in one call. This is the path for

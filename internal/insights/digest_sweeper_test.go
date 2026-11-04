@@ -37,6 +37,17 @@ func (s *stubPrefs) Get(context.Context, uuid.UUID) (notifications.Prefs, error)
 type stubLedger struct {
 	claimed  map[string]bool
 	attempts int
+
+	// readStale makes DigestClaimed miss a booking, as a read does when another
+	// sweep books the period just after it.
+	readStale bool
+}
+
+func (s *stubLedger) DigestClaimed(_ context.Context, userID uuid.UUID, cadence string, period time.Time) (bool, error) {
+	if s.readStale {
+		return false, nil
+	}
+	return s.claimed[userID.String()+cadence+period.Format("2006-01-02")], nil
 }
 
 func (s *stubLedger) ClaimDigest(_ context.Context, userID uuid.UUID, cadence string, period time.Time) (bool, error) {
@@ -144,6 +155,42 @@ func TestSweeperSendsOnlyOncePerPeriod(t *testing.T) {
 
 	if len(kit.notifier.sent) != 1 {
 		t.Errorf("sent %d digests across three sweeps, want 1", len(kit.notifier.sent))
+	}
+}
+
+func TestSweeperComputesADigestOnlyOncePerPeriod(t *testing.T) {
+	// The loose gate is true every hour of the period, and a digest is a dozen
+	// queries and a PNG. A period already booked must not pay for that again
+	// just to learn at the ledger that the result is unwanted.
+	kit := newSweeper(t, notifications.CadenceWeekly, monday(t, "2026-09-14 09:00"))
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		if err := kit.sweeper.HandleSweep(ctx, nil); err != nil {
+			t.Fatalf("sweep %d: %v", i, err)
+		}
+	}
+
+	if got := len(kit.digester.keys); got != 1 {
+		t.Errorf("computed %d digests across three sweeps, want 1", got)
+	}
+}
+
+func TestSweeperStillClaimsAfterTheCheapRead(t *testing.T) {
+	// The read is an optimisation and cannot be the lock: another sweep can book
+	// the period between it and the send. The claim still has to decide.
+	kit := newSweeper(t, notifications.CadenceWeekly, monday(t, "2026-09-14 09:00"))
+	kit.ledger.readStale = true
+	ctx := context.Background()
+
+	for i := 0; i < 2; i++ {
+		if err := kit.sweeper.HandleSweep(ctx, nil); err != nil {
+			t.Fatalf("sweep %d: %v", i, err)
+		}
+	}
+
+	if len(kit.notifier.sent) != 1 {
+		t.Errorf("sent %d digests when the claim lost the race, want 1", len(kit.notifier.sent))
 	}
 }
 

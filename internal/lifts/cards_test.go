@@ -66,7 +66,7 @@ func TestCardsForBatchesAcrossPeople(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cards, err := svc.CardsFor(ctx, []uuid.UUID{anaBefore.ID, anaNow.ID, benOnly.ID, cancelled.ID})
+	cards, err := svc.CardsFor(ctx, []uuid.UUID{ana.ID, ben.ID}, []uuid.UUID{anaBefore.ID, anaNow.ID, benOnly.ID, cancelled.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,8 +86,110 @@ func TestCardsForBatchesAcrossPeople(t *testing.T) {
 		t.Fatalf("Ben's card = %+v", c)
 	}
 
-	if none, err := svc.CardsFor(ctx, nil); err != nil || len(none) != 0 {
+	if none, err := svc.CardsFor(ctx, []uuid.UUID{ana.ID}, nil); err != nil || len(none) != 0 {
 		t.Fatalf("no ids: %v, %v", none, err)
+	}
+}
+
+// Only the named owners' rows are read, whatever ids are asked for.
+func TestCardsForReadsOnlyTheNamedOwners(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	reg := users.NewService(users.NewRepository(pool))
+	register := func(email string) users.User {
+		u, err := reg.Register(ctx, users.Registration{Email: email, PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly", DisplayName: "T", Timezone: "UTC"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+	ana, ben := register("ana-owner@example.com"), register("ben-owner@example.com")
+	acts := activity.NewService(activity.NewRepository(pool), bodyweight{})
+	svc := lifts.NewService(lifts.NewRepository(pool), nil).WithRecaps(acts, nil)
+
+	start := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Second)
+	workout := func(u users.User, kg float64) activity.Session {
+		se, err := acts.Log(ctx, u.ID, activity.LogInput{ActivityCode: "strength_training_light", StartedAt: start, Duration: time.Hour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := start.Add(10 * time.Minute)
+		if _, err = svc.Log(ctx, u, lifts.LogInput{ExerciseName: "Squat", SetNumber: 1, WeightKg: kg, Reps: 5, PerformedAt: &at, ActivitySessionID: &se.ID}); err != nil {
+			t.Fatal(err)
+		}
+		return se
+	}
+	anaSe, benSe := workout(ana, 100), workout(ben, 90)
+	both := []uuid.UUID{anaSe.ID, benSe.ID}
+
+	cards, err := svc.CardsFor(ctx, []uuid.UUID{ana.ID}, both)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cards[benSe.ID]; ok || len(cards) != 1 || cards[anaSe.ID].UserID != ana.ID {
+		t.Fatalf("Ana only: %+v", cards)
+	}
+
+	cards, err = svc.CardsFor(ctx, []uuid.UUID{ana.ID, ben.ID}, both)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 2 || cards[anaSe.ID].UserID != ana.ID || cards[benSe.ID].UserID != ben.ID {
+		t.Fatalf("both: %+v", cards)
+	}
+
+	for label, owners := range map[string][]uuid.UUID{"nobody": nil, "someone else": {uuid.New()}} {
+		cards, err = svc.CardsFor(ctx, owners, both)
+		if err != nil || len(cards) != 0 {
+			t.Fatalf("%s: %+v, %v", label, cards, err)
+		}
+	}
+
+	// The write path cannot link a set to another person's session, so only a
+	// row put there by hand can show the set query is scoped on its own.
+	if _, err = pool.Exec(ctx, `INSERT INTO set_logs (user_id, activity_session_id, log_date, exercise_slug, exercise_name, set_number, weight_kg, reps, performed_at)
+		VALUES ($1, $2, $3::date, '', 'Squat', 2, 500, 5, $3)`, ben.ID, anaSe.ID, start); err != nil {
+		t.Fatal(err)
+	}
+	cards, err = svc.CardsFor(ctx, []uuid.UUID{ana.ID}, []uuid.UUID{anaSe.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := cards[anaSe.ID]; c.Sets != 1 || c.VolumeKg != 500 {
+		t.Fatalf("Ana's card holds another person's set: %+v", c)
+	}
+}
+
+// The path that logs a set ignores a session that is not the person's own. That
+// is what lets the card's set query be scoped to the session's owner without
+// losing any set they logged.
+func TestASetCannotBeLinkedToAnotherPersonsSession(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	reg := users.NewService(users.NewRepository(pool))
+	register := func(email string) users.User {
+		u, err := reg.Register(ctx, users.Registration{Email: email, PasswordHash: "$2a$12$notarealhashbutthatisfineheretestonly", DisplayName: "T", Timezone: "UTC"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+	ana, ben := register("ana-link@example.com"), register("ben-link@example.com")
+	acts := activity.NewService(activity.NewRepository(pool), bodyweight{})
+	svc := lifts.NewService(lifts.NewRepository(pool), nil).WithRecaps(acts, nil)
+
+	start := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Second)
+	se, err := acts.Log(ctx, ana.ID, activity.LogInput{ActivityCode: "strength_training_light", StartedAt: start, Duration: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := start.Add(10 * time.Minute)
+	set, err := svc.Log(ctx, ben, lifts.LogInput{ExerciseName: "Squat", SetNumber: 1, WeightKg: 90, Reps: 5, PerformedAt: &at, ActivitySessionID: &se.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.ActivitySessionID != nil {
+		t.Fatalf("Ben's set was linked to Ana's session %v", *set.ActivitySessionID)
 	}
 }
 
@@ -123,7 +225,7 @@ func TestCardsForSeesTheWholeYearOfHistory(t *testing.T) {
 	if _, err = svc.Log(ctx, u, lifts.LogInput{ExerciseName: "Squat", SetNumber: 1, WeightKg: 100, Reps: 5, PerformedAt: &at, ActivitySessionID: &se.ID}); err != nil {
 		t.Fatal(err)
 	}
-	cards, err := svc.CardsFor(ctx, []uuid.UUID{se.ID})
+	cards, err := svc.CardsFor(ctx, []uuid.UUID{u.ID}, []uuid.UUID{se.ID})
 	if err != nil {
 		t.Fatal(err)
 	}

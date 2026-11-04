@@ -51,10 +51,24 @@ LIMIT $2;
 -- the limit keeps the most recent turns, then reversed in Go into reading
 -- order. Ordering oldest-first with a limit would return the beginning of the
 -- conversation, which is the opposite of what context needs.
+--
+-- id breaks ties in created_at, so this and RecentMessagesBefore agree on where
+-- a page ends and no row falls between two pages.
 SELECT * FROM messages
 WHERE conversation_id = $1
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $2;
+
+-- name: RecentMessagesBefore :many
+-- The page older than a given message, newest-first like RecentMessages. A cursor
+-- from another conversation matches no anchor and so finds nothing.
+SELECT m.*
+FROM messages m
+JOIN messages anchor ON anchor.id = sqlc.arg(before_id) AND anchor.conversation_id = m.conversation_id
+WHERE m.conversation_id = sqlc.arg(conversation_id)
+  AND (m.created_at, m.id) < (anchor.created_at, anchor.id)
+ORDER BY m.created_at DESC, m.id DESC
+LIMIT sqlc.arg(page_size);
 
 -- name: RecentUserMessages :many
 -- The user's own recent messages across every conversation, so the coach has

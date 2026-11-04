@@ -101,6 +101,31 @@ func (q *Queries) EnqueueJob(ctx context.Context, arg EnqueueJobParams) (Job, er
 	return i, err
 }
 
+const enqueuePeriodicJob = `-- name: EnqueuePeriodicJob :execrows
+INSERT INTO jobs (kind, payload, max_attempts)
+VALUES ($1, $2, $3)
+ON CONFLICT (kind) WHERE status IN ('pending', 'running') AND payload = '{}'::jsonb
+DO NOTHING
+`
+
+type EnqueuePeriodicJobParams struct {
+	Kind        string
+	Payload     []byte
+	MaxAttempts int16
+}
+
+// Adds a periodic sweep unless a copy is already pending or running. The conflict
+// target repeats the predicate of jobs_periodic_active_kind_idx exactly, because
+// that is how Postgres picks the partial index to arbitrate on. A non-empty
+// payload falls outside the predicate and is always inserted.
+func (q *Queries) EnqueuePeriodicJob(ctx context.Context, arg EnqueuePeriodicJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enqueuePeriodicJob, arg.Kind, arg.Payload, arg.MaxAttempts)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const failJob = `-- name: FailJob :exec
 UPDATE jobs
 SET status = 'failed', last_error = $2, updated_at = now()
@@ -122,18 +147,45 @@ SELECT EXISTS(
     SELECT 1 FROM jobs
     WHERE kind = $1::text
       AND status IN ('pending', 'running')
-      AND (payload->>'user_id')::uuid = $2::uuid
+      AND payload->>'user_id' = $2::text
 )::bool
 `
 
 type HasPendingJobForUserParams struct {
 	Kind   string
-	UserID uuid.UUID
+	UserID string
 }
 
-// Same casting rule as RequeueFailedEmbedJobsForUser above.
+// Compares text to text, unlike RequeueFailedEmbedJobsForUser above. A cast on
+// the column hides it from jobs_active_kind_user_idx, which indexes the text
+// value, and this runs once per candidate user in four sweeps.
 func (q *Queries) HasPendingJobForUser(ctx context.Context, arg HasPendingJobForUserParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasPendingJobForUser, arg.Kind, arg.UserID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const hasRecentFailedJobForUser = `-- name: HasRecentFailedJobForUser :one
+SELECT EXISTS(
+    SELECT 1 FROM jobs
+    WHERE kind = $1::text
+      AND status = 'failed'
+      AND payload->>'user_id' = $2::text
+      AND updated_at > now() - make_interval(secs => $3::double precision)
+)::bool
+`
+
+type HasRecentFailedJobForUserParams struct {
+	Kind          string
+	UserID        string
+	WithinSeconds float64
+}
+
+// The cutoff is computed here for the reason ReleaseStaleJobs gives: updated_at
+// is the database's clock, so the comparison should not depend on ours agreeing.
+func (q *Queries) HasRecentFailedJobForUser(ctx context.Context, arg HasRecentFailedJobForUserParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasRecentFailedJobForUser, arg.Kind, arg.UserID, arg.WithinSeconds)
 	var column_1 bool
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -192,6 +244,28 @@ func (q *Queries) RequeueFailedEmbedJobsForUser(ctx context.Context, userID uuid
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const requeueInterruptedJob = `-- name: RequeueInterruptedJob :exec
+UPDATE jobs
+SET status     = 'pending',
+    attempts   = greatest(attempts - 1, 0),
+    run_after  = now(),
+    last_error = $2,
+    updated_at = now()
+WHERE id = $1
+`
+
+type RequeueInterruptedJobParams struct {
+	ID        uuid.UUID
+	LastError string
+}
+
+// Returns a job a shutdown interrupted, ready to run at once and with the attempt
+// given back: a deploy says nothing about whether the job can succeed.
+func (q *Queries) RequeueInterruptedJob(ctx context.Context, arg RequeueInterruptedJobParams) error {
+	_, err := q.db.Exec(ctx, requeueInterruptedJob, arg.ID, arg.LastError)
+	return err
 }
 
 const retryJob = `-- name: RetryJob :exec

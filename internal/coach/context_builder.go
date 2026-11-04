@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/NorthAIProject/north-client/internal/conversations"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -300,6 +301,10 @@ func (b *ContextBuilder) collect(ctx context.Context, req ContextRequest, out *C
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
+			// A source that panics fails soft like one that errors: the reply
+			// goes ahead without it.
+			defer lifecycle.Recover(nil, "context source "+source.Name())
 
 			// A deadline per source, so one that hangs costs its own budget
 			// rather than the whole reply. Derived from the request context, so

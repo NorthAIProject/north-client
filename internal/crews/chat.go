@@ -86,6 +86,7 @@ type ChatRepository interface {
 	PushMessage(ctx context.Context, messageID uuid.UUID) (pushMessage, error)
 	PushRecipients(ctx context.Context, messageID uuid.UUID) ([]uuid.UUID, error)
 	AuthorBlockedFor(ctx context.Context, viewerID, messageID uuid.UUID) (bool, error)
+	BlockedEitherWay(ctx context.Context, viewerID uuid.UUID) ([]uuid.UUID, error)
 }
 
 func NewChat(repo ChatRepository, mod *moderation.Service, filter *moderation.Filter, queue *jobs.Queue) *Chat {
@@ -93,6 +94,12 @@ func NewChat(repo ChatRepository, mod *moderation.Service, filter *moderation.Fi
 		repo: repo, mod: mod, filter: filter, queue: queue,
 		sends: ratelimit.New(crew.SendsPerMinute), log: slog.Default(), now: time.Now,
 	}
+}
+
+// WithClock fixes the chat's idea of now. Tests only.
+func (c *Chat) WithClock(now func() time.Time) *Chat {
+	c.now = now
+	return c
 }
 
 // Send posts a message in a text channel and tells everyone watching.

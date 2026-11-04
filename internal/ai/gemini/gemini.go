@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
+	"net/http"
 	"strings"
 	"time"
 
@@ -17,6 +19,8 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
 // fileReadyTimeout bounds the wait for an uploaded file to finish processing.
@@ -35,6 +39,12 @@ type Client struct {
 type Options struct {
 	APIKey       string
 	DefaultModel string
+
+	// BaseURL overrides Google's address. Tests only.
+	BaseURL string
+
+	// HTTPClient replaces the SDK's own. Tests only.
+	HTTPClient *http.Client
 }
 
 func New(ctx context.Context, opts Options) (*Client, error) {
@@ -43,8 +53,10 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 	}
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  opts.APIKey,
-		Backend: genai.BackendGeminiAPI,
+		APIKey:      opts.APIKey,
+		Backend:     genai.BackendGeminiAPI,
+		HTTPClient:  opts.HTTPClient,
+		HTTPOptions: genai.HTTPOptions{BaseURL: opts.BaseURL},
 	})
 	if err != nil {
 		return nil, apperr.Wrap(err, "gemini: create client")
@@ -87,17 +99,34 @@ func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, er
 	return out, nil
 }
 
+// Chat streams a reply.
+//
+// GenerateContentStream is lazy: no request is made until something asks for
+// the first item, so its HTTP errors only exist from then on. That item is asked
+// for here, before Chat returns, so a refusal is Chat's own error and the runner
+// can ask the next provider. Past it, failures arrive on the channel.
 func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
 	stream := c.client.Models.GenerateContentStream(ctx, c.model(req), toContents(req.Messages), toConfig(req))
+
+	next, stop := iter.Pull2(stream)
+	first, err, more := next()
+	if err != nil {
+		stop()
+		return nil, apperr.Wrap(classify(err), "gemini: stream")
+	}
 
 	out := make(chan ai.StreamChunk)
 
 	go func() {
+		// Deferred in this order so a panic still closes out: Recover stops it,
+		// including one raised by stop, and close runs after.
 		defer close(out)
+		defer lifecycle.Recover(middleware.FromContext(ctx), "gemini stream")
 
-		// GenerateContentStream returns an iterator; the SDK stops it when the
-		// yield function returns false, which is how a disconnected client
+		// stop ends the iterator early, which is how a disconnected client
 		// cancels an in-flight generation instead of paying for the rest of it.
+		defer stop()
+
 		var usage *ai.Usage
 
 		// The model can appear on any frame; the usage frame is the one the
@@ -109,7 +138,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		// after the stream ends.
 		var calls []ai.ToolCall
 
-		for resp, err := range stream {
+		for resp, err, ok := first, error(nil), more; ok; resp, err, ok = next() {
 			if err != nil {
 				send(ctx, out, ai.StreamChunk{Err: apperr.Wrap(classify(err), "gemini: stream")})
 				return

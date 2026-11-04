@@ -19,8 +19,9 @@ type chatQueue struct {
 	pending map[string][]func()
 }
 
-// add queues one item for a chat and starts a drain if the chat was idle.
-func (q *chatQueue) add(chat string, work func()) {
+// add queues one item for a chat. If the chat was idle it hands start a function
+// that runs the chat's items, for start to run on a new goroutine.
+func (q *chatQueue) add(chat string, start func(drain func()), work func()) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -30,7 +31,7 @@ func (q *chatQueue) add(chat string, work func()) {
 	queued, busy := q.pending[chat]
 	q.pending[chat] = append(queued, work)
 	if !busy {
-		go q.drain(chat)
+		start(func() { q.drain(chat) })
 	}
 }
 

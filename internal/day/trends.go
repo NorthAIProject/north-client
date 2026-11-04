@@ -4,9 +4,8 @@ import (
 	"context"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/NorthAIProject/north-client/internal/day/day"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/timerange"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -40,7 +39,7 @@ func (s *Service) Trends(ctx context.Context, user users.User) (Trends, error) {
 	until := now.Add(time.Minute)
 
 	var out Trends
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := lifecycle.WithContext(ctx)
 
 	g.Go(func() error {
 		var points []day.Point

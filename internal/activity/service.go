@@ -110,7 +110,7 @@ type Repository interface {
 	SumCaloriesSince(ctx context.Context, userID uuid.UUID, since time.Time) (float64, error)
 	SumCaloriesBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) (float64, error)
 	ListBetween(ctx context.Context, userID uuid.UUID, since, until time.Time) ([]Session, error)
-	CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]Session, error)
+	CompletedByIDs(ctx context.Context, ownerIDs, ids []uuid.UUID) ([]Session, error)
 	ListCompleted(ctx context.Context, userID uuid.UUID, before time.Time, limit int) ([]Session, error)
 	CountCompleted(ctx context.Context, userID uuid.UUID) (int, error)
 	Import(ctx context.Context, in ImportInput) (Session, bool, error)
@@ -237,14 +237,14 @@ func (s *Service) Get(ctx context.Context, id, userID uuid.UUID) (Session, error
 	return s.repo.Get(ctx, id, userID)
 }
 
-// CompletedByIDs is the completed sessions among ids, whoever owns them. It
-// does not check the reader: the caller must already have decided that this
-// person may see these workouts.
-func (s *Service) CompletedByIDs(ctx context.Context, ids []uuid.UUID) ([]Session, error) {
-	if len(ids) == 0 {
+// CompletedByIDs is the completed sessions among ids that belong to ownerIDs.
+// It does not check the reader: the caller must already have decided that this
+// person may see those owners' workouts.
+func (s *Service) CompletedByIDs(ctx context.Context, ownerIDs, ids []uuid.UUID) ([]Session, error) {
+	if len(ids) == 0 || len(ownerIDs) == 0 {
 		return nil, nil
 	}
-	return s.repo.CompletedByIDs(ctx, ids)
+	return s.repo.CompletedByIDs(ctx, ownerIDs, ids)
 }
 
 // ListCompleted is the person's finished sessions that ended before a point,

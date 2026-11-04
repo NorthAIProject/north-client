@@ -288,6 +288,95 @@ func TestAJobThatTimesOutIsStillScheduledForRetry(t *testing.T) {
 	}
 }
 
+// A job that overruns the shutdown window goes straight back on the queue, with
+// its attempt returned. Otherwise it would sit in 'running' for thirty minutes
+// after every deploy, and enough deploys could fail it for nothing.
+func TestAJobInterruptedByShutdownIsRequeuedAtOnce(t *testing.T) {
+	pool := testdb.New(t)
+	q := jobs.NewQueue(pool)
+	ctx := context.Background()
+
+	queued, err := q.Enqueue(ctx, jobs.KindAnalyzeFormVideo, payload{})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	ran := make(chan struct{}, 1)
+	w := jobs.NewWorker(q, slog.New(slog.DiscardHandler)).WithShutdownGrace(50 * time.Millisecond)
+	w.Register(jobs.KindAnalyzeFormVideo, func(runCtx context.Context, _ json.RawMessage) error {
+		ran <- struct{}{}
+		<-runCtx.Done()
+		return runCtx.Err()
+	})
+
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- w.Run(runCtx) }()
+
+	select {
+	case <-ran:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the handler never ran")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("worker stopped with error: %v", err)
+	}
+
+	var (
+		status   string
+		attempts int
+		ready    bool
+	)
+	if err := pool.QueryRow(ctx,
+		`SELECT status, attempts, run_after <= now() FROM jobs WHERE id = $1`, queued.ID,
+	).Scan(&status, &attempts, &ready); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" || attempts != 0 || !ready {
+		t.Fatalf("status=%q attempts=%d ready=%v, want pending, 0, true", status, attempts, ready)
+	}
+}
+
+// A job that finishes inside the window is simply done.
+func TestAJobFinishingInsideTheShutdownWindowCompletes(t *testing.T) {
+	pool := testdb.New(t)
+	q := jobs.NewQueue(pool)
+	ctx := context.Background()
+
+	queued, err := q.Enqueue(ctx, jobs.KindAnalyzeFormVideo, payload{})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	ran := make(chan struct{}, 1)
+	release := make(chan struct{})
+	w := jobs.NewWorker(q, slog.New(slog.DiscardHandler)).WithShutdownGrace(time.Minute)
+	w.Register(jobs.KindAnalyzeFormVideo, func(context.Context, json.RawMessage) error {
+		ran <- struct{}{}
+		<-release
+		return nil
+	})
+
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- w.Run(runCtx) }()
+
+	select {
+	case <-ran:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the handler never ran")
+	}
+	cancel()
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("worker stopped with error: %v", err)
+	}
+	if status := jobStatus(t, pool, queued.ID); status != "done" {
+		t.Fatalf("status = %q, want done", status)
+	}
+}
+
 func jobStatus(t *testing.T, pool interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }, id uuid.UUID,

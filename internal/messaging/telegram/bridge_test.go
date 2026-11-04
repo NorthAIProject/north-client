@@ -13,6 +13,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/messaging"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 )
 
 // slowHandler answers only once released, so a test can hold a turn open for
@@ -420,4 +421,27 @@ func TestAQueuedTurnGetsItsFullTimeBudget(t *testing.T) {
 		t.Fatal("the second turn never ran")
 	}
 	waitFor(t, func() bool { return b.chats.busyChats() == 0 })
+}
+
+// A shutdown must wait for the turn in progress and the ones queued behind it,
+// or a rollout answers nobody.
+func TestADrainWaitsForQueuedTurns(t *testing.T) {
+	api := newBotAPI(t)
+	tracker := lifecycle.NewTracker(slog.New(slog.DiscardHandler))
+
+	handler := handlerFunc(func(context.Context, messaging.InboundMessage) (messaging.OutboundMessage, error) {
+		time.Sleep(30 * time.Millisecond)
+		return messaging.OutboundMessage{Text: "answered"}, nil
+	})
+
+	b := &bridge{messages: handler, client: api.client(), log: slog.Default(), typingEvery: time.Hour, background: tracker}
+	b.dispatchRaw(context.Background(), textUpdate(1, 884422, "one"))
+	b.dispatchRaw(context.Background(), textUpdate(2, 884422, "two"))
+
+	if !tracker.Drain(5 * time.Second) {
+		t.Fatal("the drain gave up")
+	}
+	if got := len(api.sends()); got != 2 {
+		t.Fatalf("%d replies sent before the drain returned, want 2", got)
+	}
 }

@@ -82,7 +82,7 @@ type Repository interface {
 	UpdateSettings(ctx context.Context, userID uuid.UUID, model, baseURL string) (Credential, error)
 	Delete(ctx context.Context, userID uuid.UUID) error
 	RecordError(ctx context.Context, userID uuid.UUID, reason string) error
-	RecordToolSupport(ctx context.Context, userID uuid.UUID, supported bool) error
+	RecordToolSupport(ctx context.Context, userID uuid.UUID, version time.Time, supported bool) (bool, error)
 }
 
 func NewService(repo Repository, sealer *secret.Sealer, log *slog.Logger) *Service {
@@ -351,13 +351,17 @@ func (s *Service) ProbeTools(ctx context.Context, userID uuid.UUID) {
 		return
 	}
 
-	client, err := s.For(ctx, userID)
-	if err != nil || client == nil {
+	// The version is read before the client on purpose. If a save lands between
+	// them the client is newer than the version, and the guard below discards the
+	// answer. The other way round an older client's answer would be recorded
+	// against the newer credential.
+	cred, err := s.repo.Get(ctx, userID)
+	if err != nil {
 		return
 	}
 
-	cred, err := s.repo.Get(ctx, userID)
-	if err != nil {
+	client, err := s.For(ctx, userID)
+	if err != nil || client == nil {
 		return
 	}
 
@@ -368,9 +372,15 @@ func (s *Service) ProbeTools(ctx context.Context, userID uuid.UUID) {
 		return
 	}
 
-	if err := s.repo.RecordToolSupport(ctx, userID, supported); err != nil {
+	current, err := s.repo.RecordToolSupport(ctx, userID, cred.UpdatedAt, supported)
+	if err != nil {
 		s.log.Warn("could not record provider tool support",
 			slog.String("user_id", userID.String()), slog.Any("error", err))
+		return
+	}
+	if !current {
+		// Saved again or deleted while this ran. The save that replaced it starts
+		// its own probe, and this answer is about something no longer stored.
 		return
 	}
 

@@ -51,6 +51,7 @@ var portugueseBrazilianAuth = map[string]string{
 	"auth.err.signup":             "Algo deu errado ao criar sua conta. Tente novamente.",
 	"auth.err.credentials":        "E-mail ou senha incorretos.",
 	"auth.err.throttled":          "Muitas tentativas nesta conta. Aguarde um minuto e tente novamente.",
+	"auth.err.rate_limited":       "Muitas solicitações. Aguarde um momento e tente novamente.",
 	"auth.err.signin":             "Algo deu errado ao entrar. Tente novamente.",
 	"auth.err.generic":            "Algo deu errado. Tente novamente.",
 	"auth.err.mismatch":           "As senhas não coincidem.",

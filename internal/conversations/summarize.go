@@ -13,7 +13,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/spend"
 )
 
 // DefaultKeepRecent is how many turns the coach sends verbatim. Everything
@@ -95,7 +97,7 @@ func (s *Summarizer) HandleSummarizeJob(ctx context.Context, payload json.RawMes
 	if p.ConversationID == uuid.Nil {
 		return apperr.New("summarize payload missing conversation id")
 	}
-	return s.Summarize(ctx, p.ConversationID)
+	return s.Summarize(aiattr.WithUser(ctx, p.UserID, spend.SurfaceSummary), p.ConversationID)
 }
 
 // Summarize folds a thread's older turns into its rolling summary.

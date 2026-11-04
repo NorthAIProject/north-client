@@ -88,6 +88,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/screentime"
 	"github.com/NorthAIProject/north-client/internal/settings"
 	"github.com/NorthAIProject/north-client/internal/shared/echox"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 	"github.com/NorthAIProject/north-client/internal/sleep"
@@ -112,6 +113,7 @@ import (
 
 func routes(
 	cfg *config.Config,
+	background *lifecycle.Tracker,
 	pool *pgxpool.Pool,
 	registry *ai.Registry,
 	storage media.Storage,
@@ -747,6 +749,7 @@ func routes(
 	agentTools.Record(auditRecorder)
 
 	coachSvc := coach.NewService(coach.Options{
+		Background:    background,
 		Registry:      registry,
 		Conversations: conversationSvc,
 		// Context sources are registered here and nowhere else. Goals,
@@ -944,7 +947,7 @@ func routes(
 	settingsHandler := settings.NewHandler(
 		userSvc, preferencesSvc, notificationSvc, mealDietSvc, connectionSvc, aicredSvc,
 		auditSvc, messagingSvc, cfg.Telegram, accountSvc, authMW,
-	).WithIntegrations(integrationSvc).WithPush(pushSvc)
+	).WithIntegrations(integrationSvc).WithPush(pushSvc).WithBackground(background)
 
 	// Given the coach so the questionnaire ends in a thread that is already
 	// being answered, rather than an empty chat box the person has to think of
@@ -958,16 +961,18 @@ func routes(
 	if telegramClient != nil {
 		if cfg.Telegram.UsesWebhook() {
 			telegramWebhook = telegram.NewWebhook(telegram.WebhookConfig{
-				Messages: messagingSvc,
-				Client:   telegramClient,
-				Secret:   cfg.Telegram.WebhookSecret,
-				Log:      slog.Default(),
+				Messages:   messagingSvc,
+				Client:     telegramClient,
+				Background: background,
+				Secret:     cfg.Telegram.WebhookSecret,
+				Log:        slog.Default(),
 			})
 		} else {
 			telegramPoller = telegram.NewPoller(telegram.PollerConfig{
-				Messages: messagingSvc,
-				Client:   telegramClient,
-				Log:      slog.Default(),
+				Messages:   messagingSvc,
+				Client:     telegramClient,
+				Background: background,
+				Log:        slog.Default(),
 			})
 		}
 	}
@@ -1026,8 +1031,11 @@ func routes(
 	// for every request here, and the JSON API registers on it natively.
 	e := echox.New(echox.Config{Logger: slog.Default(), TrustedProxies: cfg.TrustedProxies})
 
-	// Liveness and the operator's user count. Neither carries a session: the
-	// kubelet and the portfolio dashboard are not people.
+	// Liveness, readiness and the operator's user count. None carries a session:
+	// the kubelet and the portfolio dashboard are not people. Liveness does not
+	// touch the database, because restarting this process cannot fix Postgres,
+	// and doing it anyway would drop every open stream.
+	e.GET("/livez", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 	e.GET("/healthz", healthz(pool))
 
 	// Internal operator endpoint: total user count for the portfolio
@@ -1068,7 +1076,7 @@ func routes(
 		}
 		return mediaSvc.PlaybackURL(ctx, m)
 	})
-	mountAPI(e, sessions, apiSet{
+	mountAPI(e, sessions, auth.NewRouteLimiter(auth.RouteLimits{}, slog.Default()), apiSet{
 		auth:         authAPI,
 		mcpAuth:      mcpAuthAPI,
 		capture:      captureAPI,
