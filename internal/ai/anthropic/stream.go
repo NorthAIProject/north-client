@@ -3,11 +3,14 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/packages/ssestream"
 
 	"github.com/NorthAIProject/north-client/internal/ai"
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 )
 
 // Chat streams a reply: text as it arrives, then any tool calls in one chunk
@@ -19,40 +22,38 @@ import (
 // error and the runner can ask the next provider. Thinking comes first and is
 // read in that window too; it is never shown, so holding it back costs nothing.
 // Once the reply has committed, failures arrive on the channel as before.
+//
+// A managed client's opening is also on a budget. A provider that takes the
+// request and says nothing would otherwise spend the caller's whole deadline,
+// and that deadline passing does not fail over, so the next provider would never
+// be asked. The budget ends with the first visible output: past that, slowness
+// is the reply being written and there is nobody left to hand it to.
 func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
 	p := c.params(req)
-	stream := c.sdk.Messages.NewStreaming(ctx, p, requestOptions(p)...)
 
-	var msg sdk.Message
-	var held []sdk.MessageStreamEventUnion
-	ended := true
-	for stream.Next() {
-		event := stream.Current()
-		if err := msg.Accumulate(event); err != nil {
-			_ = stream.Close()
-			return nil, c.classify(err)
-		}
-		held = append(held, event)
-		if commits(event) {
-			ended = false
-			break
-		}
+	attemptCtx, cancel := context.WithCancel(ctx)
+	withinBudget := startBudget(c.firstTokenBudget, cancel)
+
+	stream := c.sdk.Messages.NewStreaming(attemptCtx, p, requestOptions(p)...)
+	msg, held, ended, err := c.open(stream)
+
+	// Checked against ctx, not attemptCtx: the budget cancelled that one itself.
+	// A fresh error rather than a wrapped one, because the cancellation it would
+	// wrap is what Failover reads as the caller having gone.
+	if !withinBudget() && ctx.Err() == nil {
+		err = fmt.Errorf("%w: anthropic: no reply within %s", apperr.ErrUnavailable, c.firstTokenBudget)
 	}
-	if ended {
-		if err := stream.Err(); err != nil {
-			_ = stream.Close()
-			return nil, c.classify(err)
-		}
-		if err := stopError(msg.StopReason, msg.Content); err != nil {
-			_ = stream.Close()
-			return nil, err
-		}
+	if err != nil {
+		_ = stream.Close()
+		cancel()
+		return nil, err
 	}
 
 	out := make(chan ai.StreamChunk)
 
 	go func() {
 		defer close(out)
+		defer cancel()
 		defer func() { _ = stream.Close() }()
 
 		err := c.relay(ctx, out, stream, &msg, held, ended)
@@ -71,6 +72,38 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 	}()
 
 	return out, nil
+}
+
+// startBudget calls expire after d, unless the returned function is called
+// first. That function reports whether it was, and is called once. A d of zero
+// is no budget at all.
+func startBudget(d time.Duration, expire func()) (withinBudget func() bool) {
+	if d <= 0 {
+		return func() bool { return true }
+	}
+	return time.AfterFunc(d, expire).Stop
+}
+
+// open reads the stream up to the reply's first visible output and returns what
+// it read. ended means the stream finished in that window.
+func (c *Client) open(stream *ssestream.Stream[sdk.MessageStreamEventUnion]) (msg sdk.Message, held []sdk.MessageStreamEventUnion, ended bool, err error) {
+	for stream.Next() {
+		event := stream.Current()
+		if err := msg.Accumulate(event); err != nil {
+			return msg, nil, false, c.classify(err)
+		}
+		held = append(held, event)
+		if commits(event) {
+			return msg, held, false, nil
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return msg, nil, false, c.classify(err)
+	}
+	if err := stopError(msg.StopReason, msg.Content); err != nil {
+		return msg, nil, false, err
+	}
+	return msg, held, true, nil
 }
 
 // relay sends the reply to out as it arrives, accumulating it into msg, and
