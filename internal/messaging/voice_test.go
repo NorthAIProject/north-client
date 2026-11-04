@@ -79,6 +79,7 @@ func (h harness) sendVoiceNote(t *testing.T, chat string, file messaging.Inbound
 	if err != nil {
 		t.Fatalf("handle a voice note: %v", err)
 	}
+	h.settle(t)
 	return out
 }
 

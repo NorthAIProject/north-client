@@ -79,8 +79,13 @@ const generationTimeout = 5 * time.Minute
 // started answering "something went wrong" with credits still in the account.
 const replyMaxTokens = 8192
 
-// persistTimeout bounds the write that saves a completed reply.
+// persistTimeout bounds the write that saves a completed reply, and each small
+// step that follows one.
 const persistTimeout = 15 * time.Second
+
+// titleTimeout bounds naming a thread, which is a model call and may walk the
+// provider chain. Well inside what a shutdown waits for.
+const titleTimeout = 30 * time.Second
 
 // toolRounds bounds how many times the coach may run tools and go back to the
 // model within one turn.
@@ -693,14 +698,22 @@ type pumpTarget struct {
 	release func()
 }
 
-// pump forwards the provider's stream to the caller while accumulating the full
-// reply, then saves it.
-//
-// callerCtx governs delivery; genCtx governs generation. When the caller goes
-// away the loop keeps draining so the reply still completes and is persisted —
-// it simply stops trying to send.
-// startPump runs pump detached from the request, tracked so a shutdown can let
-// the reply finish and be saved.
+// storedReply is what the work after a saved reply needs to know about it.
+type storedReply struct {
+	id   uuid.UUID
+	text string
+
+	// callerGone is whether the request had ended when the reply was saved. Read
+	// before the stream closes, because the handler returns as soon as it does
+	// and that cancels the request for every reply, read or not.
+	callerGone bool
+
+	// ended is whether this reply finished a reflection.
+	ended bool
+}
+
+// startPump runs pump detached from the request, then the work that follows a
+// saved reply. Tracked, so a shutdown can let both finish.
 func (s *Service) startPump(
 	callerCtx context.Context,
 	genCtx context.Context,
@@ -710,10 +723,20 @@ func (s *Service) startPump(
 	target pumpTarget,
 ) {
 	s.background.Go("coach reply", func() {
-		s.pump(callerCtx, genCtx, cancelGen, stream, out, target)
+		if reply, ok := s.pump(callerCtx, genCtx, cancelGen, stream, out, target); ok {
+			s.afterReply(genCtx, target, reply)
+		}
 	})
 }
 
+// pump forwards the provider's stream to the caller while accumulating the full
+// reply, then saves it. It reports the reply it stored, if any, and the stream is
+// closed by the time it returns, so the caller's done does not wait on anything
+// that comes after the save.
+//
+// callerCtx governs delivery; genCtx governs generation. When the caller goes
+// away the loop keeps draining so the reply still completes and is persisted —
+// it simply stops trying to send.
 func (s *Service) pump(
 	callerCtx context.Context,
 	genCtx context.Context,
@@ -721,7 +744,7 @@ func (s *Service) pump(
 	stream <-chan ai.StreamChunk,
 	out chan<- ai.StreamChunk,
 	target pumpTarget,
-) {
+) (storedReply, bool) {
 	defer cancelGen()
 	defer close(out)
 	if target.release != nil {
@@ -949,11 +972,11 @@ func (s *Service) pump(
 		// A partial answer is still worth keeping: the user saw it, and losing
 		// it would make the conversation history disagree with what happened.
 		if text == "" {
-			return
+			return storedReply{}, false
 		}
 	}
 	if text == "" {
-		return
+		return storedReply{}, false
 	}
 
 	// Detached and fresh: by now the request context is very likely cancelled,
@@ -967,32 +990,77 @@ func (s *Service) pump(
 	if err != nil {
 		log.Error("could not save the coach's reply", slog.Any("error", err),
 			slog.String("conversation_id", target.conversation.ID.String()))
-		return
+		return storedReply{}, false
+	}
+
+	return storedReply{
+		id:         saved.ID,
+		text:       text,
+		callerGone: callerCtx.Err() != nil,
+		// Before the stream closes, unlike the rest: clients read the conversation
+		// as soon as it does, and a finished reflection has to read as finished by
+		// then or it offers a composer that refuses.
+		ended: s.maybeEndReflection(saveCtx, target.conversation, text),
+	}, true
+}
+
+// afterReply is the work a saved reply sets off, none of which the person is
+// waiting for.
+//
+// Each step gets its own detached context, so one using up its time costs the
+// others nothing. The title goes last because it is a whole model call: a slow
+// provider then holds up nothing else.
+func (s *Service) afterReply(genCtx context.Context, target pumpTarget, reply storedReply) {
+	step := func(limit time.Duration, run func(ctx context.Context)) {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(genCtx), limit)
+		defer cancel()
+		run(ctx)
 	}
 
 	// The request that asked is gone: the app was backgrounded or the tab
 	// closed. The answer is saved, but nobody knows it arrived.
-	if callerCtx.Err() != nil {
-		s.tellAway(saveCtx, target, saved.ID, text)
+	if reply.callerGone {
+		step(persistTimeout, func(ctx context.Context) { s.tellAway(ctx, target, reply.id, reply.text) })
 	}
 
 	// A completed, persisted reply — the funnel's only honest definition of
 	// the coach having answered. Activation is two of these on different days.
-	s.funnel.CoachReplied(saveCtx, target.user.ID, string(target.source))
+	step(persistTimeout, func(ctx context.Context) {
+		s.funnel.CoachReplied(ctx, target.user.ID, string(target.source))
+	})
 
-	s.noteTelegramReply(saveCtx, target, text)
-
-	if s.conversations.NeedsTitle(saveCtx, target.conversation) {
-		s.titleConversation(saveCtx, target.user, target.conversation.ID, target.firstMessage)
-	}
+	step(persistTimeout, func(ctx context.Context) { s.noteTelegramReply(ctx, target, reply.text) })
 
 	// Threshold trigger: the turn that pushes a thread past the context window
 	// is the one that makes its beginning invisible, so compact it now rather
 	// than waiting for the sweep an hour later.
-	s.enqueueSummary(saveCtx, target.user.ID, target.conversation.ID)
+	step(persistTimeout, func(ctx context.Context) {
+		s.enqueueSummary(ctx, target.user.ID, target.conversation.ID)
+	})
 
-	ended := s.maybeEndReflection(saveCtx, target.conversation, text)
-	s.enqueueMemoryExtraction(saveCtx, target, ended)
+	step(persistTimeout, func(ctx context.Context) { s.enqueueMemoryExtraction(ctx, target, reply.ended) })
+
+	step(titleTimeout, func(ctx context.Context) { s.titleIfUnnamed(ctx, target) })
+}
+
+// titleIfUnnamed names a thread that still has no name.
+//
+// Read again rather than trusting target: done no longer waits for the title, so a
+// second turn can start, holding its own copy of the conversation, before the first
+// turn's title lands. Naming it twice would replace the name with one taken from
+// the second message.
+func (s *Service) titleIfUnnamed(ctx context.Context, target pumpTarget) {
+	if !s.conversations.NeedsTitle(ctx, target.conversation) {
+		return
+	}
+	current, err := s.conversations.Get(ctx, target.conversation.ID, target.user.ID)
+	if err != nil {
+		middleware.FromContext(ctx).Warn("could not read the conversation to name it", slog.Any("error", err))
+		return
+	}
+	if s.conversations.NeedsTitle(ctx, current) {
+		s.titleConversation(ctx, target.user, target.conversation.ID, target.firstMessage)
+	}
 }
 
 const reflectionSummaryHeading = "## Reflection summary"

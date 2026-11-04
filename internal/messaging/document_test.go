@@ -44,6 +44,7 @@ func (h harness) sendDocument(t *testing.T, chat, caption string, file messaging
 	if err != nil {
 		t.Fatalf("handle a document: %v", err)
 	}
+	h.settle(t)
 	return out
 }
 

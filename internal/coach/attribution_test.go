@@ -233,6 +233,9 @@ func TestACoachTurnReachesTheProviderAttributed(t *testing.T) {
 		t.Fatalf("drain: %v", err)
 	}
 
+	// The thread is named after the reply has been delivered, so wait for it.
+	meter.recordsOn(t, spend.SurfaceTitle, 1)
+
 	got := meter.records()
 	if len(got) == 0 {
 		t.Fatal("the provider was reached but nothing was metered")
