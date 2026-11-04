@@ -118,7 +118,7 @@ var Catalog = []BYOProvider{
 		Name: "nvidia", Label: "NVIDIA",
 		BaseURL: "https://integrate.api.nvidia.com/v1", DefaultModel: "meta/llama-3.3-70b-instruct",
 		KeyHint: "nvapi-…",
-		Note:    "Free models, and what Khepri's own free tier already runs on.",
+		Note:    "Free models.",
 	},
 	{
 		// No VerifyPath: Gemini is not an OpenAI-dialect backend and has no
