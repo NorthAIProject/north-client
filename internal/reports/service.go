@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/conversations"
 	"github.com/NorthAIProject/north-client/internal/jobs"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -34,6 +35,7 @@ type Users interface {
 }
 
 type Service struct {
+	consent   ai.ConsentChecker
 	repo      Repository
 	users     Users
 	queue     Enqueuer
@@ -220,6 +222,12 @@ func (s *Service) RequestBriefing(ctx context.Context, userID uuid.UUID) (Report
 }
 
 func (s *Service) requestGenerate(ctx context.Context, userID uuid.UUID, kind Kind, period Period) (Report, error) {
+	if allowed, err := s.allowsAI(ctx, userID); err != nil {
+		return Report{}, err
+	} else if !allowed {
+		return Report{}, apperr.Wrap(apperr.ErrAIConsentRequired, "generate report")
+	}
+
 	existing, err := s.repo.ActiveForWeek(ctx, userID, kind, period.Start)
 	switch {
 	case err == nil:
@@ -283,6 +291,12 @@ func (s *Service) EnsureBriefing(ctx context.Context, userID uuid.UUID, day Peri
 }
 
 func (s *Service) ensure(ctx context.Context, userID uuid.UUID, kind Kind, period Period) (Report, bool, error) {
+	// A sweep skips rather than creating a row the gate would then fail: a
+	// person who said no should not find a failed review waiting for them.
+	if allowed, err := s.allowsAI(ctx, userID); err != nil || !allowed {
+		return Report{}, false, err
+	}
+
 	_, err := s.repo.ActiveForWeek(ctx, userID, kind, period.Start)
 	switch {
 	case err == nil:
@@ -317,6 +331,19 @@ func (s *Service) Regenerate(ctx context.Context, id, userID uuid.UUID) (Report,
 		return Report{}, ErrArchived
 	}
 	return s.RequestGenerate(ctx, userID, current.PeriodStart)
+}
+
+// WithConsent checks AI data sharing before a report row is created. Nil allows.
+func (s *Service) WithConsent(c ai.ConsentChecker) *Service {
+	s.consent = c
+	return s
+}
+
+func (s *Service) allowsAI(ctx context.Context, userID uuid.UUID) (bool, error) {
+	if s.consent == nil {
+		return true, nil
+	}
+	return s.consent.AllowsAI(ctx, userID)
 }
 
 func (s *Service) enqueue(ctx context.Context, report Report) error {

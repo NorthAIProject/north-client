@@ -40,6 +40,11 @@ var (
 	// ErrForbidden means the caller is known but not allowed to do this.
 	ErrForbidden = errors.New("forbidden")
 
+	// ErrAIConsentRequired means a call would send someone's data to an AI
+	// provider and they have not agreed to that. Not an ErrForbidden: failover
+	// walks on past those, and no other provider may have this data either.
+	ErrAIConsentRequired = errors.New("ai consent required")
+
 	// ErrUnavailable means a dependency (AI provider, storage) failed in a way
 	// that may succeed on retry.
 	ErrUnavailable = errors.New("temporarily unavailable")

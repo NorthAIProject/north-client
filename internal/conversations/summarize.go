@@ -13,7 +13,9 @@ import (
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/prompts"
 	"github.com/NorthAIProject/north-client/internal/jobs"
+	"github.com/NorthAIProject/north-client/internal/shared/aiattr"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/spend"
 )
 
 // DefaultKeepRecent is how many turns the coach sends verbatim. Everything
@@ -116,6 +118,7 @@ func (s *Summarizer) Summarize(ctx context.Context, conversationID uuid.UUID) er
 	if err != nil {
 		return err
 	}
+	ctx = aiattr.WithUser(ctx, owner, spend.SurfaceSummary)
 
 	// The watermark: the newest turn that is NOT in the tail. Everything at or
 	// before it is what the model is about to stop being able to see.

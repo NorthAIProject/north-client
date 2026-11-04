@@ -202,8 +202,11 @@ func (b *bridge) answer(ctx context.Context, in messaging.InboundMessage, callba
 		// still goes through the catalogue so the string lives in one place and
 		// starts working the day the locale is resolved earlier.
 		key := "tg.wrong"
-		if apperr.Is(err, apperr.ErrPaymentRequired) {
+		switch {
+		case apperr.Is(err, apperr.ErrPaymentRequired):
 			key = "tg.nocredit"
+		case apperr.Is(err, apperr.ErrAIConsentRequired):
+			key = "tg.aiconsent"
 		}
 		out = messaging.OutboundMessage{Text: i18n.T(ctx, key)}
 	}

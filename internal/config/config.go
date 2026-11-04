@@ -202,6 +202,10 @@ func (c TranscriptionConfig) Enabled() bool { return strings.TrimSpace(c.BaseURL
 // AIConfig selects and configures the AI providers. Provider names must match a
 // client registered in internal/ai.
 type AIConfig struct {
+	// ConsentRequired refuses model calls for anyone who has not agreed to AI
+	// data sharing. Off until the clients that ask the question have shipped.
+	ConsentRequired bool
+
 	// Chain is the ordered preference list of providers. The first one whose
 	// credentials are present and which answers a request wins; the rest are
 	// there for when it refuses.
@@ -908,6 +912,12 @@ func Load() (*Config, error) {
 		problems = append(problems, err.Error())
 	}
 	cfg.FirstWeekEnabled = firstWeek
+
+	aiConsentRequired, err := boolValue("AI_CONSENT_REQUIRED", false)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.AI.ConsentRequired = aiConsentRequired
 
 	anthropicFirst, err := boolValue("ANTHROPIC_FIRST", false)
 	if err != nil {

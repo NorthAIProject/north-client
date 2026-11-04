@@ -28,6 +28,8 @@ var portugueseEuropeanTelegram = map[string]string{
 	"tg.voice.download":    "Não consegui descarregar essa mensagem de voz. Envias outra vez?",
 	"tg.wrong":             "Correu alguma coisa mal do meu lado. Tenta outra vez daqui a pouco.",
 	"tg.nocredit":          "Não consigo chegar a um modelo agora — o serviço está sem crédito. Tenta outra vez daqui a pouco.",
+	"tg.aiconsent":         "O teu coach está desligado até permitires a partilha de dados com a IA. Podes ligá-lo na app Khepri, em Definições.",
+	"ai.consent.off":       "A IA está desligada na tua conta. Liga-a em Definições, em Partilha de dados com a IA.",
 
 	"tg.confirm.again": "Ainda preciso de um sim ou de um não primeiro.",
 	"tg.confirm":       "Antes de fazer isto, confirmas?",

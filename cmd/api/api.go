@@ -6,6 +6,7 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/achievements"
 	"github.com/NorthAIProject/north-client/internal/activity"
+	"github.com/NorthAIProject/north-client/internal/aiconsent"
 	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/awards"
@@ -147,6 +148,7 @@ func registerBearer(g *echo.Group, apis apiSet) {
 	apis.voice.Register(g)
 	apis.exercises.Register(g)
 	apis.settings.Register(g)
+	apis.aiConsent.Register(g)
 	apis.training.Register(g)
 	apis.activity.Register(g)
 	apis.health.Register(g)
@@ -210,6 +212,7 @@ type apiSet struct {
 	voice        *voice.API
 	exercises    *exercises.API
 	settings     *settings.API
+	aiConsent    *aiconsent.API
 	training     *workouts.API
 	activity     *activity.API
 	health       *health.API

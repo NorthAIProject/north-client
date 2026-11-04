@@ -656,3 +656,13 @@ sql:
         package: checkinreplydb
         out: internal/checkinreply/db
         overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
+    queries: internal/aiconsent/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: aiconsentdb
+        out: internal/aiconsent/db
+        overrides: *overrides

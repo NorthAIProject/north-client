@@ -26,6 +26,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/activity"
 	"github.com/NorthAIProject/north-client/internal/ai"
 	"github.com/NorthAIProject/north-client/internal/ai/providers"
+	"github.com/NorthAIProject/north-client/internal/aiconsent"
 	"github.com/NorthAIProject/north-client/internal/analytics"
 	"github.com/NorthAIProject/north-client/internal/apns"
 	"github.com/NorthAIProject/north-client/internal/awards"
@@ -133,6 +134,8 @@ func run() error {
 
 	aiOpts := cfg.AI.ProviderOptions(cfg.Env)
 	aiOpts.Meter = spendMeter
+	aiConsent := aiconsent.Checker(pool, cfg.AI.ConsentRequired)
+	aiOpts.Consent = aiConsent
 
 	registry, err := providers.Build(ctx, aiOpts)
 	if err != nil {
@@ -167,6 +170,7 @@ func run() error {
 		Provider:   cfg.AI.UploadProvider,
 		Model:      cfg.AI.Model,
 	})
+	mediaSvc.WithConsent(aiconsent.Checker(pool, cfg.AI.ConsentRequired))
 
 	memoryExtract := &memories.ExtractionService{
 		Memories:      memories.NewService(memories.NewRepository(pool)),
@@ -225,6 +229,7 @@ func run() error {
 		Model:      cfg.Embedding.Model,
 		Dimensions: cfg.Embedding.Dimensions,
 		Meter:      spendMeter,
+		Consent:    aiConsent,
 	})
 	if err != nil {
 		return err
@@ -348,6 +353,7 @@ func run() error {
 		FastModel:  cfg.AI.FastModel,
 		Notify:     briefingNotify,
 	})
+	reportSvc.WithConsent(aiconsent.Checker(pool, cfg.AI.ConsentRequired))
 	worker.Register(jobs.KindWeeklyReview, reportSvc.HandleGenerateJob)
 
 	// The same handler: a briefing and a review differ in prompt, model and

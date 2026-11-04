@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
 	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
@@ -184,6 +185,13 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 
 	if err == nil {
 		log.Info("job done", slog.Duration("took", elapsed))
+		return true, w.queue.Complete(runCtx, job.ID)
+	}
+
+	// Asking again later changes nothing until the person answers, and the
+	// sweep that enqueued this will come round again if they do.
+	if apperr.Is(err, apperr.ErrAIConsentRequired) {
+		log.Info("job skipped: no ai consent")
 		return true, w.queue.Complete(runCtx, job.ID)
 	}
 
