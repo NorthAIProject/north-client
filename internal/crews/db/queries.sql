@@ -267,7 +267,7 @@ UPDATE crew_members SET notify = @notify, muted_until = sqlc.narg(muted_until) W
 -- name: SetHidden :one
 UPDATE crew_messages SET hidden_at = CASE WHEN @hide::boolean THEN coalesce(hidden_at, now()) END
 WHERE id = @id
-RETURNING id, crew_id, channel_id;
+RETURNING id, crew_id, channel_id, author_id;
 
 -- name: MessageCrewSize :one
 SELECT count(*) FROM crew_members WHERE crew_id = (SELECT crew_id FROM crew_messages WHERE id = $1);
@@ -282,6 +282,12 @@ SELECT EXISTS (
       ON (b.blocker_id = @viewer AND b.blocked_id = m.author_id) OR (b.blocker_id = m.author_id AND b.blocked_id = @viewer)
     WHERE m.id = @id
 );
+
+-- name: BlockedEitherWay :many
+-- Everyone @viewer has blocked, and everyone who has blocked @viewer.
+SELECT (CASE WHEN b.blocker_id = @viewer THEN b.blocked_id ELSE b.blocker_id END)::uuid AS user_id
+FROM blocks b
+WHERE b.blocker_id = @viewer OR b.blocked_id = @viewer;
 
 -- name: PushMessage :one
 -- A message worth a push: posted by a person, and still neither deleted nor
