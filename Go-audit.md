@@ -4,7 +4,7 @@
 |---|---|
 | **Date** | 2026-11-03 |
 | **Source revision** | `bbb4b7d713188228d9077d41d908b90021dafc8c` (`main`, clean worktree) |
-| **Production revision** | `5464d0c569aacdfb25ae8add3440db97394acb83` per `platform/infra/apps/khepri/worker/values-production.yaml`. Findings are stated against HEAD, so check each one against the deployed SHA before treating it as live. |
+| **Production revision** | `2105c21c770e36fe02ce2633bfddef9a90e13684` per `origin/main` of the infra repo, `apps/khepri/{web,worker}/values-production.yaml` (corrected 2026-11-04; see §0). Findings are stated against HEAD, so check each one against the deployed SHA before treating it as live. |
 | **Toolchain** | `go1.27.3 darwin/arm64`, module `github.com/NorthAIProject/north-client` |
 | **Scope** | `cmd/api`, `cmd/worker`, `cmd/mcp-server`, and `internal/**`: about 1,700 Go files and 181k LOC (non-test). |
 | **Mode** | Read-only audit. No source files were changed, and no database, migration, or external API was touched. |
@@ -16,22 +16,24 @@
 
 The P1 fixes are under way on branch **`fix/audit-p1`**, cut from `main` at `bbb4b7d7`.
 
-- Nothing is committed or pushed. Every change is uncommitted in the main checkout.
-- No git worktree was created.
-- A disposable Postgres container, `north-audit-testdb` (pgvector/pgvector:pg17, `127.0.0.1:5491`), was started for the DB-backed tests and is still running. Reuse it or remove it with `docker rm -f north-audit-testdb`.
-
-Run tests with:
+- F-02, F-03, F-04 and the first half of F-01 are committed (`26b68b97`, `fa4cecfa`) and open as PR #161.
+- The rest of F-01 (2026-11-04) is **uncommitted in the main checkout**. PR #161 should not merge without it: the PR creates `messaging_seen_updates` with nothing to purge it, and does not serialise turns.
+- DB-backed tests need a disposable Postgres. The container was removed after the 2026-11-04 run. Recreate it with:
 
 ```bash
+docker run -d --name north-audit-testdb -e POSTGRES_USER=north -e POSTGRES_PASSWORD=north \
+  -e POSTGRES_DB=north -p 127.0.0.1:5491:5432 pgvector/pgvector:pg17
 export TEST_DATABASE_URL='postgres://north:north@127.0.0.1:5491/north?sslmode=disable'
 ```
+
+Use `-timeout 20m` on a loaded machine. `internal/messaging` takes about 70 s alone with `-race`, and hit the default 10 minutes in a full run at load average ~36.
 
 | Finding | State | Verified |
 |---|---|---|
 | F-02 job timeout loop | **Done** | Yes. `go test -race ./internal/jobs/` passes. Both new tests failed on the old code and pass on the fix. |
 | F-03 chunk re-index 23505 | **Done** | Yes. The new test reproduced `23505 document_chunks_document_id_ordinal_key` on the old code. `go test -race ./internal/documents/... ./internal/vault/...` passes. |
 | F-04 Anthropic failover | **Done** | Yes. The new tests failed on the old code. `go test -race ./internal/ai/...` passes, including the existing classification tests. |
-| F-01 Telegram dropped updates | **Partial. The tests have not been run.** | No. See the remaining work below. |
+| F-01 Telegram dropped updates | **Done, uncommitted** | Yes. See the F-01 section below. |
 | Everything else (F-05 … F-32) | Not started | — |
 
 ### Done: F-02 (`internal/jobs`)
@@ -64,50 +66,47 @@ export TEST_DATABASE_URL='postgres://north:north@127.0.0.1:5491/north?sslmode=di
   - `TestANetworkFailureFailsOver`
   - `TestACancelledRequestDoesNotFailOver`
 
-### Partial: F-01 (Telegram seen-set). Pick up here.
+### Done: F-01 (`internal/messaging`)
 
-**Written, not yet verified:**
+Part of this is in PR #161 and part is uncommitted, as noted at the top of this section.
 
-1. **New migration `migrations/20261103120000_messaging_seen_updates.sql`**
-   - Creates table `messaging_seen_updates (platform, account_id, update_id, seen_at)`, with the first three as the primary key, plus an index on `seen_at`.
-   - Backfills each link's current `last_update_id` into the table, so the first redelivery after the deploy is not answered twice.
-2. **`internal/messaging/db/queries.sql`**
-   - `ClaimMessagingUpdate` is rewritten as one statement: a CTE inserts into the seen-set with `ON CONFLICT DO NOTHING`, and that insert is the claim. It then updates `messaging_links` and returns `ml.*`.
-   - `last_update_id` is now informational only. It is set to `greatest(...)`, and reset when the account changes.
-   - New `PurgeSeenMessagingUpdates :execrows`.
-   - sqlc was regenerated. The generated param struct now has `UpdateID` where it had `LastUpdateID`.
-3. **`internal/messaging/repository.go`**
-   - `ClaimUpdate` passes `UpdateID`.
-   - New `PurgeSeenUpdates(ctx, olderThan)`.
-   - `go build ./...` passed after this step.
-4. **`internal/messaging/account_scope_test.go`** was rewritten to the new rule: an id never seen is accepted, a repeat is refused.
-   - Added: `TestAnUpdateClaimedOutOfOrderIsStillAnswered`, `TestConcurrentDeliveriesOfOneUpdateClaimOnce`, `TestOldClaimsArePurged`, and a `linkedChat` helper.
-   - Adjusted: `TestARedeliveryIsStillRefusedWithinOneBot` and `TestLegacyRowsAndAccountlessPlatformsStillWork`.
-   - **The test run was interrupted, so none of this has been run yet.**
+- **Migration `20261103120000_messaging_seen_updates.sql`**
+  - Creates `messaging_seen_updates`, primary key `(platform, account_id, update_id)`, with an index on `seen_at`.
+  - Backfills each link's current `last_update_id`, so the first redelivery after the deploy is not answered twice.
+  - Comments `last_update_id` as informational.
+- **`ClaimMessagingUpdate`:** one statement. The `INSERT … ON CONFLICT DO NOTHING` inside the CTE is the claim.
+- **`KindSweepMessagingUpdates`:** daily, runs `messaging.UpdateSweeper`, keeps 48 h.
+- **`telegram/chatqueue.go`:** runs turns for one chat one at a time, in arrival order, with one goroutine per busy chat.
+- **`telegram/bridge.go`**
+  - `replyTimeout` starts when a turn starts, not when it is queued.
+  - Each turn recovers and logs a panic, which covers the Telegram part of F-08.
+  - **Differs from the original plan:** a tapped button is acknowledged outside the queue. Inside it, the spinner would wait for any earlier turn, which can take minutes.
 
-**Remaining work for F-01:**
+**Verified 2026-11-04:**
 
-1. Run `go test -race -count=1 ./internal/messaging/...` against the test DB and fix whatever fails. Pay particular attention to the CTE: the data-modifying `INSERT` inside `WITH` must be visible to the outer `UPDATE … FROM link, seen`. Also confirm that `service_test.go:193`, the redelivery test, still passes.
-2. Prove the old code fails: stash the query, the generated code and the migration, and confirm that `TestAnUpdateClaimedOutOfOrderIsStillAnswered` fails.
-3. Wire the purge into the worker:
-   - Add a `jobs.KindSweepMessagingUpdates` kind.
-   - Register a handler in `cmd/worker/main.go` that calls `messaging.NewRepository(pool).PurgeSeenUpdates(ctx, 48*time.Hour)`.
-   - Add `RegisterPeriodic(24*time.Hour, …)`, placed next to `KindSweepQuotas`.
-4. Serialise turns per chat in `internal/messaging/telegram/bridge.go`:
-   - In `dispatch`, replace the bare `go func(){ b.answer(...) }()` with an ordered per-`ExternalID` queue, for example a `map[string][]func()` under a mutex with one drain goroutine per busy chat.
-   - Create the `replyTimeout` context when a turn starts, not when it is queued.
-   - `recover` and log each turn, which also covers part of F-08.
-   - Add a bridge test: dispatch two updates for one chat, and assert that `Handle` never overlaps and runs in arrival order.
-5. Update the comments that still describe the watermark:
-   - `internal/messaging/doc.go:71`
-   - `internal/messaging/telegram/poller.go:61`
-   - the column comment on `last_update_id` (optional follow-up migration)
-6. Run `go vet ./...`, `golangci-lint run ./...` and `go test -race ./...` across the module with `TEST_DATABASE_URL` set. That has not been done yet for the module as a whole.
+- The old claim SQL fails `TestAnUpdateClaimedOutOfOrderIsStillAnswered` with `refused as a redelivery: not found`. The new SQL passes.
+- The old `dispatch` failed the new bridge tests: 5 turns ran at once out of order, a panic killed the process, and a queued turn lost its budget to the wait.
+- `go vet ./...` is clean, and `sqlc diff` is clean after regenerating.
+- `golangci-lint` reports one issue, `webauthn_options_test.go:14`. It is F-31, already fixed on `main` by #160, and clears on rebase.
+- `go test -race ./...` with a test DB: every package with tests passes.
+  - `internal/messaging` hit the default 10-minute timeout in the full run, at load average ~36 on a machine shared with other sessions. The test running at the alarm had started 3 s earlier and no goroutine was stuck in messaging code. Run alone, it passes in 66 s.
+  - `TestABusyChatDoesNotHoldUpAnother` and `TestATappedButtonStopsSpinningWhileAnEarlierTurnRuns` also pass on the old code. They guard against regressions from the queue and do not prove the defect.
+- The migration's backfill and its Down then Up were run by hand on a scratch database against a reduced `messaging_links`. No committed test covers the backfill.
+
+**Not verified:** nothing has run against real Telegram or on the cluster.
+
+**Known limits:**
+
+- A turn still queued at a restart is lost outright. The update was already acknowledged and nothing has been saved. The queue makes this window wider than before. Draining at shutdown belongs to F-07.
+- A chat's queue has no length cap, because dropping a message is the defect being fixed. It holds small closures, with attachments fetched only when a turn starts, but a flood in one linked chat grows memory until those turns finish.
+- A link whose `account_id` is still `''` backfills under the empty account. If its last update is redelivered after the deploy under the real bot id, it is answered once more.
 
 ### After F-01
 
-1. Commit, one commit per finding. Open a PR against `main`.
-2. Before that PR deploys, check each P1 against the production SHA, `5464d0c5`.
+1. Get F-01's remaining changes onto PR #161, and rebase on `main`, which is 4 commits ahead.
+2. **Production SHA corrected.** The `5464d0c5` in this document came from a stale local infra checkout. `origin/main` of the infra repo pins `2105c21c` for both web and worker (checked 2026-11-04).
+   - All four P1 defects are present at that SHA, so they are live.
+   - `2105c21c` is no longer an ancestor of `main`, because the binary purge (#159) rewrote history. It has the same tree as `e2d1f5a3`, which is on `main`, so `2105c21c..HEAD` overstates the delta (742 commits). Compare against `e2d1f5a3`.
 3. Next in roadmap order (§4): items 5–8, which are F-07/F-08 lifecycle helper, infra probes and grace period, F-09 rasterizer race, and F-05 jobs index.
 
 ---
