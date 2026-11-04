@@ -750,7 +750,14 @@ func (s *Service) pump(
 	out chan<- ai.StreamChunk,
 	target pumpTarget,
 ) (storedReply, bool) {
-	defer cancelGen()
+	// Providers send a stream's last chunks whatever became of the context,
+	// counting on the reader to drain to close. Ordinary exits have already done
+	// that. A panic here has not, and would strand the provider's goroutine.
+	defer func() {
+		cancelGen()
+		for range stream {
+		}
+	}()
 	defer close(out)
 	if target.release != nil {
 		defer target.release()
