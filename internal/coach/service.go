@@ -366,10 +366,7 @@ func (s *Service) SendIncoming(ctx context.Context, user users.User, conversatio
 		return nil, err
 	}
 
-	// Detached from the request so a disconnect does not abort generation. The
-	// logger is preserved, so these lines stay attached to the request that
-	// started them.
-	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+	genCtx, cancelGen := generationContext(ctx, user)
 
 	messages := conversations.ToAIMessages(coachCtx.RecentMessages)
 	messages = s.hydrateCurrentTurn(ctx, user, coachCtx.RecentMessages, messages)
@@ -501,6 +498,18 @@ func (s *Service) documentText(ctx context.Context, user users.User, part conver
 	return attachmentBlock(name, text)
 }
 
+// generationContext is what a coach turn generates on, from the first provider
+// call to the last tool round.
+//
+// Detached from the request, so a disconnect does not abort generation, with the
+// logger preserved so those lines stay attached to the request that started
+// them. Attributed here rather than in startChat because the pump's later rounds
+// use this context too, and they carry the largest prompts of the turn.
+func generationContext(ctx context.Context, user users.User) (context.Context, context.CancelFunc) {
+	genCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+	return aiattr.WithUser(genCtx, user.ID, spend.SurfaceCoach), cancel
+}
+
 // startChat asks each provider in the user's chain until one of them begins a
 // reply, and returns the client that did so the answer can be attributed.
 //
@@ -515,11 +524,6 @@ func (s *Service) startChat(
 	req ai.Request,
 ) (<-chan ai.StreamChunk, ai.Client, error) {
 	var stream <-chan ai.StreamChunk
-
-	// On genCtx, because that is the context the client is handed. Attributing
-	// ctx here would be invisible to the meter.
-
-	genCtx = aiattr.WithUser(genCtx, user.ID, spend.SurfaceCoach)
 
 	req = capReplyTokens(req)
 
@@ -1063,7 +1067,7 @@ func (s *Service) BeginReflection(ctx context.Context, user users.User, conversa
 		return nil, err
 	}
 
-	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+	genCtx, cancelGen := generationContext(ctx, user)
 
 	req := ai.Request{
 		Model:  s.model,

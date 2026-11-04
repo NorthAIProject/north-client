@@ -266,7 +266,7 @@ func (s *Service) Resume(ctx context.Context, user users.User, conversationID uu
 		return nil, err
 	}
 
-	genCtx, cancelGen := context.WithTimeout(context.WithoutCancel(ctx), generationTimeout)
+	genCtx, cancelGen := generationContext(ctx, user)
 
 	req := ai.Request{
 		Model:    s.model,
