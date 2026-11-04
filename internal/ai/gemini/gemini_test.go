@@ -160,6 +160,52 @@ func TestAFailureAfterTheFirstItemArrivesOnTheChannel(t *testing.T) {
 	}
 }
 
+// panickingBody serves its data and then panics on the next read, which puts a
+// panic on the stream's own goroutine: past the first item, Chat has returned and
+// only that goroutine is pulling.
+type panickingBody struct{ data *strings.Reader }
+
+func (b panickingBody) Read(p []byte) (int, error) {
+	if b.data.Len() == 0 {
+		panic("boom")
+	}
+	return b.data.Read(p)
+}
+
+func (panickingBody) Close() error { return nil }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// A panic on this goroutine has no handler above it, so it would end the process
+// and every reply in it. Failing that, the reader must not be left waiting on a
+// channel nobody will close.
+func TestAPanicInTheStreamClosesTheChannelAndSparesTheProcess(t *testing.T) {
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"text/event-stream"}},
+			Body:       panickingBody{data: strings.NewReader(frameHel)},
+			Request:    r,
+		}, nil
+	})
+
+	client, err := gemini.New(context.Background(), gemini.Options{
+		APIKey: "test-key", DefaultModel: "gemini-test", BaseURL: "http://stub.invalid",
+		HTTPClient: &http.Client{Transport: transport},
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	ch, err := client.Chat(context.Background(), goRequest)
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	collect(t, ch)
+}
+
 // A caller that has gone must not hold the iterator or the connection open.
 func TestAnAbandonedStreamCloses(t *testing.T) {
 	client := newClient(t, func(w http.ResponseWriter, r *http.Request) {

@@ -103,6 +103,31 @@ func TestAStreamIsRecordedOnADetachedBoundedContext(t *testing.T) {
 	}
 }
 
+// The recorder runs on the meter's own goroutine, with no handler above it. The
+// reply has already been served by then, so its failure must not end the process.
+func TestAPanickingMeterSparesTheProcess(t *testing.T) {
+	entered := make(chan struct{})
+	client := ai.Metered(meterStub{stub: stub{name: "alpha"}}, meterFunc(func(context.Context) {
+		close(entered)
+		panic("boom")
+	}), false)
+
+	stream, err := client.Chat(context.Background(), ai.Request{})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	for range stream {
+	}
+
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the meter was never called")
+	}
+	// Long enough for an unrecovered panic to take the test binary with it.
+	time.Sleep(50 * time.Millisecond)
+}
+
 // A caller that cancels as soon as Generate returns has still spent the tokens.
 func TestGenerateIsRecordedAfterTheCallerCancels(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), attrKey{}, "user"))

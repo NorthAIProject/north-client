@@ -19,6 +19,8 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
 // fileReadyTimeout bounds the wait for an uploaded file to finish processing.
@@ -116,7 +118,10 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 	out := make(chan ai.StreamChunk)
 
 	go func() {
+		// Deferred in this order so a panic still closes out: Recover stops it,
+		// including one raised by stop, and close runs after.
 		defer close(out)
+		defer lifecycle.Recover(middleware.FromContext(ctx), "gemini stream")
 
 		// stop ends the iterator early, which is how a disconnected client
 		// cancels an in-flight generation instead of paying for the rest of it.

@@ -3,6 +3,9 @@ package ai
 import (
 	"context"
 	"time"
+
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
 // recordTimeout bounds one spend write. A saturated pool loses the row and logs
@@ -98,6 +101,10 @@ func (c *meteredClient) Chat(ctx context.Context, req Request) (<-chan StreamChu
 	out := make(chan StreamChunk)
 
 	go func() {
+		// forward closes out itself, so a panic there or in the recorder after
+		// it still leaves the reader with a closed channel.
+		defer lifecycle.Recover(middleware.FromContext(ctx), "ai meter")
+
 		usage, model := forward(inner, out)
 		c.record(ctx, model, usage, req)
 	}()

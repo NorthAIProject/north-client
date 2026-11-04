@@ -11,6 +11,8 @@ import (
 
 	"github.com/NorthAIProject/north-client/internal/ai"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
+	"github.com/NorthAIProject/north-client/internal/shared/lifecycle"
+	"github.com/NorthAIProject/north-client/internal/shared/middleware"
 )
 
 // Chat streams a reply: text as it arrives, then any tool calls in one chunk
@@ -52,7 +54,10 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 	out := make(chan ai.StreamChunk)
 
 	go func() {
+		// Deferred in this order so a panic still closes out: Recover stops it
+		// and close runs after.
 		defer close(out)
+		defer lifecycle.Recover(middleware.FromContext(ctx), "anthropic stream")
 		defer cancel()
 		defer func() { _ = stream.Close() }()
 
