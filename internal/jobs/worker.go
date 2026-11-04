@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/NorthAIProject/north-client/internal/shared/metrics"
@@ -62,11 +63,16 @@ type Worker struct {
 	// shutdownGrace is the constant of that name. A field so tests do not wait
 	// out a minute.
 	shutdownGrace time.Duration
+
+	// lastTick is when the loop last reached the queue, read by the liveness
+	// probe from another goroutine. Never nil: it starts at construction.
+	lastTick atomic.Pointer[time.Time]
 }
 
 // WithClock fixes the worker's idea of now. Tests only.
 func (w *Worker) WithClock(now func() time.Time) *Worker {
 	w.now = now
+	w.tick()
 	return w
 }
 
@@ -89,7 +95,9 @@ type periodicEnqueue struct {
 }
 
 func NewWorker(queue *Queue, log *slog.Logger) *Worker {
-	return &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler), now: time.Now, jobTimeout: jobTimeout, shutdownGrace: shutdownGrace}
+	w := &Worker{queue: queue, log: log, handlers: make(map[Kind]Handler), now: time.Now, jobTimeout: jobTimeout, shutdownGrace: shutdownGrace}
+	w.tick()
+	return w
 }
 
 // WithMetrics attaches counters. Returns the worker so it can be wired in one
@@ -171,6 +179,7 @@ func (w *Worker) claimAndRun(ctx context.Context) (bool, error) {
 		// Only a claim that reached the database counts as a tick. A loop
 		// spinning on a dead connection is the failure the heartbeat is for.
 		w.metrics.WorkerHeartbeat(w.now())
+		w.tick()
 	}
 	if err != nil || !ok {
 		return false, err

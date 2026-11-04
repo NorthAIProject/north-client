@@ -248,10 +248,13 @@ func run() error {
 	var metricsReg *metrics.Registry
 	if cfg.MetricsListenAddr != "" {
 		metricsReg = metrics.New()
+	}
+	worker := jobs.NewWorker(queue, log).WithMetrics(metricsReg)
 
+	if metricsReg != nil {
 		metricsSrv := &http.Server{
 			Addr:              cfg.MetricsListenAddr,
-			Handler:           metricsReg.Handler(),
+			Handler:           worker.ProbeHandler(metricsReg.Handler()),
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		go func() {
@@ -267,7 +270,6 @@ func run() error {
 		defer profiling.Start(cfg.PprofListenAddr, log)()
 	}
 
-	worker := jobs.NewWorker(queue, log).WithMetrics(metricsReg)
 	worker.Register(jobs.KindAnalyzeFormVideo, mediaSvc.AnalyzeVideo)
 	worker.Register(jobs.KindExtractMemories, memoryExtract.HandleExtractJob)
 	worker.Register(jobs.KindSyncStrava, syncStravaHandler(stravaSvc))
