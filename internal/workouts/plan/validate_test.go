@@ -281,3 +281,64 @@ func TestEquipmentTheyOwnIsAccepted(t *testing.T) {
 		t.Fatalf("equipment they own must be accepted: %v", problems)
 	}
 }
+
+// The bug this test exists for: the coach's create_workout_plan tool told the
+// model to list "machines" and "bands", but the rules are keyed "machine" and
+// "resistance band". A full-gym request was refused for leg press and cables
+// the person had just said they own, twice, and no plan was saved.
+func TestEquipmentIsMatchedInThePersonsOwnWords(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		said     string
+		exercise Exercise
+	}{
+		{"machines", exercise("Leg Press", "machine")},
+		{"Machines", exercise("Lying Leg Curl", "machine")},
+		{"cables", exercise("Cable Face Pull", "cable")},
+		{"cable machine", exercise("Cable Crunch", "cable")},
+		{"dumbbells", exercise("Dumbbell Row", "dumbbell")},
+		{"barbells", exercise("Barbell Back Squat", "barbell")},
+		{"kettlebells", exercise("Kettlebell Swing", "kettlebell")},
+		{"bands", exercise("Band Pull-Apart", "band")},
+		{"resistance bands", exercise("Band Pull-Apart", "band")},
+		{"pull-up bar", exercise("Pull-up", "bar")},
+		{"pullup bar", exercise("Chin-up", "bar")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.said, func(t *testing.T) {
+			t.Parallel()
+
+			intake := dumbbellOnly()
+			intake.Equipment = []string{tt.said}
+			plan := planWith(
+				day("Monday", tt.exercise),
+				day("Wednesday", exercise("Push-up", "none")),
+				day("Friday", exercise("Push-up", "none")),
+			)
+
+			if problems := Validate(plan, intake); len(problems) != 0 {
+				t.Fatalf("someone who has %q can do %q, got %v", tt.said, tt.exercise.Name, problems)
+			}
+		})
+	}
+}
+
+// Normalising must not widen what someone owns: "machines" is not a barbell.
+func TestEquipmentAliasesDoNotGrantOtherEquipment(t *testing.T) {
+	t.Parallel()
+
+	intake := dumbbellOnly()
+	intake.Equipment = []string{"machines", "dumbbells"}
+	plan := planWith(
+		day("Monday", exercise("Barbell Back Squat", "barbell")),
+		day("Wednesday", exercise("Push-up", "none")),
+		day("Friday", exercise("Push-up", "none")),
+	)
+
+	problems := Validate(plan, intake)
+	if !strings.Contains(strings.Join(problems, " "), "barbell") {
+		t.Fatalf("a barbell squat must still be refused, got %v", problems)
+	}
+}

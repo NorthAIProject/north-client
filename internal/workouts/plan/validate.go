@@ -170,9 +170,45 @@ func InferEquipment(name, equipment string) string {
 func availableEquipment(equipment []string) map[string]bool {
 	available := make(map[string]bool, len(equipment))
 	for _, item := range equipment {
-		available[strings.ToLower(strings.TrimSpace(item))] = true
+		item = strings.ToLower(strings.TrimSpace(item))
+		available[item] = true
+		available[canonicalEquipment(item)] = true
 	}
 	return available
+}
+
+// equipmentAliases maps the words people (and models) use for equipment onto
+// the rule names above, after a trailing plural "s" is dropped.
+//
+// Without it, someone who says they have "machines" or "bands" is refused every
+// machine or band exercise: the rules are keyed "machine" and "resistance
+// band", and the comparison is exact. That refusal reaches the coach as a plan
+// that cannot be built, twice, and nothing is saved.
+var equipmentAliases = map[string]string{
+	"cable":           "machine",
+	"cable machine":   "machine",
+	"cable station":   "machine",
+	"band":            "resistance band",
+	"pullup bar":      "pull-up bar",
+	"pull up bar":     "pull-up bar",
+	"chin-up bar":     "pull-up bar",
+	"chinup bar":      "pull-up bar",
+	"stationary bike": "bike",
+	"exercise bike":   "bike",
+}
+
+// canonicalEquipment returns the rule name for one piece of equipment as it was
+// written, or the word itself when no rule claims it. It only renames: it never
+// grants a second piece of equipment.
+func canonicalEquipment(item string) string {
+	if alias, ok := equipmentAliases[item]; ok {
+		return alias
+	}
+	singular := strings.TrimSuffix(item, "s")
+	if alias, ok := equipmentAliases[singular]; ok {
+		return alias
+	}
+	return singular
 }
 
 // usesUnavailableEquipment reports the equipment an exercise implies that the

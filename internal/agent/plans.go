@@ -15,6 +15,7 @@ import (
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
 	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/workouts"
+	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 )
 
 // Building plans from the chat.
@@ -185,8 +186,9 @@ func createWorkoutPlan(svc *workouts.Service, userSvc *users.Service) Capability
 				"experience":      ai.Enum("training experience", "beginner", "intermediate", "advanced"),
 				"days_per_week":   ai.Integer("training days a week, 1 to 7"),
 				"session_minutes": ai.Integer("minutes per session, 10 to 240"),
-				"equipment":       ai.Array("equipment they have, such as barbell, dumbbell, kettlebell, bands, machines, pull-up bar, or none", ai.String("one piece of equipment")),
-				"limitations":     ai.String("injuries or movements to avoid; optional"),
+				"equipment": ai.Array("equipment they have, in these words: "+strings.Join(plan.EquipmentNames(), ", ")+
+					"; \"machine\" covers cables and any gym machine; empty for bodyweight only", ai.String("one piece of equipment")),
+				"limitations": ai.String("injuries or movements to avoid; optional"),
 				"weekdays": ai.Array("the days they can train, as many as days_per_week, when they named them; empty otherwise",
 					ai.Enum("a weekday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")),
 			}, "goal", "experience", "days_per_week", "session_minutes", "equipment"),
