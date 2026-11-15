@@ -1,6 +1,6 @@
 module github.com/NorthAIProject/north-client
 
-go 1.27.3
+go 1.27.4
 
 tool (
 	github.com/pressly/goose/v3/cmd/goose
