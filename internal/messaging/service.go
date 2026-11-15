@@ -745,7 +745,8 @@ func confirmationMessage(ctx context.Context, pending coach.PendingCall, prefix 
 	b.WriteString(i18n.T(ctx, "tg.confirm") + "\n")
 	for _, call := range pending.Calls {
 		b.WriteString("\n• ")
-		b.WriteString(describeCall(call))
+		// Argument lines sit under the bullet rather than at the margin.
+		b.WriteString(strings.ReplaceAll(coach.DescribeCall(call), "\n", "\n   "))
 	}
 
 	return OutboundMessage{
@@ -755,15 +756,6 @@ func confirmationMessage(ctx context.Context, pending coach.PendingCall, prefix 
 			{Label: i18n.T(ctx, "tg.confirm.no"), Value: AnswerDecline},
 		},
 	}
-}
-
-func describeCall(call ai.ToolCall) string {
-	name := strings.ReplaceAll(call.Name, "_", " ")
-	args := strings.TrimSpace(string(call.Arguments))
-	if args == "" || args == "{}" {
-		return name
-	}
-	return name + " " + args
 }
 
 // parseAnswer reads a yes or a no out of a chat reply.

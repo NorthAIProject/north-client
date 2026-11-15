@@ -3,7 +3,6 @@ package coach
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -247,16 +246,6 @@ func writingCalls(tools ToolRunner, calls []ai.ToolCall) []ai.ToolCall {
 		}
 	}
 	return writes
-}
-
-// describeCall renders a call the way a person has to read it before allowing
-// it. The arguments matter as much as the name: "log a check-in" is a very
-// different request from "log a check-in saying the week went badly".
-func describeCall(call ai.ToolCall) string {
-	if len(call.Arguments) == 0 {
-		return call.Name
-	}
-	return fmt.Sprintf("%s %s", call.Name, string(call.Arguments))
 }
 
 // resume carries on a reply whose turn was interrupted by an approval.
