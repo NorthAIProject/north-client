@@ -1,6 +1,6 @@
 # Build stage:
 # We download the modules and compile the app binaries.
-FROM golang:1.27.3 AS build
+FROM golang:1.27.4 AS build
 WORKDIR /app
 
 # Copy Go dependency files first so Docker can cache downloads better.
