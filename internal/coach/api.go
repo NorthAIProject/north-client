@@ -680,7 +680,7 @@ func projectAttachment(a conversations.Attachment) Attachment {
 func projectApproval(p PendingCall) *Approval {
 	out := &Approval{MessageID: p.MessageID, Calls: make([]ApprovalCall, 0, len(p.Calls))}
 	for _, call := range p.Calls {
-		item := ApprovalCall{Name: call.Name, Summary: describeCall(call)}
+		item := ApprovalCall{Name: call.Name, Summary: DescribeCall(call)}
 		if call.Name == watches.ToolName {
 			if w, err := watches.ParseProposal(call.Arguments); err == nil {
 				item.Watch = &WatchProposal{

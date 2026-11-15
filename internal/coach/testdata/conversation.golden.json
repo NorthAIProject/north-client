@@ -38,7 +38,7 @@
     "calls": [
       {
         "name": "log_check_in",
-        "summary": "log_check_in"
+        "summary": "Log check in"
       }
     ]
   },

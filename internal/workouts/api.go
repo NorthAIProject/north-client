@@ -66,8 +66,13 @@ type PlanSummary struct {
 	Name       string       `json:"name"`
 	WeeksTotal int          `json:"weeksTotal"`
 	Days       []DaySummary `json:"days"`
-	// Source is ai (as generated) or edited.
-	Source    string    `json:"source"`
+	// Source is ai (as generated) or edited, and never anything else:
+	// shipped iOS builds decode it as a closed enum, so an imported plan is
+	// reported as edited here. Origin carries the full provenance.
+	Source string `json:"source"`
+	// Origin is ai, edited or imported, and may grow. Clients must treat an
+	// unknown value as edited rather than fail.
+	Origin    string    `json:"origin"`
 	CreatedAt time.Time `json:"createdAt"`
 	// Active is the plan being followed; the list puts it first.
 	Active bool `json:"active"`
@@ -94,6 +99,7 @@ type PlanDetail struct {
 	// from, in words for the person. Reported, never enforced.
 	Problems  []string  `json:"problems"`
 	Source    string    `json:"source"`
+	Origin    string    `json:"origin"`
 	CreatedAt time.Time `json:"createdAt"`
 	// WeekVolume is this week's choice from the weekly review: hold, build or
 	// deload. Each exercise's thisWeekSets already reflects it.
@@ -410,7 +416,7 @@ func projectSummary(p StoredPlan) PlanSummary {
 	for _, d := range p.Plan.Days {
 		days = append(days, DaySummary{Weekday: d.Weekday, StartTime: d.StartTime, Focus: d.Focus, ExerciseCount: len(d.Exercises)})
 	}
-	return PlanSummary{ID: p.ID, Name: p.Plan.Name, WeeksTotal: p.Plan.WeeksTotal, Days: days, Source: sourceOf(p), CreatedAt: p.CreatedAt}
+	return PlanSummary{ID: p.ID, Name: p.Plan.Name, WeeksTotal: p.Plan.WeeksTotal, Days: days, Source: sourceOf(p), Origin: originOf(p), CreatedAt: p.CreatedAt}
 }
 
 func projectDetail(p StoredPlan, problems []string, progress WeekProgress, active uuid.UUID) PlanDetail {
@@ -444,7 +450,7 @@ func projectDetail(p StoredPlan, problems []string, progress WeekProgress, activ
 	}
 	return PlanDetail{
 		ID: p.ID, Name: p.Plan.Name, Rationale: p.Plan.Rationale, WeeksTotal: p.Plan.WeeksTotal,
-		Days: days, Problems: problems, Source: sourceOf(p), CreatedAt: p.CreatedAt,
+		Days: days, Problems: problems, Source: sourceOf(p), Origin: originOf(p), CreatedAt: p.CreatedAt,
 		WeekVolume: string(weekVolume(progress.Volume)), Active: p.IntakeID == active,
 	}
 }
@@ -457,7 +463,19 @@ func weekVolume(v Volume) Volume {
 	return VolumeHold
 }
 
+// sourceOf is the provenance as shipped clients can decode it: ai or edited.
+// An imported plan was written by a person, not generated, so edited is the
+// honest one of the two. See PlanSummary.Source.
 func sourceOf(p StoredPlan) string {
+	if origin := originOf(p); origin != SourceAI {
+		return SourceEdited
+	}
+	return SourceAI
+}
+
+// originOf is the stored provenance, with a missing value read as ai (rows
+// from before the column existed).
+func originOf(p StoredPlan) string {
 	if p.Source == "" {
 		return SourceAI
 	}

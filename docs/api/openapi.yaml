@@ -13741,6 +13741,12 @@ components:
         source:
           type: string
           enum: [ai, edited]
+        origin:
+          type: string
+          description: >-
+            Where the plan came from: ai, edited or imported. Open-ended; treat an
+            unknown value as edited. source stays within ai and edited for older
+            clients, so an imported plan reports source edited.
         createdAt:
           type: string
           format: date-time
@@ -13878,6 +13884,12 @@ components:
         source:
           type: string
           enum: [ai, edited]
+        origin:
+          type: string
+          description: >-
+            Where the plan came from: ai, edited or imported. Open-ended; treat an
+            unknown value as edited. source stays within ai and edited for older
+            clients, so an imported plan reports source edited.
         createdAt:
           type: string
           format: date-time
