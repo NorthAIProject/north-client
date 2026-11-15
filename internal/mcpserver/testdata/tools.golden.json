@@ -416,7 +416,7 @@
           "type": "integer"
         },
         "equipment": {
-          "description": "equipment they have, such as barbell, dumbbell, kettlebell, bands, machines, pull-up bar, or none",
+          "description": "equipment they have, in these words: dumbbell, kettlebell, barbell, machine, pull-up bar, resistance band, rower, treadmill, bike, bench; \"machine\" covers cables and any gym machine; empty for bodyweight only",
           "items": {
             "description": "one piece of equipment",
             "type": "string"
