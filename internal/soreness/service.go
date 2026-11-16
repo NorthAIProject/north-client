@@ -53,6 +53,22 @@ func (s *Service) Clear(ctx context.Context, user users.User, region string) err
 	return s.repo.Delete(ctx, user.ID, s.today(user), region)
 }
 
+// HistoryMaxDays is the longest stretch History looks back over.
+const HistoryMaxDays = 90
+
+// History lists the sore regions of the last days days, today included,
+// newest first.
+func (s *Service) History(ctx context.Context, user users.User, days int) ([]Entry, error) {
+	if days < 1 || days > HistoryMaxDays {
+		return nil, apperr.FieldErrors{}.Add("days", "Days is 1 to 90.")
+	}
+	today := s.today(user)
+	return s.repo.ListBetween(ctx, user.ID, today.AddDate(0, 0, 1-days), today.AddDate(0, 0, 1))
+}
+
+// Today is the user's current day, the last one History covers.
+func (s *Service) Today(user users.User) time.Time { return s.today(user) }
+
 // OnDate lists one day's sore regions.
 func (s *Service) OnDate(ctx context.Context, user users.User, date time.Time) ([]Entry, error) {
 	d := timerange.StartOfDay(date.In(user.Location()))

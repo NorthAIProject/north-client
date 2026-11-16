@@ -8147,6 +8147,32 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /soreness/history:
+    get:
+      operationId: getSorenessHistory
+      summary: Sore regions over the last days, newest first
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: How many days back to look, today included, 1 to 90. Defaults to 14.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SorenessHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /soreness/{region}:
     parameters:
       - name: region
@@ -11368,6 +11394,47 @@ components:
           type: array
           items:
             type: string
+        figure:
+          type: object
+          description: |
+            For each soreness region, the regions of the body figure (GET
+            /body/map ids) it covers, so a client can paint soreness on the
+            figure and turn a tap on a muscle into a region. Knees and feet
+            cover none. Not required: older servers do not send it.
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    SorenessDayEntry:
+      type: object
+      required: [date, region, severity]
+      properties:
+        date:
+          type: string
+          format: date
+          description: The calendar day in the user's timezone.
+        region:
+          type: string
+        severity:
+          type: integer
+          description: 1 stiff, 2 sore, 3 painful.
+        note:
+          type: string
+    SorenessHistory:
+      type: object
+      required: [days, to, entries]
+      properties:
+        days:
+          type: integer
+        to:
+          type: string
+          format: date
+          description: The last day covered, the user's today. The first is days-1 before it.
+        entries:
+          type: array
+          description: Newest first. A day with nothing sore has none.
+          items:
+            $ref: '#/components/schemas/SorenessDayEntry'
     TrackerInput:
       type: object
       required: [name]

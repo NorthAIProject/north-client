@@ -1,0 +1,22 @@
+{
+  "days": 14,
+  "to": "2026-11-15",
+  "entries": [
+    {
+      "date": "2026-11-15",
+      "region": "quads",
+      "severity": 2
+    },
+    {
+      "date": "2026-11-14",
+      "region": "quads",
+      "severity": 3,
+      "note": "leg day"
+    },
+    {
+      "date": "2026-11-12",
+      "region": "knees",
+      "severity": 1
+    }
+  ]
+}
