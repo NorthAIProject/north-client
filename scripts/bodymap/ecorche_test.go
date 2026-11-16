@@ -9,6 +9,12 @@ func TestIsMuscle(t *testing.T) {
 	for name, want := range map[string]bool{
 		"Ulna.002":                                 false,
 		"Scapula.003":                              false,
+		"Tibia.002":                                false,
+		"Fibula.003":                               false,
+		"Serratus posterior inferior muscle":       false,
+		"Serratus anterior muscle.001":             true,
+		"Tibialis anterior muscle":                 true,
+		"Fibularis longus muscle":                  true,
 		"Subdeltoid bursa":                         false,
 		"Tendon sheath of flexor carpi radialis":   false,
 		"Ulnar head of flexor carpi ulnaris":       true,

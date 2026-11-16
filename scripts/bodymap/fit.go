@@ -14,6 +14,12 @@ import (
 // about the floor and nudged, to the pose where the most muscle sits just
 // under the skin and the least pokes out through it.
 
+// A fit that only kept muscle from poking out would be free to shrink the
+// atlas into the torso: nothing pokes out of a body from its middle. That is
+// what it used to do, with the calves ending at mid-shin and the lower legs
+// bare. So a fit is also scored on coverage: skin that should have muscle
+// under it and has none near costs too.
+
 // atlasFit maps an atlas point onto the skin.
 type atlasFit struct {
 	floor          vec3    // the point scaling is about: centre of the soles
@@ -30,13 +36,68 @@ func (f atlasFit) apply(p vec3) vec3 {
 	}
 }
 
+// invert maps a point on the skin back into the atlas.
+func (f atlasFit) invert(p vec3) vec3 {
+	d := p.sub(f.floor)
+	return vec3{
+		f.floor[0] + d[0]/(f.scale*f.scaleX),
+		f.floor[1] + (d[1]-f.shiftY)/f.scale,
+		f.floor[2] + (d[2]-f.shiftZ)/f.scale,
+	}
+}
+
+// coverage scores how much of the skin has muscle near it. The muscles are
+// indexed once, where they start; a candidate fit is scored by taking each
+// skin sample back into that space, so no fit has to move the muscles.
+type coverage struct {
+	muscles *triangleIndex
+	skin    []skinSample
+}
+
+// skinSample is a point of skin and the area it stands for. Weighing by area
+// matters: this skin has ten times the vertices in a hand that it has in an
+// upper arm, and a fit scored per vertex would hardly care about the arm.
+type skinSample struct {
+	at   vec3
+	area float64
+}
+
+// coverReach is as far as coverage looks for muscle from a point of skin;
+// farther than this counts the same as bare.
+const coverReach = 0.05
+
+func newCoverage(muscles []triangle, skin []skinSample) coverage {
+	return coverage{muscles: newTriangleIndex(muscles, coverReach), skin: skin}
+}
+
+// cost is the area-weighted mean squared distance from the skin samples to the nearest
+// muscle, capped at coverReach.
+func (c coverage) cost(invert func(vec3) vec3) float64 {
+	if len(c.skin) == 0 {
+		return 0
+	}
+	var sum, total float64
+	for _, s := range c.skin {
+		q := invert(s.at)
+		d := coverReach
+		if _, at, ok := c.muscles.closest(q, coverReach); ok {
+			d = at.sub(q).length()
+		}
+		sum += d * d * s.area
+		total += s.area
+	}
+	return sum / total
+}
+
 // fitAtlas searches scale, width and offset by coordinate descent, coarse to
-// fine, against sampled atlas vertices scored on a signed-distance grid of the
-// skin. The descent is greedy and the score has more than one valley (a
-// taller atlas shifted down scores close to a shorter one shifted up), so it
-// starts from several scales and keeps the best. The field comes back with
-// the fit, for reporting on it.
-func fitAtlas(skin mesh, muscles []triangle) (atlasFit, distanceField) {
+// fine. Sampled atlas vertices are scored on a signed-distance grid of the
+// skin, and the body's skin (trunk and legs; the arms are fitted on their
+// own afterwards) on how near muscle lies. The descent is greedy and the
+// score has more than one valley, so it starts from several scales and
+// offsets and keeps the best. The field comes back with the fit, for
+// reporting on it. bodySkin is the skin that should have muscle under it,
+// and body the muscles that should be there.
+func fitAtlas(skin mesh, muscles, body []triangle, bodySkin []skinSample) (atlasFit, distanceField) {
 	lo, hi := skin.bounds()
 	floor := vec3{(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2}
 	field := newDistanceField(skin, fitVoxel)
@@ -46,12 +107,15 @@ func fitAtlas(skin mesh, muscles []triangle) (atlasFit, distanceField) {
 		samples = append(samples, muscles[i][0])
 	}
 
+	cover := newCoverage(body, bodySkin)
 	var fit atlasFit
 	best := math.Inf(1)
 	for _, scale := range []float64{0.7, 0.8, 0.9, 1} {
-		start := atlasFit{floor: floor, scale: scale, scaleX: 1}
-		if candidate, cost := descend(field, samples, start); cost < best {
-			best, fit = cost, candidate
+		for _, shiftY := range []float64{-0.1, 0, 0.1} {
+			start := atlasFit{floor: floor, scale: scale, scaleX: 1, shiftY: shiftY}
+			if candidate, cost := descend(field, samples, cover, start); cost < best {
+				best, fit = cost, candidate
+			}
 		}
 	}
 	log.Printf("atlas fit: scale %.3f, width ×%.3f, shift y %+.3f z %+.3f, cost %.6f", fit.scale, fit.scaleX, fit.shiftY, fit.shiftZ, best)
@@ -59,8 +123,9 @@ func fitAtlas(skin mesh, muscles []triangle) (atlasFit, distanceField) {
 }
 
 // descend improves a fit by coordinate descent, coarse steps to fine.
-func descend(field distanceField, samples []vec3, fit atlasFit) (atlasFit, float64) {
-	best := field.misfit(samples, fit.apply)
+func descend(field distanceField, samples []vec3, cover coverage, fit atlasFit) (atlasFit, float64) {
+	score := func(f atlasFit) float64 { return field.misfit(samples, f.apply) + cover.cost(f.invert) }
+	best := score(fit)
 	params := []func(*atlasFit) *float64{
 		func(f *atlasFit) *float64 { return &f.scale },
 		func(f *atlasFit) *float64 { return &f.scaleX },
@@ -74,7 +139,7 @@ func descend(field distanceField, samples []vec3, fit atlasFit) (atlasFit, float
 				for _, dir := range []float64{-1, 1} {
 					trial := fit
 					*param(&trial) += dir * step
-					if c := field.misfit(samples, trial.apply); c < best {
+					if c := score(trial); c < best {
 						best, fit, improved = c, trial, true
 					}
 				}

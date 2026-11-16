@@ -4,9 +4,10 @@
 // tools/model/body-source.glb carries an outer skin and the Z-Anatomy muscle
 // meshes fitted inside it (see tools/model/README.md). This tool refits the
 // atlas to the skin, fits each arm on its own, tucks any muscle still poking
-// out back under the skin, and groups the atlas meshes by muscle key. Clients
-// draw the skin as an outline only, clear facing the camera and firm at the
-// silhouette, so the muscles read as the body.
+// out back under the skin, draws the rest out to it, and groups the atlas
+// meshes by muscle key. Clients draw the skin twice: sunk under the muscles
+// by its "core" shape key, as the solid body they lie on, and as an outline
+// at the silhouette.
 //
 // Outputs, all committed:
 //
@@ -79,18 +80,9 @@ func main() {
 	lo, hi := skin.bounds()
 	log.Printf("skin: %d vertices, %d triangles, bounds %.3f..%.3f", len(skin.verts), len(skin.tris), lo, hi)
 
-	fit, field := fitAtlas(skin, muscleTris)
-	for i, t := range muscleTris {
-		muscleTris[i] = triangle{fit.apply(t[0]), fit.apply(t[1]), fit.apply(t[2])}
-	}
-	reportFit(field, muscleTris)
-	fitArms(field, muscleTris, muscleKeys)
-	reportFit(field, muscleTris)
-	pushInside(field, skin, muscleTris, muscleKeys)
-
 	// Stand the figure on the origin: soles at y = 0, centred in x and z, so
-	// every client can frame it without measuring it first. The muscles share
-	// the skin's space, so they move with it.
+	// every client can frame it without measuring it first. The atlas shares
+	// the skin's space, so it moves with it.
 	centre := vec3{(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2}
 	for i, v := range skin.verts {
 		skin.verts[i] = v.sub(centre)
@@ -98,6 +90,29 @@ func main() {
 	for i, t := range muscleTris {
 		muscleTris[i] = triangle{t[0].sub(centre), t[1].sub(centre), t[2].sub(centre)}
 	}
+	shape, err := analyseShell(skin, skin.normals())
+	if err != nil {
+		log.Fatal(err)
+	}
+	bodySkin, armSkin := skinToCover(skin, shape)
+	var bodyMuscles []triangle
+	for i, t := range muscleTris {
+		if !armKeys[muscleKeys[i]] {
+			bodyMuscles = append(bodyMuscles, t)
+		}
+	}
+
+	fit, field := fitAtlas(skin, muscleTris, bodyMuscles, bodySkin)
+	for i, t := range muscleTris {
+		muscleTris[i] = triangle{fit.apply(t[0]), fit.apply(t[1]), fit.apply(t[2])}
+	}
+	reportFit(field, muscleTris)
+	fitArms(field, skin, muscleTris, muscleKeys, armSkin)
+	reportFit(field, muscleTris)
+	pushInside(field, skin, muscleTris, muscleKeys)
+	hug(skin, muscleTris)
+	muscleTris, muscleKeys = trimTendons(muscleTris, muscleKeys, wristHeight(armSkin), ankleShare*shape.height)
+	core := coreTarget(skin, skin.normals(), muscleTris, field)
 
 	muscles := muscleRegions(muscleTris, muscleKeys)
 	if err = checkCoverage(muscles); err != nil {
@@ -108,7 +123,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	shell.morphs = morphs
+	shell.morphs = append(morphs, core)
 	log.Printf("shell girths over height: waist %.3f→%.2f, hips %.3f→%.2f, chest %.3f→%.2f",
 		baseline.Waist.From, baseline.Waist.To, baseline.Hips.From, baseline.Hips.To, baseline.Chest.From, baseline.Chest.To)
 	regions := append([]region{shell}, muscles...)
@@ -146,6 +161,32 @@ func main() {
 		}
 		log.Printf("wrote %s", *outIBL)
 	}
+}
+
+// ankleShare is the height of the ankle over the figure's.
+const ankleShare = 0.055
+
+// skinToCover samples the skin a fit should put muscle under: the body from
+// the ankles to the base of the neck, and the arms. The head and the feet
+// have none of the figure's muscles; the hands are left out by fitArms.
+func skinToCover(skin mesh, shape *shellShape) (body, arms []skinSample) {
+	for i, t := range skin.tris {
+		tri := skin.triangle(i)
+		s := skinSample{at: tri.centroid(), area: tri[1].sub(tri[0]).cross(tri[2].sub(tri[0])).length() / 2}
+		inArm := 0
+		for _, v := range t {
+			if shape.arm[v] {
+				inArm++
+			}
+		}
+		switch {
+		case inArm == 3:
+			arms = append(arms, s)
+		case inArm == 0 && s.at[1] > 0.07*shape.height && s.at[1] < 0.84*shape.height && i%4 == 0:
+			body = append(body, s)
+		}
+	}
+	return body, arms
 }
 
 // split separates the skin (everything under the node named "skin") from the

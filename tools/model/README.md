@@ -5,9 +5,11 @@ skin. It is not served. `task bodymap` (`go run ./scripts/bodymap`) turns it int
 figure every client draws (`scripts/bodymap/body-map.glb`, which the web app serves,
 and the iOS `BodyMap.usdz`); see `scripts/bodymap/README.md`.
 
-**The raw sources are not on disk any more.** `body-source.glb` is committed and is
-the only input the figure needs; the scripts here are the record of how it was made
-and are only needed to rebuild it from fresh downloads.
+**The skin's raw source is not on disk any more.** `body-source.glb` is committed and
+is the only input the figure needs; the scripts here are the record of how it was
+made. The muscle atlas can be downloaded again, and `--skin-from` rebuilds the
+muscle set around the skin already in the file (see below), which is how to add a
+muscle to `muscles.js`.
 
 This is a build-time tool. It is not part of the Go build, it is not deployed, and
 nothing in the application imports it. It exists because `body.glb` is generated from
@@ -41,12 +43,23 @@ node build-body.mjs \
   --out     tools/model/body-source.glb
 ```
 
-`--out` is relative to the repository root, not to `tools/model`.
+To change which muscles are in the file (after editing `MUSCLE_ALIASES`), only the
+atlas is needed; the skin is taken, already fitted, from the committed file:
+
+```sh
+node tools/model/build-body.mjs \
+  --muscles /tmp/north-model-src/z-anatomy-body.glb \
+  --skin-from tools/model/body-source.glb \
+  --out     tools/model/body-source.glb
+```
+
+`--out` and `--skin-from` are relative to the repository root, not to `tools/model`.
 
 | flag | default | what it does |
 |---|---|---|
 | `--muscles` | required | anatomical source; must contain the meshes named in `muscles.js` |
-| `--skin` | required | outer body |
+| `--skin` | required, or `--skin-from` | outer body |
+| `--skin-from` | | an earlier `body-source.glb` to take the fitted skin from, instead of `--skin` |
 | `--out` | `tools/model/body-source.glb` | relative to the repository root |
 | `--skin-scale` | `1` | multiplier *on top of* the automatic height fit |
 | `--skin-offset` | `0,0,0` | manual nudge in muscle-space units, applied after the fit |
@@ -59,7 +72,7 @@ node build-body.mjs \
 `public/body.glb`, built on [Z-Anatomy](https://www.z-anatomy.com/) (CC BY-SA 4.0). The
 script keeps only meshes whose names match `MUSCLE_ALIASES` in
 `tools/model/muscles.js` — the same table `scripts/bodymap` uses to
-group the figure's muscles — and hard-fails if any of the 15 groups has no matching mesh,
+group the figure's muscles — and hard-fails if any of the 17 keys has no matching mesh,
 because a group with no geometry can never be highlighted and nothing else would tell you.
 
 **Skin.** Any humanoid body mesh, subject to three requirements:
@@ -68,8 +81,8 @@ because a group with no geometry can never be highlighted and nothing else would
    reconciled with it without a rig, and the previous version of this asset worked
    around that by cropping the arms off at the shoulders — which is why the figure
    used to have hollow stumps where its deltoids should be.
-2. **No albedo needed.** The runtime draws the skin as a translucent shell over the
-   muscles and drops any baked colour map, UVs included.
+2. **No albedo needed.** The runtime draws the skin in flat colour, as the body
+   under the muscles and as an outline, and drops any baked colour map, UVs included.
 3. **Roughly human proportions.** See alignment below.
 
 ## Alignment is the fragile part

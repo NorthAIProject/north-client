@@ -30,6 +30,9 @@ export const MUSCLE_ALIASES = {
     "vastus lateralis muscle",
     "vastus medialis muscle",
     "vastus intermedius muscle",
+    // Crosses the front of the thigh from hip to knee; without it the gap between
+    // the quads and the adductors shows the body underneath.
+    "sartorius muscle",
     "quadriceps",
   ],
   glutes: [
@@ -49,9 +52,22 @@ export const MUSCLE_ALIASES = {
     "lateral head of gastrocnemius",
     "medial head of gastrocnemius",
     "soleus muscle",
+    // The front and outside of the lower leg. They are not calf muscles, but the
+    // figure has one region below the knee and a bare shin reads as a hole in it.
+    "tibialis anterior muscle",
+    "extensor digitorum longus",
+    "fibularis longus muscle",
+    "fibularis brevis muscle",
     "calves",
   ],
-  adductors: ["adductor magnus", "adductor longus", "adductor brevis", "adductors"],
+  adductors: [
+    "adductor magnus",
+    "adductor longus",
+    "adductor brevis",
+    "gracilis muscle",
+    "pectineus muscle",
+    "adductors",
+  ],
   traps: [
     "ascending part of trapezius muscle",
     "descending part of trapezius muscle",
@@ -63,14 +79,26 @@ export const MUSCLE_ALIASES = {
     "acromial part of deltoid muscle",
     "clavicular part of deltoid muscle",
     "scapular spinal part of deltoid muscle",
+    // The rotator cuff's surface pair, over the shoulder blade: trained with the
+    // rear delts, and otherwise a bare patch between the delts, traps and lats.
+    "infraspinatus muscle",
+    "teres minor muscle",
     "deltoid",
     "delts",
   ],
-  biceps: ["long head of biceps brachii", "short head of biceps brachii", "biceps brachii", "biceps"],
+  biceps: [
+    "long head of biceps brachii",
+    "short head of biceps brachii",
+    // The elbow flexor under the biceps; it shows on the outside of the upper arm.
+    "brachialis muscle",
+    "biceps brachii",
+    "biceps",
+  ],
   triceps: [
     "medial head of triceps brachii",
     "lateral head of triceps brachii",
     "long head of triceps brachii",
+    "anconeus muscle",
     "triceps brachii",
     "triceps",
   ],
@@ -86,9 +114,16 @@ export const MUSCLE_ALIASES = {
     "humeral head of extensor carpi ulnaris",
     "extensor carpi radialis longus",
     "extensor carpi radialis brevis",
+    "extensor digitorum",
+    "extensor digiti minimi",
+    "palmaris longus muscle",
+    "humero-ulnar head of flexor digitorum superficialis",
+    "radial head of flexor digitorum superficialis",
     "forearms",
   ],
-  lats: ["latissimus dorsi muscle", "latissimus dorsi", "lats"],
+  // Teres major runs with the lats from the shoulder blade to the arm and does the
+  // same job.
+  lats: ["latissimus dorsi muscle", "teres major muscle", "latissimus dorsi", "lats"],
   rhomboids: ["rhomboid major muscle", "rhomboid minor muscle", "rhomboids"],
   // Thoracolumbar only. The capitis/colli heads of the same three columns belong to
   // `neck` below — ALIAS_LOOKUP is a Map built in key order, so a mesh listed twice
@@ -118,10 +153,10 @@ export const MUSCLE_ALIASES = {
     "pectorals",
     "pecs",
   ],
-  // The cervical heads of the erector columns, kept out of `erectors` above. Not a
-  // sternocleidomastoid — body.glb has none — so this highlights neck extension,
-  // which is what the neck-trained exercises in the catalog actually are.
+  // The cervical heads of the erector columns, kept out of `erectors` above, and
+  // the sternocleidomastoid, which is the front and sides of the neck.
   neck: [
+    "sternocleidomastoid muscle",
     "iliocostalis colli muscle",
     "longissimus capitis muscle",
     "longissimus colli muscle",
@@ -140,7 +175,7 @@ export const MUSCLE_INFO = {
   quads: { name: "Quadriceps", description: "Front of the thigh; straightens the knee and drives out of a squat." },
   glutes: { name: "Glutes", description: "The hip's main extensor — powers standing up from a squat or hinge." },
   hamstrings: { name: "Hamstrings", description: "Back of the thigh; bends the knee and extends the hip in a hinge." },
-  calves: { name: "Calves", description: "Back of the lower leg; points the foot, drives a calf raise or a jump." },
+  calves: { name: "Calves", description: "The lower leg; points the foot, drives a calf raise or a jump." },
   adductors: { name: "Adductors", description: "Inner thigh; pulls the leg toward the midline and stabilises the squat." },
   traps: { name: "Trapezius", description: "Upper back and neck; shrugs the shoulders and stabilises overhead loads." },
   delts: { name: "Deltoids", description: "Cap of the shoulder; raises the arm out to the side or overhead." },
@@ -153,7 +188,7 @@ export const MUSCLE_INFO = {
   serratus: { name: "Serratus anterior", description: "Side of the ribcage; rotates the shoulder blade during an overhead press." },
   abs: { name: "Abdominals", description: "Front of the core; braces the trunk against load, more than it bends it." },
   chest: { name: "Pectorals", description: "Front of the ribcage; pushes the arm forward and across, as in a bench press." },
-  neck: { name: "Neck extensors", description: "Back of the neck; holds the head steady under load and extends it." },
+  neck: { name: "Neck", description: "Holds the head steady under load, and turns and extends it." },
 };
 
 // Built once at module scope: normalized alias text -> muscle key. Both the aliases
