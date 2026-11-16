@@ -10,13 +10,19 @@ import (
 const shellRegion = "shell"
 
 // isMuscle rejects atlas meshes that resolve to a key by containment but are
-// not muscle. "Ulna" is in "ulnar head of flexor carpi ulnaris" and "Scapula"
-// in "scapular spinal part of deltoid"; bursae and tendon sheaths match their
+// not muscle. "Ulna" is in "ulnar head of flexor carpi ulnaris", "Scapula"
+// in "scapular spinal part of deltoid", "Tibia" in "tibialis anterior" and
+// "Fibula" in "fibularis longus"; bursae and tendon sheaths match their
 // muscle's name. Hidden under the skin they were harmless; drawn, they would
 // be lumps.
 func isMuscle(name string) bool {
 	n := normalizeName(name)
-	if n == "ulna" || n == "scapula" {
+	if n == "ulna" || n == "scapula" || n == "tibia" || n == "fibula" {
+		return false
+	}
+	// The two posterior serrati are thin sheets on the back, under the lats;
+	// they match "serratus", which is the muscle on the ribs under the arm.
+	if strings.Contains(n, "serratus posterior") {
 		return false
 	}
 	return !strings.Contains(n, "bursa") && !strings.Contains(n, "tendon sheath")

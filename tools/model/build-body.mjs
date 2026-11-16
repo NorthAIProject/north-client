@@ -77,6 +77,9 @@ function parseArgs(argv) {
       case "--out":
         args[flag.slice(2)] = value;
         break;
+      case "--skin-from":
+        args.skinFrom = value;
+        break;
       case "--skin-scale":
         args.skinScale = Number(value);
         break;
@@ -97,7 +100,8 @@ function parseArgs(argv) {
     }
   }
   if (!args.muscles) fail("--muscles is required");
-  if (!args.skin) fail("--skin is required");
+  if (!args.skin && !args.skinFrom) fail("--skin or --skin-from is required");
+  if (args.skin && args.skinFrom) fail("--skin and --skin-from are alternatives");
   return args;
 }
 
@@ -199,6 +203,27 @@ function prepareSkin(document, muscleBounds, args) {
   return wrapper;
 }
 
+/**
+ * Takes the skin out of an earlier build of this file, already decimated and
+ * fitted, so the muscle set can be rebuilt from the atlas without the skin's own
+ * source. Everything outside the "skin" node is dropped.
+ */
+async function reuseSkin(document, args) {
+  const scene = document.getRoot().listScenes()[0];
+  if (!scene) fail("the --skin-from file has no scene");
+  let found = false;
+  for (const node of scene.listChildren()) {
+    if (node.getName() === args.skinNode) {
+      found = true;
+      continue;
+    }
+    node.traverse((child) => child.setMesh(null));
+    scene.removeChild(node);
+  }
+  if (!found) fail(`the --skin-from file has no "${args.skinNode}" node at the top of its scene`);
+  await document.transform(prune());
+}
+
 function triangleCount(document) {
   let total = 0;
   for (const mesh of document.getRoot().listMeshes()) {
@@ -215,13 +240,14 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const io = await createIO();
 
-  for (const path of [args.muscles, args.skin]) {
+  const skinPath = args.skinFrom ? resolve(REPO_ROOT, args.skinFrom) : args.skin;
+  for (const path of [args.muscles, skinPath]) {
     if (!existsSync(path)) fail(`no such file: ${path}`);
   }
 
   console.log("reading sources");
   const muscleDoc = await io.read(args.muscles);
-  const skinDoc = await io.read(args.skin);
+  const skinDoc = await io.read(skinPath);
   console.log(`  muscles: ${triangleCount(muscleDoc).toLocaleString()} tris`);
   console.log(`  skin:    ${triangleCount(skinDoc).toLocaleString()} tris`);
 
@@ -229,20 +255,25 @@ async function main() {
   keepOnlyMuscles(muscleDoc);
   await muscleDoc.transform(prune());
 
-  console.log("decimating skin");
-  await skinDoc.transform(weld());
-  const skinTris = triangleCount(skinDoc);
-  if (skinTris > args.skinTris) {
-    await skinDoc.transform(
-      simplify({ simplifier: MeshoptSimplifier, ratio: args.skinTris / skinTris, error: 0.001 }),
-    );
-    console.log(`  ${skinTris.toLocaleString()} -> ${triangleCount(skinDoc).toLocaleString()} tris`);
+  if (args.skinFrom) {
+    console.log("reusing the fitted skin");
+    await reuseSkin(skinDoc, args);
   } else {
-    console.log(`  ${skinTris.toLocaleString()} tris, already under the ${args.skinTris.toLocaleString()} target`);
-  }
+    console.log("decimating skin");
+    await skinDoc.transform(weld());
+    const skinTris = triangleCount(skinDoc);
+    if (skinTris > args.skinTris) {
+      await skinDoc.transform(
+        simplify({ simplifier: MeshoptSimplifier, ratio: args.skinTris / skinTris, error: 0.001 }),
+      );
+      console.log(`  ${skinTris.toLocaleString()} -> ${triangleCount(skinDoc).toLocaleString()} tris`);
+    } else {
+      console.log(`  ${skinTris.toLocaleString()} tris, already under the ${args.skinTris.toLocaleString()} target`);
+    }
 
-  console.log("aligning skin to muscles");
-  prepareSkin(skinDoc, unionBounds(muscleDoc.getRoot().listScenes()), args);
+    console.log("aligning skin to muscles");
+    prepareSkin(skinDoc, unionBounds(muscleDoc.getRoot().listScenes()), args);
+  }
 
   console.log("merging");
   mergeDocuments(muscleDoc, skinDoc);

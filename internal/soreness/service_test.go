@@ -36,6 +36,15 @@ func TestSetReplacesAndClearRemoves(t *testing.T) {
 	if len(list) != 1 || list[0].Severity != 3 {
 		t.Fatalf("today = %+v, want one region at 3", list)
 	}
+	history, historyErr := svc.History(ctx, user, 14)
+	if historyErr != nil || len(history) != 1 || history[0].Region != "quads" {
+		t.Errorf("history = %+v, %v; want today's quads", history, historyErr)
+	}
+	for _, days := range []int{0, 91} {
+		if _, rangeErr := svc.History(ctx, user, days); rangeErr == nil {
+			t.Errorf("history over %d days accepted", days)
+		}
+	}
 	if err := svc.Clear(ctx, user, "quads"); err != nil {
 		t.Fatal(err)
 	}

@@ -27,5 +27,53 @@
     "knees",
     "calves",
     "feet"
-  ]
+  ],
+  "figure": {
+    "abs": [
+      "abs"
+    ],
+    "biceps": [
+      "biceps"
+    ],
+    "calves": [
+      "calves"
+    ],
+    "chest": [
+      "chest"
+    ],
+    "feet": [],
+    "forearms": [
+      "forearms"
+    ],
+    "glutes": [
+      "glutes"
+    ],
+    "hamstrings": [
+      "hamstrings"
+    ],
+    "hips": [
+      "adductors"
+    ],
+    "knees": [],
+    "lower_back": [
+      "erectors"
+    ],
+    "neck": [
+      "neck"
+    ],
+    "quads": [
+      "quads"
+    ],
+    "shoulders": [
+      "delts",
+      "traps"
+    ],
+    "triceps": [
+      "triceps"
+    ],
+    "upper_back": [
+      "traps",
+      "lats"
+    ]
+  }
 }

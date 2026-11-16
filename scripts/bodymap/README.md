@@ -18,15 +18,22 @@ anatomical atlas. Each node has its own mesh and a material of the same name, so
 client recolours a muscle by setting one material colour and resolves a tap by the
 hit mesh's name.
 
-The web viewer draws the shell as an outline only: clear where it faces the
-camera, firm at the silhouette, so the muscles read as the body and the skin as
-its edge. (It used to be drawn twice, an opaque dark inside and a grey
-translucent front, which read as a second, grey person standing around the
-muscles.) The shell is never a tap target.
+The clients draw the shell's geometry twice. Once as the body under the
+muscles, opaque and pale, with the `core` shape key at 1: that key sinks the
+skin to just below the muscle under it and leaves it at the surface where there
+is none (the head, hands, feet and knees, and the tendon between muscles), so
+the figure is one solid body with the muscles lying on it and nothing shows
+through. And once as an outline: clear where it faces the camera, firm at the
+silhouette, with the measurement keys below. (An outline alone left holes
+wherever there was no muscle. Before that the skin was an opaque dark inside
+and a grey translucent front, which read as a second, grey person standing
+around the muscles; the body is under the muscles now, not around them.) The
+shell is never a tap target.
 
-The shell carries four shape keys (glTF morph targets, named in
+Besides `core`, the shell carries four shape keys (glTF morph targets, named in
 `mesh.extras.targetNames`): `waist`, `hips`, `chest` and `overall`. Each is 0
-(as modelled) to 1. The server works the weights out from a person's latest
+(as modelled) to 1. They move the outline only; the core stays at `core` = 1
+and nothing else. The server works the weights out from a person's latest
 progress check (`bodymap.Shape`, read against `bodymap.ShellBaseline`, which
 this tool generates in `internal/bodymap/baseline_gen.go`), and the web
 viewer applies them with `setShape`. Only the skin moves; the muscles stay
@@ -67,7 +74,7 @@ receive region keys.
 
 Positions are int16 and normals int8 (`KHR_mesh_quantization`, which the
 three.js loader reads natively); the root node's translation and scale map the grid
-back to metres. About 1.5 MB with the shape keys; the tool refuses to write
+back to metres. About 1.8 MB with the shape keys; the tool refuses to write
 more than 2 MB. The figure
 stands on the origin (soles at y = 0, centred in x and z) and faces +z.
 
@@ -82,12 +89,27 @@ are no longer on disk — and:
    tendon sheaths by name;
 2. welds the skin and smooths it with one step of Loop subdivision;
 3. refits the atlas to the skin (the source fit stretched the headless atlas to
-   the full height of the body), then fits each arm on its own about its shoulder,
-   and tucks any muscle vertex still outside the skin 2 mm under it;
-4. groups the atlas triangles by key, welds each group and writes the outputs.
+   the full height of the body). The fit is scored two ways: muscle poking out
+   of the skin costs, and so does skin with no muscle near it. Without the
+   second the atlas is free to shrink into the torso, which is what it once
+   did: the calves ended at mid-shin and the lower legs were bare;
+4. fits each arm on its own about its shoulder, then to its sleeve
+   (`sleeve.go`): this skin's upper arms are about twice the atlas's and its
+   forearms hardly thicker, so at each height the arm's muscles are centred on
+   the skin's arm and stretched out to it;
+5. tucks any muscle vertex still outside the skin 2 mm under it, and draws the
+   rest out towards the skin (`hug`): the skin is a fuller body than the atlas,
+   and muscle left centimetres under it reads as a thin body inside a bigger one;
+6. drops the long tendons below the wrists and ankles, which never line up
+   with this skin's fingers and toes;
+7. works out the `core` shape key (`core.go`), groups the atlas triangles by
+   key, welds each group and writes the outputs.
 
-The run logs how much muscle sits outside the skin after each step; a jump there
-means the fit needs looking at before anything is committed.
+The run logs the fit, how much muscle sits outside the skin after each step,
+and how much of the skin has muscle under it; a jump in any of them means the
+fit needs looking at before anything is committed. Look at the result from the
+front, the back and the side before committing it: the numbers did not catch
+the bare lower legs.
 
 To look at a change, copy `body-map.glb` into the sibling `north-web-app` checkout's
 `static/assets/models/` and open the body figure there: the viewer is part of the
