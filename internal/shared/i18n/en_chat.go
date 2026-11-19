@@ -52,6 +52,7 @@ var englishChat = map[string]string{
 	"chat.status.writing":   "is writing",
 	"chat.status.snag":      "hit a snag",
 	"chat.status.tool":      "is %[1]s",
+	"chat.sources":          "Sources",
 
 	// What a running tool is doing, slotted into chat.status.tool. The
 	// contract caps each at 32 characters; TestToolStatusLabelsFitTheHeader

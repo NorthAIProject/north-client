@@ -124,6 +124,13 @@ type Request struct {
 	Temperature *float32
 
 	MaxTokens int
+
+	// AllowWebSearch says this request may look things up on the web, if the
+	// provider answering it has a search of its own and the deployment has
+	// switched it on. It asks for nothing by itself: a provider with no search
+	// ignores it, and so does one whose search is off. Set for conversation,
+	// never for structured generation, which has no reader to show sources to.
+	AllowWebSearch bool
 }
 
 // Response is a completed non-streaming reply.
@@ -153,6 +160,17 @@ type Response struct {
 type Usage struct {
 	InputTokens  int `json:"InputTokens"`
 	OutputTokens int `json:"OutputTokens"`
+
+	// WebSearches is how many searches the provider ran while answering.
+	// They are billed each, apart from the tokens their results cost.
+	WebSearches int `json:"WebSearches,omitempty"`
+}
+
+// Source is a web page a reply drew on. A reply that used the web has to say
+// where from, so these are shown to the reader and not only logged.
+type Source struct {
+	Title string
+	URL   string
 }
 
 // StreamChunk is one piece of a streamed reply.
@@ -168,6 +186,10 @@ type StreamChunk struct {
 	// Model rides along with the chunk that carries Usage, for the reason
 	// given on Response.Model. Empty on the ordinary text chunks.
 	Model string
+
+	// Sources arrives once, after the text, when the reply cited the web.
+	// In the order first cited, each page once.
+	Sources []Source
 
 	// ToolCalls arrives as a single chunk once the model has finished asking.
 	// Not streamed piecewise: a half-decoded argument object is of no use to

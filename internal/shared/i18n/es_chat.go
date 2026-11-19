@@ -45,6 +45,7 @@ var spanishChat = map[string]string{
 	"chat.status.writing":   "está escribiendo",
 	"chat.status.snag":      "tuvo un problema",
 	"chat.status.tool":      "está %[1]s",
+	"chat.sources":          "Fuentes",
 
 	"chat.tool.default":        "buscando información",
 	"chat.tool.exercises":      "buscando ejercicios",

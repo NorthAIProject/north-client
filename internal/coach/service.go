@@ -389,6 +389,10 @@ func (s *Service) SendIncoming(ctx context.Context, user users.User, conversatio
 		System:   system,
 		Messages: messages,
 		Tools:    s.toolsFor(conversation),
+
+		// Not in a reflection: that is the person thinking aloud about their
+		// own week, and nothing on the web is part of it.
+		AllowWebSearch: !conversation.IsReflection(),
 	}
 
 	startedAt := time.Now()
@@ -782,6 +786,12 @@ func (s *Service) pump(
 		// round. Accumulated here rather than read back off the request
 		// afterwards because the tool messages are rewritten each round.
 		exerciseSlugs []string
+
+		// Web pages the reply cited, across every round, each once. Listed
+		// under the reply when it is done: a reply that used the web has to
+		// say where from, on every client, including ones shipped before
+		// this existed.
+		cited []ai.Source
 	)
 
 	// One pass per round-trip to the model. A pass that ends in tool calls
@@ -813,6 +823,10 @@ func (s *Service) pump(
 			if chunk.Usage != nil {
 				usage = chunk.Usage
 				roundUsage = chunk.Usage
+			}
+			if len(chunk.Sources) > 0 {
+				cited = addSources(cited, chunk.Sources)
+				continue
 			}
 			if len(chunk.ToolCalls) > 0 {
 				// Held here rather than forwarded as they arrive: the round
@@ -962,6 +976,15 @@ func (s *Service) pump(
 	// citation after all, so it belongs to the reader.
 	if tail := visible.Flush(); tail != "" && listening {
 		trySend(callerCtx, out, ai.StreamChunk{Text: tail})
+	}
+
+	// Under whatever was written, even a reply cut short: the part the person
+	// read still drew on these.
+	if list := sourceList(callerCtx, cited); list != "" && strings.TrimSpace(reply.String()) != "" {
+		reply.WriteString(list)
+		if listening {
+			trySend(callerCtx, out, ai.StreamChunk{Text: list})
+		}
 	}
 
 	text, evidenceRefs := StripRefs(strings.TrimSpace(reply.String()), target.offeredRefs)

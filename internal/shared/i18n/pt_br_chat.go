@@ -45,6 +45,7 @@ var portugueseBrazilianChat = map[string]string{
 	"chat.status.writing":   "está escrevendo",
 	"chat.status.snag":      "teve um problema",
 	"chat.status.tool":      "está %[1]s",
+	"chat.sources":          "Fontes",
 
 	"chat.tool.default":        "buscando informações",
 	"chat.tool.exercises":      "buscando exercícios",

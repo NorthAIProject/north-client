@@ -47,6 +47,7 @@ var portugueseEuropeanChat = map[string]string{
 	"chat.status.writing":   "está a escrever",
 	"chat.status.snag":      "encontrou um problema",
 	"chat.status.tool":      "está a %[1]s",
+	"chat.sources":          "Fontes",
 
 	"chat.tool.default":        "procurar informação",
 	"chat.tool.exercises":      "procurar exercícios",

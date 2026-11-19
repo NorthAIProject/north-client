@@ -256,6 +256,7 @@ one.
 | `ANTHROPIC_MODEL` | `claude-haiku-5-5` | Used whenever a caller's model is not a `claude-` name (e.g. an OpenRouter `AI_FAST_MODEL`) |
 | `ANTHROPIC_EFFORT` | empty | `low`, `medium`, `high`, `xhigh`, `max`. Empty is the model default |
 | `ANTHROPIC_THINKING` | `adaptive` | Or `disabled`. Off regardless when a request's `max_tokens` is under 1024 |
+| `ANTHROPIC_WEB_SEARCH_MAX_USES` | `0` | `0` is off. `1` to `5` lets the coach search the web through Anthropic, at most that many times per request. Each search is billed at $0.01 on top of tokens, about ten times a normal turn. Replies that used it end with their sources. Needs web search enabled for the organisation in the Claude Console; if it is not, the coach answers without it |
 
 Per-provider keys. A provider is on when its key (and, for Hermes, its
 base URL) is set:

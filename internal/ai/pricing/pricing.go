@@ -44,6 +44,10 @@ type Rate struct {
 type table struct {
 	Models map[string]Rate `json:"models"`
 
+	// WebSearch is what one web search costs, in micros, by provider. A
+	// provider's own search is billed per search, whatever the model.
+	WebSearch map[string]int64 `json:"web_search"`
+
 	// Unpriced is the acknowledgement list: models known to exist with no rate
 	// filled in yet. Present so the coverage test can tell "nobody has done
 	// this" from "this was forgotten".
@@ -104,6 +108,17 @@ func Cost(provider, model string, inputTokens, outputTokens int) (int64, bool) {
 		(int64(outputTokens)*rate.Output)/perMillion
 
 	return micros, true
+}
+
+// SearchCost prices the web searches a call ran, in micros. A provider with no
+// rate costs nothing here; none of them searches.
+func SearchCost(provider string, searches int) int64 {
+	t, err := load()
+	if err != nil || searches <= 0 {
+		return 0
+	}
+	base, _, _ := strings.Cut(provider, "=")
+	return int64(searches) * t.WebSearch[base]
 }
 
 // Known reports whether a rate exists for the model.
