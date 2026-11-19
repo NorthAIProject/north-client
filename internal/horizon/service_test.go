@@ -12,6 +12,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/horizon/forecast"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
+	"github.com/NorthAIProject/north-client/internal/media/analysis"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/progresschecks/progresscheck"
 	"github.com/NorthAIProject/north-client/internal/shared/apitest"
@@ -351,6 +352,55 @@ func TestLiftDetailAndNextSets(t *testing.T) {
 	}
 	if got := loose["squat"]; got != next["barbell-squat"] || len(loose) != 1 {
 		t.Errorf("loose = %+v", loose)
+	}
+}
+
+// forms is the form slice, newest first as it lists them.
+type forms []analysis.Analysis
+
+func (f forms) ListAnalyses(context.Context, uuid.UUID, int) ([]analysis.Analysis, error) {
+	return f, nil
+}
+
+func TestALiftCarriesItsNewestFormCheck(t *testing.T) {
+	p := regular()
+	newest := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	svc := NewService(Options{Lifts: p, Forms: forms{
+		// Another lift's clip, newer than any of squat's.
+		{ID: uuid.New(), ExerciseSlug: "bench-press", CreatedAt: at, Result: &analysis.FormAnalysis{Summary: "Bench."}},
+		// A clip filed under no exercise says nothing about any lift.
+		{ID: uuid.New(), CreatedAt: at, Result: &analysis.FormAnalysis{Summary: "Unfiled."}},
+		{ID: newest, ExerciseSlug: "barbell-squat", CreatedAt: at.AddDate(0, 0, -2), Result: &analysis.FormAnalysis{
+			Summary: "Depth is good.", Confidence: analysis.ConfidenceHigh,
+			Issues: []analysis.FormIssue{
+				{Severity: analysis.SeverityMinor, Correction: "Brace sooner."},
+				{Severity: analysis.SeverityModerate, Correction: "Knees out."},
+				{Severity: analysis.SeverityModerate, Correction: "Chest up."},
+			},
+		}},
+		{ID: uuid.New(), ExerciseSlug: "barbell-squat", CreatedAt: at.AddDate(0, 0, -30), Result: &analysis.FormAnalysis{Summary: "Older."}},
+	}})
+
+	squat, err := svc.Lift(context.Background(), user, "barbell-squat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if squat.Form == nil || squat.Form.AnalysisID != newest || squat.Form.Summary != "Depth is good." {
+		t.Fatalf("squat's form = %+v", squat.Form)
+	}
+	// The most serious thing seen, the earliest of equals.
+	if squat.Form.Cue != "Knees out." {
+		t.Errorf("cue = %q", squat.Form.Cue)
+	}
+
+	// No form slice, or no clip of the lift: no note, and no error.
+	plain, err := service(p).Lift(context.Background(), user, "barbell-squat")
+	if err != nil || plain.Form != nil {
+		t.Errorf("without forms: %+v, %v", plain.Form, err)
+	}
+	none, err := NewService(Options{Lifts: p, Forms: forms{}}).Lift(context.Background(), user, "barbell-squat")
+	if err != nil || none.Form != nil {
+		t.Errorf("without a clip: %+v, %v", none.Form, err)
 	}
 }
 

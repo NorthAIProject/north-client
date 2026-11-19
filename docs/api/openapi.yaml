@@ -9363,6 +9363,25 @@ components:
                     type: number
                   actual:
                     type: number
+            formNote:
+              type: object
+              description: What the newest form check of this lift said. Absent when the lift has none.
+              required: [analysisId, date, summary, confidence]
+              properties:
+                analysisId:
+                  type: string
+                  description: The form check, as GET /form-checks/{id} takes it.
+                date:
+                  type: string
+                  format: date
+                summary:
+                  type: string
+                confidence:
+                  type: string
+                  description: high, medium or low — how clearly the clip showed the lift. A plain string; treat an unknown value as low.
+                cue:
+                  type: string
+                  description: The correction for the most serious thing seen. Absent when nothing was.
     HorizonFrame:
       type: object
       required: [offsetDays, date, shape, regions]
