@@ -123,6 +123,11 @@ type stateBlock struct {
 	Data      string `json:"data,omitempty"`
 	Text      string `json:"text,omitempty"`
 	ToolUseID string `json:"tool_use_id,omitempty"`
+
+	// Raw is a search block exactly as the API sent it: the search, its
+	// results, or text that cites them. These carry encrypted fields that
+	// have to go back untouched, so the block is kept whole.
+	Raw json.RawMessage `json:"raw,omitempty"`
 }
 
 const (
@@ -130,6 +135,7 @@ const (
 	kindRedacted = "redacted_thinking"
 	kindText     = "text"
 	kindToolUse  = "tool_use"
+	kindSearch   = "search"
 )
 
 // turnState records a tool-calling turn's blocks in the order the model wrote
@@ -140,6 +146,10 @@ const (
 func turnState(content []sdk.ContentBlockUnion) json.RawMessage {
 	var kept []stateBlock
 	for _, block := range content {
+		if raw := block.RawJSON(); searched(block) && raw != "" {
+			kept = append(kept, stateBlock{Kind: kindSearch, Raw: json.RawMessage(raw)})
+			continue
+		}
 		switch b := block.AsAny().(type) {
 		case sdk.ThinkingBlock:
 			kept = append(kept, stateBlock{Kind: kindThinking, Thinking: b.Thinking, Signature: b.Signature})
@@ -187,6 +197,14 @@ func replayTurn(m ai.Message) ([]sdk.ContentBlockParamUnion, bool) {
 			if call, ok := calls[k.ToolUseID]; ok {
 				out = append(out, toolUse(call))
 				delete(calls, k.ToolUseID)
+			}
+		case kindSearch:
+			var block sdk.ContentBlockUnion
+			if block.UnmarshalJSON(k.Raw) != nil {
+				continue
+			}
+			if param, ok := blockParam(block); ok {
+				out = append(out, param)
 			}
 		}
 	}

@@ -15,6 +15,10 @@
     "adding a provider cannot silently produce free customers."
   ],
 
+  "web_search": {
+    "anthropic": 10000
+  },
+
   "models": {
     "anthropic/claude-haiku-5-5": {
       "input": 100000,

@@ -318,6 +318,8 @@ func (s *Service) Resume(ctx context.Context, user users.User, conversationID uu
 		System:   system,
 		Messages: conversations.ToAIMessages(coachCtx.RecentMessages),
 		Tools:    s.toolDeclarations(),
+
+		AllowWebSearch: true,
 	}
 
 	startedAt := time.Now()

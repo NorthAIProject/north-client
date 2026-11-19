@@ -123,12 +123,15 @@ func TestAnthropicChangesNothingUnlessKeyAndSwitchAreBothSet(t *testing.T) {
 
 func TestAnthropicSettingsAreValidated(t *testing.T) {
 	cases := map[string]map[string]string{
-		"effort":               {"ANTHROPIC_EFFORT": "lowest"},
-		"thinking":             {"ANTHROPIC_THINKING": "enabled"},
-		"scope":                {"ANTHROPIC_SCOPE": "free"},
-		"first":                {"ANTHROPIC_FIRST": "yes please"},
-		"openrouter model":     {"ANTHROPIC_MODEL": "anthropic/claude-haiku-5-5"},
-		"no thinking at xhigh": {"ANTHROPIC_THINKING": "disabled", "ANTHROPIC_EFFORT": "xhigh"},
+		"effort":                {"ANTHROPIC_EFFORT": "lowest"},
+		"thinking":              {"ANTHROPIC_THINKING": "enabled"},
+		"scope":                 {"ANTHROPIC_SCOPE": "free"},
+		"first":                 {"ANTHROPIC_FIRST": "yes please"},
+		"openrouter model":      {"ANTHROPIC_MODEL": "anthropic/claude-haiku-5-5"},
+		"no thinking at xhigh":  {"ANTHROPIC_THINKING": "disabled", "ANTHROPIC_EFFORT": "xhigh"},
+		"searches not a number": {"ANTHROPIC_WEB_SEARCH_MAX_USES": "on"},
+		"too many searches":     {"ANTHROPIC_WEB_SEARCH_MAX_USES": "50"},
+		"negative searches":     {"ANTHROPIC_WEB_SEARCH_MAX_USES": "-1"},
 	}
 	for name, env := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -151,5 +154,17 @@ func TestProviderOptionsCarriesTheAnthropicSettings(t *testing.T) {
 	got := cfg.AI.ProviderOptions(EnvDevelopment).Anthropic
 	if got.APIKey != "sk-ant-test" || got.Model != "claude-haiku-5-5" || got.Effort != "low" || got.Thinking != "disabled" {
 		t.Errorf("options = %+v", got)
+	}
+	// Web search is billed per search, so it is off until someone turns it on.
+	if got.WebSearchMaxUses != 0 {
+		t.Errorf("web search max uses = %d by default, want 0 (off)", got.WebSearchMaxUses)
+	}
+
+	cfg, err = loadWith(t, map[string]string{"ANTHROPIC_API_KEY": "sk-ant-test", "ANTHROPIC_WEB_SEARCH_MAX_USES": "2"})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got := cfg.AI.ProviderOptions(EnvDevelopment).Anthropic.WebSearchMaxUses; got != 2 {
+		t.Errorf("web search max uses = %d, want 2", got)
 	}
 }

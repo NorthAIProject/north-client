@@ -71,6 +71,11 @@ type Options struct {
 	// FirstTokenBudget replaces firstTokenBudget on a managed client. Tests
 	// only; a personal client has no budget whatever this says.
 	FirstTokenBudget time.Duration
+
+	// WebSearchMaxUses switches on Anthropic's own web search for requests
+	// that allow it, and caps the searches one request may run. Zero, the
+	// default, is off. Only a managed client searches; see searches.
+	WebSearchMaxUses int
 }
 
 type Client struct {
@@ -82,6 +87,8 @@ type Client struct {
 
 	// firstTokenBudget is zero for a personal client, which has no budget.
 	firstTokenBudget time.Duration
+
+	webSearchMaxUses int
 }
 
 // minThinkingTokens is the smallest max_tokens worth thinking under. Thinking
@@ -122,6 +129,7 @@ func New(opts Options) (*Client, error) {
 		thinking:         opts.Thinking,
 		managed:          opts.Managed,
 		firstTokenBudget: budget,
+		webSearchMaxUses: opts.WebSearchMaxUses,
 	}, nil
 }
 
@@ -246,7 +254,17 @@ func usage(u sdk.Usage) ai.Usage {
 	return ai.Usage{
 		InputTokens:  int(u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens),
 		OutputTokens: int(u.OutputTokens),
+		WebSearches:  int(u.ServerToolUse.WebSearchRequests),
 	}
+}
+
+// spend adds one request's usage to a reply's running total. A reply resumed
+// after a pause is several requests, and each is billed.
+func spend(total, more ai.Usage) ai.Usage {
+	total.InputTokens += more.InputTokens
+	total.OutputTokens += more.OutputTokens
+	total.WebSearches += more.WebSearches
+	return total
 }
 
 var _ ai.Client = (*Client)(nil)

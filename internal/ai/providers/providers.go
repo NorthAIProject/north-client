@@ -63,6 +63,9 @@ type Anthropic struct {
 	Model    string
 	Effort   string
 	Thinking string
+
+	// WebSearchMaxUses is anthropic.Options.WebSearchMaxUses. Zero is off.
+	WebSearchMaxUses int
 }
 
 // Compatible describes one OpenAI-dialect backend.
@@ -106,6 +109,8 @@ func Build(ctx context.Context, opts Options) (*ai.Registry, error) {
 			Effort:       opts.Anthropic.Effort,
 			Thinking:     opts.Anthropic.Thinking,
 			Managed:      true,
+
+			WebSearchMaxUses: opts.Anthropic.WebSearchMaxUses,
 		})
 		if err != nil {
 			// Not wrapped with the options: they hold the key.

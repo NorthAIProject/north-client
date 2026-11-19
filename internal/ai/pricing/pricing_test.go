@@ -114,3 +114,19 @@ func TestHaikuIsPricedAtItsListRate(t *testing.T) {
 		t.Errorf("cost = %d micros, want 600000 (0.10 + 0.50)", micros)
 	}
 }
+
+// A search is billed each, at Anthropic's published $10 per 1,000, whatever
+// the model. A provider with no search of its own costs nothing here.
+func TestSearchesArePricedEach(t *testing.T) {
+	t.Parallel()
+
+	if got := pricing.SearchCost("anthropic", 3); got != 30_000 {
+		t.Errorf("3 anthropic searches = %d micros, want 30000 ($0.03)", got)
+	}
+	if got := pricing.SearchCost("anthropic", 0); got != 0 {
+		t.Errorf("no searches = %d micros", got)
+	}
+	if got := pricing.SearchCost("openrouter=some/model:free", 2); got != 0 {
+		t.Errorf("a provider that does not search = %d micros", got)
+	}
+}

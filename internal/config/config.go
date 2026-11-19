@@ -285,6 +285,12 @@ type AnthropicConfig struct {
 	// Scope is "all", which puts it at the head of the free chain too, or
 	// "paid", which leaves free users on the chain they have.
 	Scope string
+
+	// WebSearchMaxUses lets the coach search the web through Anthropic, at
+	// most this many times in one request. Zero is off, and the default: a
+	// search is billed apart from tokens, at many times the price of the
+	// turn that runs it.
+	WebSearchMaxUses int
 }
 
 // Leads reports whether anthropic goes in front of the chains.
@@ -924,6 +930,11 @@ func Load() (*Config, error) {
 		problems = append(problems, err.Error())
 	}
 	cfg.AI.Anthropic.First = anthropicFirst
+	webSearchMaxUses, err := intValue("ANTHROPIC_WEB_SEARCH_MAX_USES", 0)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.AI.Anthropic.WebSearchMaxUses = webSearchMaxUses
 	problems = append(problems, cfg.AI.Anthropic.problems()...)
 
 	// 587 is the submission port, upgraded with STARTTLS. 465 is implicit TLS
@@ -1175,6 +1186,8 @@ func (c AIConfig) ProviderOptions(env Environment) providers.Options {
 			Model:    c.Anthropic.Model,
 			Effort:   c.Anthropic.Effort,
 			Thinking: c.Anthropic.Thinking,
+
+			WebSearchMaxUses: c.Anthropic.WebSearchMaxUses,
 		},
 		Compatible: []providers.Compatible{
 			{
@@ -1344,6 +1357,11 @@ func prependProvider(chain []string, name string) []string {
 	return out
 }
 
+// maxWebSearchUses bounds ANTHROPIC_WEB_SEARCH_MAX_USES. Five searches is
+// already fifty times the price of the turn around them; a larger number is a
+// typo, not a setting.
+const maxWebSearchUses = 5
+
 // problems reports settings the API would reject on every request. Checked
 // whether or not a key is set: a typo should fail the boot that introduced it,
 // not the later one that adds the key.
@@ -1367,6 +1385,9 @@ func (c AnthropicConfig) problems() []string {
 	case "all", "paid":
 	default:
 		out = append(out, fmt.Sprintf("ANTHROPIC_SCOPE must be all or paid, got %q", c.Scope))
+	}
+	if c.WebSearchMaxUses < 0 || c.WebSearchMaxUses > maxWebSearchUses {
+		out = append(out, fmt.Sprintf("ANTHROPIC_WEB_SEARCH_MAX_USES must be 0 (off) to %d, got %d", maxWebSearchUses, c.WebSearchMaxUses))
 	}
 	if c.Model != "" && !strings.HasPrefix(c.Model, "claude-") {
 		out = append(out, fmt.Sprintf("ANTHROPIC_MODEL must be a Claude model name such as claude-haiku-5-5, got %q", c.Model))

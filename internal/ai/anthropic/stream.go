@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
@@ -32,22 +33,24 @@ import (
 // is the reply being written and there is nobody left to hand it to.
 func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
 	p := c.params(req)
+	searching := c.searches(req)
+	if searching {
+		p.Tools = append(p.Tools, c.webSearchTool())
+	}
 
-	attemptCtx, cancel := context.WithCancel(ctx)
-	withinBudget := startBudget(c.firstTokenBudget, cancel)
-
-	stream := c.sdk.Messages.NewStreaming(attemptCtx, p, requestOptions(p)...)
-	msg, held, ended, err := c.open(stream)
-
-	// Checked against ctx, not attemptCtx: the budget cancelled that one itself.
-	// A fresh error rather than a wrapped one, because the cancellation it would
-	// wrap is what Failover reads as the caller having gone.
-	if !withinBudget() && ctx.Err() == nil {
-		err = fmt.Errorf("%w: anthropic: no reply within %s", apperr.ErrUnavailable, c.firstTokenBudget)
+	stream, msg, held, ended, cancel, err := c.start(ctx, p)
+	if err != nil && searching && refusedRequest(err) {
+		// Asked again without the search. The tool is the one thing in this
+		// request that an organisation setting can refuse outright (web
+		// search switched off in the Console is a 400), and a coach that
+		// cannot look something up is still a coach. Nothing has reached the
+		// person yet, so nobody sees two answers.
+		middleware.FromContext(ctx).Warn("anthropic refused a request that offered web search; asking again without it",
+			slog.Any("error", err))
+		p = c.params(req)
+		stream, msg, held, ended, cancel, err = c.start(ctx, p)
 	}
 	if err != nil {
-		_ = stream.Close()
-		cancel()
 		return nil, err
 	}
 
@@ -58,17 +61,36 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		// and close runs after.
 		defer close(out)
 		defer lifecycle.Recover(middleware.FromContext(ctx), "anthropic stream")
-		defer cancel()
+		defer func() { cancel() }()
 		defer func() { _ = stream.Close() }()
 
 		err := c.relay(ctx, out, stream, &msg, held, ended)
+		spent := usage(msg.Usage)
+		content := msg.Content
+
+		// A long search turn can come back paused. It is handed back as it
+		// stands and the reply carries on from there, on the same channel:
+		// to the reader it is one reply.
+		for n := 0; err == nil && msg.StopReason == sdk.StopReasonPauseTurn && n < maxContinuations; n++ {
+			p.Messages = append(p.Messages, assistantTurn(msg.Content))
+			_ = stream.Close()
+			stream = c.sdk.Messages.NewStreaming(ctx, p, requestOptions(p)...)
+			msg = sdk.Message{}
+			err = c.relay(ctx, out, stream, &msg, nil, false)
+			spent = spend(spent, usage(msg.Usage))
+			content = append(content, msg.Content...)
+		}
+
+		if err == nil {
+			err = c.finish(ctx, out, content)
+		}
 
 		// Sent whatever became of ctx. A send that also selected on it would
 		// drop both exactly when ctx had expired, and the reply would then read
 		// as finished with nothing spent. A reader drains to close, so these
 		// cannot block for ever. Usage goes first because the error is the last
 		// chunk a reader takes.
-		if spent := usage(msg.Usage); err == nil || spent != (ai.Usage{}) {
+		if err == nil || spent != (ai.Usage{}) {
 			out <- ai.StreamChunk{Usage: &spent, Model: string(msg.Model)}
 		}
 		if err != nil {
@@ -77,6 +99,53 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 	}()
 
 	return out, nil
+}
+
+// start opens a stream and reads it up to the reply's first visible output,
+// within the first-token budget. On an error the stream is already closed and
+// cancel already called.
+func (c *Client) start(ctx context.Context, p sdk.MessageNewParams) (
+	stream *ssestream.Stream[sdk.MessageStreamEventUnion],
+	msg sdk.Message,
+	held []sdk.MessageStreamEventUnion,
+	ended bool,
+	cancel context.CancelFunc,
+	err error,
+) {
+	attemptCtx, cancel := context.WithCancel(ctx)
+	withinBudget := startBudget(c.firstTokenBudget, cancel)
+
+	stream = c.sdk.Messages.NewStreaming(attemptCtx, p, requestOptions(p)...)
+	msg, held, ended, err = c.open(stream)
+
+	// Checked against ctx, not attemptCtx: the budget cancelled that one itself.
+	// A fresh error rather than a wrapped one, because the cancellation it would
+	// wrap is what Failover reads as the caller having gone.
+	if !withinBudget() && ctx.Err() == nil {
+		err = fmt.Errorf("%w: anthropic: no reply within %s", apperr.ErrUnavailable, c.firstTokenBudget)
+	}
+	if err != nil {
+		_ = stream.Close()
+		cancel()
+		return nil, msg, nil, false, nil, err
+	}
+	return stream, msg, held, ended, cancel, nil
+}
+
+// finish sends what only a complete reply has: the tool calls it ended on,
+// with the turn's state, and the pages it cited.
+func (c *Client) finish(ctx context.Context, out chan<- ai.StreamChunk, content []sdk.ContentBlockUnion) error {
+	if calls := toolCalls(content); len(calls) > 0 {
+		if !send(ctx, out, ai.StreamChunk{ToolCalls: calls, ProviderState: turnState(content)}) {
+			return c.classify(ctx.Err())
+		}
+	}
+	if cited := sources(content); len(cited) > 0 {
+		if !send(ctx, out, ai.StreamChunk{Sources: cited}) {
+			return c.classify(ctx.Err())
+		}
+	}
+	return nil
 }
 
 // startBudget calls expire after d, unless the returned function is called
@@ -145,17 +214,13 @@ func (c *Client) relay(
 			return err
 		}
 	}
-
-	if calls := toolCalls(msg.Content); len(calls) > 0 {
-		if !send(ctx, out, ai.StreamChunk{ToolCalls: calls, ProviderState: turnState(msg.Content)}) {
-			return c.classify(ctx.Err())
-		}
-	}
 	return nil
 }
 
 // commits reports whether an event is the reply's first visible output: a
-// piece of text, or the start of a tool call. Past it, an error can no longer
+// piece of text, or the start of a tool call or of a web search. A search
+// counts because it is the reply under way, and one can take longer than the
+// budget allows a silent provider. Past it, an error can no longer
 // be handed to another provider without the person seeing two answers.
 func commits(event sdk.MessageStreamEventUnion) bool {
 	switch e := event.AsAny().(type) {
@@ -163,7 +228,7 @@ func commits(event sdk.MessageStreamEventUnion) bool {
 		text, ok := e.Delta.AsAny().(sdk.TextDelta)
 		return ok && text.Text != ""
 	case sdk.ContentBlockStartEvent:
-		return e.ContentBlock.Type == "tool_use"
+		return e.ContentBlock.Type == "tool_use" || e.ContentBlock.Type == "server_tool_use"
 	}
 	return false
 }

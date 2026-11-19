@@ -45,6 +45,8 @@ func (m *Meter) Record(ctx context.Context, provider, model string, usage ai.Usa
 	)
 	if !byok {
 		cost, priced = pricing.Cost(provider, model, usage.InputTokens, usage.OutputTokens)
+		// Searches are billed each, on top of the tokens their results cost.
+		cost += pricing.SearchCost(provider, usage.WebSearches)
 	}
 
 	m.recorder.Record(ctx, Generation{
