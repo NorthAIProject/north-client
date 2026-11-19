@@ -136,7 +136,7 @@ func New(opts Options) (*Client, error) {
 func (c *Client) Name() string { return "anthropic" }
 
 func (c *Client) Generate(ctx context.Context, req ai.Request) (*ai.Response, error) {
-	p := c.params(req)
+	p := c.params(req, false)
 	msg, err := c.sdk.Messages.New(ctx, p, requestOptions(p)...)
 	if err != nil {
 		return nil, c.classify(err)
@@ -153,7 +153,7 @@ func (c *Client) UploadFile(context.Context, ai.UploadRequest) (*ai.File, error)
 	return &ai.File{}, nil
 }
 
-func (c *Client) params(req ai.Request) sdk.MessageNewParams {
+func (c *Client) params(req ai.Request, searching bool) sdk.MessageNewParams {
 	model := req.Model
 	// The managed client shares callers with the rest of the chain, and their
 	// model names are written for OpenRouter. Only a Claude name means
@@ -169,10 +169,13 @@ func (c *Client) params(req ai.Request) sdk.MessageNewParams {
 	p := sdk.MessageNewParams{
 		Model:     sdk.Model(model),
 		MaxTokens: maxTokens,
-		Messages:  toMessages(req.Messages),
+		Messages:  toMessages(req.Messages, searching),
 	}
 	if len(req.Tools) > 0 {
 		p.Tools = toTools(req.Tools)
+	}
+	if searching {
+		p.Tools = append(p.Tools, c.webSearchTool())
 	}
 	// A tool call in this turn with no record of the turn that made it (a row
 	// from before provider_state, or another provider's call) cannot have its

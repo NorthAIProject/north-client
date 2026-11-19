@@ -16,7 +16,7 @@ const openingPlaceholder = "(continuing our conversation)"
 
 // toMessages turns Khepri's history into the alternating user/assistant turns
 // the Messages API requires.
-func toMessages(in []ai.Message) []sdk.MessageParam {
+func toMessages(in []ai.Message, searching bool) []sdk.MessageParam {
 	type turn struct {
 		assistant bool
 		blocks    []sdk.ContentBlockParamUnion
@@ -25,7 +25,7 @@ func toMessages(in []ai.Message) []sdk.MessageParam {
 
 	for _, m := range in {
 		assistant := m.Role == ai.RoleModel
-		blocks := contentBlocks(m)
+		blocks := contentBlocks(m, searching)
 		if len(blocks) == 0 {
 			// A stored row with nothing a model can read, such as an empty
 			// text part. Sending it would be a 400.
@@ -60,7 +60,7 @@ var readableImage = map[string]bool{
 	"image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true,
 }
 
-func contentBlocks(m ai.Message) []sdk.ContentBlockParamUnion {
+func contentBlocks(m ai.Message, searching bool) []sdk.ContentBlockParamUnion {
 	var blocks []sdk.ContentBlockParamUnion
 	for _, part := range m.Parts {
 		switch {
@@ -82,7 +82,7 @@ func contentBlocks(m ai.Message) []sdk.ContentBlockParamUnion {
 	if len(m.ToolCalls) > 0 {
 		// The turn that made these calls has to come back as the model wrote
 		// it, thinking and all, or the API refuses the continuation.
-		if replayed, ok := replayTurn(m); ok {
+		if replayed, ok := replayTurn(m, searching); ok {
 			return append(blocks, replayed...)
 		}
 	}
@@ -169,9 +169,10 @@ func turnState(content []sdk.ContentBlockUnion) json.RawMessage {
 }
 
 // replayTurn rebuilds a tool-calling turn from its state, in the original
-// order, taking each call from ToolCalls by id. False when there is no usable
+// order, taking each call from ToolCalls by id. searching says whether the
+// request it is for carries the search tool. False when there is no usable
 // state, and the caller builds the turn from ToolCalls alone.
-func replayTurn(m ai.Message) ([]sdk.ContentBlockParamUnion, bool) {
+func replayTurn(m ai.Message, searching bool) ([]sdk.ContentBlockParamUnion, bool) {
 	var kept []stateBlock
 	if len(m.ProviderState) == 0 || json.Unmarshal(m.ProviderState, &kept) != nil || len(kept) == 0 {
 		return nil, false
@@ -201,6 +202,17 @@ func replayTurn(m ai.Message) ([]sdk.ContentBlockParamUnion, bool) {
 		case kindSearch:
 			var block sdk.ContentBlockUnion
 			if block.UnmarshalJSON(k.Raw) != nil {
+				continue
+			}
+			// A request that is not searching (the switch has since been
+			// turned off, or the tool was refused) gets what the search
+			// left behind as plain text: the words without their citations,
+			// and neither the search nor its results. Search blocks in a
+			// request with no search tool are the API's to refuse.
+			if !searching {
+				if text, ok := block.AsAny().(sdk.TextBlock); ok && text.Text != "" {
+					out = append(out, sdk.NewTextBlock(text.Text))
+				}
 				continue
 			}
 			if param, ok := blockParam(block); ok {

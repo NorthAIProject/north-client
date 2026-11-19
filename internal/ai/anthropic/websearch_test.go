@@ -275,6 +275,60 @@ func TestASearchInAToolRoundIsReplayedWhole(t *testing.T) {
 	}
 }
 
+// The same stored round, replayed on a request that is not searching: the
+// switch was turned off since, or the tool was refused. The search and its
+// results stay behind and the words go back plain, so turning search off can
+// never strand a conversation that used it.
+func TestASearchedRoundIsReplayedPlainWhenNotSearching(t *testing.T) {
+	round := append(append([]string{}, searchTurn...),
+		`{"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_stats","input":{}}}`,
+		`{"type":"content_block_stop","index":3}`,
+		searchUsage("tool_use"), evMsgStop)
+	_, searching := searchingClient(t, sse(round...))
+
+	req := ai.Request{
+		Messages: []ai.Message{ai.UserText("creatine, and my stats?")}, AllowWebSearch: true,
+		Tools: []ai.Tool{{Name: "get_stats", Description: "stats", Parameters: &ai.Schema{Type: "object"}}},
+	}
+	ch, err := searching.Chat(context.Background(), req)
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	callMsg := ai.Message{}
+	for _, c := range collect(t, ch) {
+		if len(c.ToolCalls) > 0 {
+			callMsg = ai.ToolCallMessage(c.ToolCalls)
+			callMsg.ProviderState = c.ProviderState
+		}
+	}
+	req.Messages = append(req.Messages, callMsg, ai.ToolResultMessage([]ai.ToolResult{{ID: "toolu_1", Name: "get_stats", Content: "{}"}}))
+
+	// Switched off since.
+	f, off := newManagedFakeAPI(t, sse(evStart, evTextStart, evText("Done."), evStop0, evMsgDelta("end_turn", 2), evMsgStop))
+	ch, err = off.Chat(context.Background(), req)
+	if err != nil {
+		t.Fatalf("second chat: %v", err)
+	}
+	collect(t, ch)
+
+	body := f.body(t, 0)
+	if hasSearchTool(t, body) {
+		t.Fatal("a client with search off offered it")
+	}
+	turn := body["messages"].([]any)[1].(map[string]any)["content"].([]any)
+	var kinds []string
+	for _, b := range turn {
+		kinds = append(kinds, b.(map[string]any)["type"].(string))
+	}
+	if strings.Join(kinds, ",") != "text,tool_use" {
+		t.Fatalf("replayed turn = %v, want the words and the call only", kinds)
+	}
+	text := turn[0].(map[string]any)
+	if text["text"] != "Loading is optional." || text["citations"] != nil {
+		t.Errorf("text went back as %v, want it plain", text)
+	}
+}
+
 // A search that fails is a 200 holding an error where the results would be.
 // The reply goes on, and the failed search costs nothing and names no source.
 func TestAFailedSearchIsNotAFailedReply(t *testing.T) {
