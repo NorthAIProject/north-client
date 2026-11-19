@@ -1,6 +1,8 @@
 package weekly
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,16 +14,30 @@ import (
 	"github.com/NorthAIProject/north-client/internal/shared/echox"
 	"github.com/NorthAIProject/north-client/internal/shared/httpx"
 	"github.com/NorthAIProject/north-client/internal/shared/i18n"
+	"github.com/NorthAIProject/north-client/internal/users"
 	"github.com/NorthAIProject/north-client/internal/weekly/week"
 	"github.com/NorthAIProject/north-client/internal/workouts/plan"
 )
 
 // API is the weekly review for native clients. Register behind auth.Bearer.
 type API struct {
-	svc *Service
+	svc     *Service
+	suggest Suggest
 }
 
+// Suggest is a volume worth suggesting for the coming week and, in the
+// reader's language, why; empty strings for nothing to suggest. The forecast
+// supplies it.
+type Suggest func(ctx context.Context, user users.User) (volume, reason string, err error)
+
 func NewAPI(svc *Service) *API { return &API{svc: svc} }
+
+// WithSuggestion shows a suggested volume beside the review's own choice. It
+// is only shown: the volume saved is the one the person picks.
+func (a *API) WithSuggestion(s Suggest) *API {
+	a.suggest = s
+	return a
+}
 
 func (a *API) Register(g *echo.Group) {
 	g.GET("/weekly/review", a.review)
@@ -61,6 +77,11 @@ type ReviewView struct {
 	Last      *FocusView    `json:"last,omitempty"`
 	Current   *FocusView    `json:"current,omitempty"`
 	Goals     []ReviewGoal  `json:"goals"`
+	// SuggestedVolume is a volume worth considering for the planned week
+	// ("deload" today), with SuggestedReason saying why. Both absent when
+	// there is nothing to suggest. Open strings; never applied for the person.
+	SuggestedVolume string `json:"suggestedVolume,omitempty"`
+	SuggestedReason string `json:"suggestedReason,omitempty"`
 }
 
 type FocusRequest struct {
@@ -75,7 +96,18 @@ func (a *API) review(c *echo.Context) error {
 	if err != nil {
 		return httpx.Fail(err, i18n.T(ctx, "weekly.api.review"))
 	}
-	return c.JSON(http.StatusOK, projectReview(rv))
+	out := projectReview(rv)
+	if a.suggest != nil {
+		// A suggestion is an extra: failing to work one out must not take
+		// the review down with it.
+		volume, reason, err := a.suggest(ctx, auth.MustUser(ctx))
+		if err != nil {
+			slog.WarnContext(ctx, "weekly review: no volume suggestion", "error", err)
+		} else {
+			out.SuggestedVolume, out.SuggestedReason = volume, reason
+		}
+	}
+	return c.JSON(http.StatusOK, out)
 }
 
 func (a *API) setFocus(c *echo.Context) error {

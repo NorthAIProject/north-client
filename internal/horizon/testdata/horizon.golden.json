@@ -1,0 +1,727 @@
+{
+  "status": "ready",
+  "generatedAt": "2026-11-18T12:00:00Z",
+  "scenario": {
+    "skipWeeks": 0,
+    "extraSessions": 0,
+    "deloadNow": false
+  },
+  "needs": [],
+  "summary": [
+    "Barbell Squat, est. 1RM: 139.7 to 142.5 kg in 4 weeks",
+    "Weight: 77.6 to 79.2 kg in 4 weeks",
+    "Waist: 86.0 to 89.5 cm in 4 weeks"
+  ],
+  "disclaimer": "A range from your own history, not a promise. It shows what tends to follow, not what causes what.",
+  "hasPlan": true,
+  "frames": [
+    {
+      "offsetDays": 0,
+      "date": "2026-11-18",
+      "shape": {
+        "waist": 0.109,
+        "hips": 0,
+        "chest": 0,
+        "overall": 0.072
+      },
+      "regions": [
+        {
+          "id": "chest",
+          "fatigue": 0.46,
+          "retained": 1
+        },
+        {
+          "id": "glutes",
+          "fatigue": 0.22,
+          "retained": 1
+        },
+        {
+          "id": "quads",
+          "fatigue": 0.46,
+          "retained": 1
+        },
+        {
+          "id": "triceps",
+          "fatigue": 0.22,
+          "retained": 1
+        }
+      ]
+    },
+    {
+      "offsetDays": 1,
+      "date": "2026-11-19",
+      "shape": {
+        "waist": 0.107,
+        "hips": 0,
+        "chest": 0,
+        "overall": 0.071
+      },
+      "regions": [
+        {
+          "id": "chest",
+          "fatigue": 0.35,
+          "retained": 1
+        },
+        {
+          "id": "glutes",
+          "fatigue": 0.16,
+          "retained": 1
+        },
+        {
+          "id": "quads",
+          "fatigue": 0.35,
+          "retained": 1
+        },
+        {
+          "id": "triceps",
+          "fatigue": 0.16,
+          "retained": 1
+        }
+      ]
+    }
+  ],
+  "lifts": [
+    {
+      "key": "barbell-squat",
+      "name": "Barbell Squat",
+      "slug": "barbell-squat",
+      "status": "ready",
+      "unit": "kg",
+      "needs": [],
+      "now": 140,
+      "points": [
+        {
+          "offsetDays": 0,
+          "low": 140,
+          "mid": 140,
+          "high": 140
+        },
+        {
+          "offsetDays": 1,
+          "low": 139.8,
+          "mid": 140,
+          "high": 140.2
+        },
+        {
+          "offsetDays": 2,
+          "low": 139.7,
+          "mid": 140.1,
+          "high": 140.5
+        },
+        {
+          "offsetDays": 3,
+          "low": 139.5,
+          "mid": 140.1,
+          "high": 140.7
+        },
+        {
+          "offsetDays": 4,
+          "low": 139.4,
+          "mid": 140.2,
+          "high": 141
+        },
+        {
+          "offsetDays": 5,
+          "low": 139.2,
+          "mid": 140.2,
+          "high": 141.2
+        },
+        {
+          "offsetDays": 6,
+          "low": 139.1,
+          "mid": 140.3,
+          "high": 141.5
+        },
+        {
+          "offsetDays": 7,
+          "low": 138.9,
+          "mid": 140.3,
+          "high": 141.7
+        },
+        {
+          "offsetDays": 8,
+          "low": 139,
+          "mid": 140.4,
+          "high": 141.8
+        },
+        {
+          "offsetDays": 9,
+          "low": 139,
+          "mid": 140.4,
+          "high": 141.8
+        },
+        {
+          "offsetDays": 10,
+          "low": 139.1,
+          "mid": 140.5,
+          "high": 141.9
+        },
+        {
+          "offsetDays": 11,
+          "low": 139.1,
+          "mid": 140.5,
+          "high": 141.9
+        },
+        {
+          "offsetDays": 12,
+          "low": 139.1,
+          "mid": 140.5,
+          "high": 141.9
+        },
+        {
+          "offsetDays": 13,
+          "low": 139.2,
+          "mid": 140.6,
+          "high": 142
+        },
+        {
+          "offsetDays": 14,
+          "low": 139.2,
+          "mid": 140.6,
+          "high": 142
+        },
+        {
+          "offsetDays": 21,
+          "low": 139.5,
+          "mid": 140.9,
+          "high": 142.3
+        },
+        {
+          "offsetDays": 28,
+          "low": 139.7,
+          "mid": 141.1,
+          "high": 142.5
+        },
+        {
+          "offsetDays": 35,
+          "low": 139.9,
+          "mid": 141.3,
+          "high": 142.7
+        },
+        {
+          "offsetDays": 42,
+          "low": 140.1,
+          "mid": 141.5,
+          "high": 142.9
+        },
+        {
+          "offsetDays": 49,
+          "low": 140.2,
+          "mid": 141.6,
+          "high": 143
+        },
+        {
+          "offsetDays": 56,
+          "low": 140.4,
+          "mid": 141.8,
+          "high": 143.2
+        },
+        {
+          "offsetDays": 63,
+          "low": 140.5,
+          "mid": 141.9,
+          "high": 143.5
+        },
+        {
+          "offsetDays": 70,
+          "low": 140.6,
+          "mid": 142,
+          "high": 143.8
+        },
+        {
+          "offsetDays": 77,
+          "low": 140.7,
+          "mid": 142.1,
+          "high": 144.1
+        },
+        {
+          "offsetDays": 84,
+          "low": 140.8,
+          "mid": 142.2,
+          "high": 144.3
+        }
+      ],
+      "trackRecord": {
+        "horizonWeeks": 4,
+        "hits": 23,
+        "total": 23,
+        "kind": "backtest",
+        "text": "Would have landed in range 23 of 23 times"
+      },
+      "plateau": "progressing",
+      "plateauText": "Progressing"
+    },
+    {
+      "key": "bench-press",
+      "name": "Bench Press",
+      "slug": "bench-press",
+      "status": "ready",
+      "unit": "kg",
+      "needs": [],
+      "now": 100,
+      "points": [
+        {
+          "offsetDays": 0,
+          "low": 100,
+          "mid": 100,
+          "high": 100
+        },
+        {
+          "offsetDays": 1,
+          "low": 99.9,
+          "mid": 100,
+          "high": 100.1
+        },
+        {
+          "offsetDays": 2,
+          "low": 99.7,
+          "mid": 100,
+          "high": 100.3
+        },
+        {
+          "offsetDays": 3,
+          "low": 99.6,
+          "mid": 100,
+          "high": 100.4
+        },
+        {
+          "offsetDays": 4,
+          "low": 99.4,
+          "mid": 100,
+          "high": 100.6
+        },
+        {
+          "offsetDays": 5,
+          "low": 99.3,
+          "mid": 100,
+          "high": 100.7
+        },
+        {
+          "offsetDays": 6,
+          "low": 99.1,
+          "mid": 100,
+          "high": 100.9
+        },
+        {
+          "offsetDays": 7,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 8,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 9,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 10,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 11,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 12,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 13,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 14,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 21,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 28,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 35,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 42,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 49,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 56,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 63,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 70,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 77,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        },
+        {
+          "offsetDays": 84,
+          "low": 99,
+          "mid": 100,
+          "high": 101
+        }
+      ],
+      "trackRecord": {
+        "horizonWeeks": 4,
+        "hits": 23,
+        "total": 23,
+        "kind": "backtest",
+        "text": "Would have landed in range 23 of 23 times"
+      },
+      "plateau": "plateau",
+      "plateauText": "Plateau"
+    }
+  ],
+  "bodyWeight": {
+    "status": "ready",
+    "unit": "kg",
+    "needs": [],
+    "now": 80,
+    "points": [
+      {
+        "offsetDays": 0,
+        "low": 80,
+        "mid": 80,
+        "high": 80
+      },
+      {
+        "offsetDays": 1,
+        "low": 79.8,
+        "mid": 79.9,
+        "high": 80
+      },
+      {
+        "offsetDays": 2,
+        "low": 79.6,
+        "mid": 79.9,
+        "high": 80.1
+      },
+      {
+        "offsetDays": 3,
+        "low": 79.4,
+        "mid": 79.8,
+        "high": 80.1
+      },
+      {
+        "offsetDays": 4,
+        "low": 79.3,
+        "mid": 79.7,
+        "high": 80.2
+      },
+      {
+        "offsetDays": 5,
+        "low": 79.1,
+        "mid": 79.7,
+        "high": 80.2
+      },
+      {
+        "offsetDays": 6,
+        "low": 78.9,
+        "mid": 79.6,
+        "high": 80.3
+      },
+      {
+        "offsetDays": 7,
+        "low": 78.7,
+        "mid": 79.5,
+        "high": 80.3
+      },
+      {
+        "offsetDays": 8,
+        "low": 78.7,
+        "mid": 79.5,
+        "high": 80.3
+      },
+      {
+        "offsetDays": 9,
+        "low": 78.6,
+        "mid": 79.4,
+        "high": 80.2
+      },
+      {
+        "offsetDays": 10,
+        "low": 78.6,
+        "mid": 79.3,
+        "high": 80.1
+      },
+      {
+        "offsetDays": 11,
+        "low": 78.5,
+        "mid": 79.3,
+        "high": 80.1
+      },
+      {
+        "offsetDays": 12,
+        "low": 78.4,
+        "mid": 79.2,
+        "high": 80
+      },
+      {
+        "offsetDays": 13,
+        "low": 78.4,
+        "mid": 79.2,
+        "high": 80
+      },
+      {
+        "offsetDays": 14,
+        "low": 78.3,
+        "mid": 79.1,
+        "high": 79.9
+      },
+      {
+        "offsetDays": 21,
+        "low": 78,
+        "mid": 78.7,
+        "high": 79.5
+      },
+      {
+        "offsetDays": 28,
+        "low": 77.6,
+        "mid": 78.4,
+        "high": 79.2
+      },
+      {
+        "offsetDays": 35,
+        "low": 77,
+        "mid": 78.1,
+        "high": 79.3
+      },
+      {
+        "offsetDays": 42,
+        "low": 76.4,
+        "mid": 77.9,
+        "high": 79.4
+      },
+      {
+        "offsetDays": 49,
+        "low": 75.8,
+        "mid": 77.7,
+        "high": 79.5
+      },
+      {
+        "offsetDays": 56,
+        "low": 75.3,
+        "mid": 77.5,
+        "high": 79.7
+      },
+      {
+        "offsetDays": 63,
+        "low": 75,
+        "mid": 77.3,
+        "high": 79.6
+      },
+      {
+        "offsetDays": 70,
+        "low": 74.7,
+        "mid": 77.1,
+        "high": 79.6
+      }
+    ],
+    "trackRecord": {
+      "horizonWeeks": 4,
+      "hits": 5,
+      "total": 5,
+      "kind": "backtest",
+      "text": "Would have landed in range 5 of 5 times"
+    }
+  },
+  "waist": {
+    "status": "ready",
+    "unit": "cm",
+    "needs": [],
+    "now": 88.9,
+    "points": [
+      {
+        "offsetDays": 0,
+        "low": 88.9,
+        "mid": 88.9,
+        "high": 88.9
+      },
+      {
+        "offsetDays": 1,
+        "low": 88.8,
+        "mid": 88.9,
+        "high": 89
+      },
+      {
+        "offsetDays": 2,
+        "low": 88.6,
+        "mid": 88.8,
+        "high": 89.1
+      },
+      {
+        "offsetDays": 3,
+        "low": 88.4,
+        "mid": 88.8,
+        "high": 89.2
+      },
+      {
+        "offsetDays": 4,
+        "low": 88.2,
+        "mid": 88.7,
+        "high": 89.2
+      },
+      {
+        "offsetDays": 5,
+        "low": 88.1,
+        "mid": 88.7,
+        "high": 89.3
+      },
+      {
+        "offsetDays": 6,
+        "low": 87.9,
+        "mid": 88.6,
+        "high": 89.4
+      },
+      {
+        "offsetDays": 7,
+        "low": 87.7,
+        "mid": 88.6,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 8,
+        "low": 87.6,
+        "mid": 88.5,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 9,
+        "low": 87.5,
+        "mid": 88.5,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 10,
+        "low": 87.4,
+        "mid": 88.5,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 11,
+        "low": 87.3,
+        "mid": 88.4,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 12,
+        "low": 87.2,
+        "mid": 88.4,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 13,
+        "low": 87.1,
+        "mid": 88.3,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 14,
+        "low": 87,
+        "mid": 88.3,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 21,
+        "low": 86.5,
+        "mid": 88,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 28,
+        "low": 86,
+        "mid": 87.8,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 35,
+        "low": 85.6,
+        "mid": 87.6,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 42,
+        "low": 85.3,
+        "mid": 87.4,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 49,
+        "low": 84.9,
+        "mid": 87.2,
+        "high": 89.5
+      },
+      {
+        "offsetDays": 56,
+        "low": 84.6,
+        "mid": 87,
+        "high": 89.5
+      }
+    ]
+  },
+  "goalEta": {
+    "targetKg": 78,
+    "state": "open",
+    "earliest": "2026-12-09",
+    "text": "Target weight from 9 December at the earliest"
+  },
+  "deload": {
+    "suggested": false,
+    "reasons": [
+      {
+        "code": "long_since_lighter_week",
+        "text": "Six weeks or more without a lighter week"
+      }
+    ]
+  }
+}

@@ -260,6 +260,32 @@ before writing one:
 
 ---
 
+# Forecasts (Horizon)
+
+`internal/horizon` owns no measurements. It reads sets, the followed plan,
+weights from all three places one can land (typed, synced, progress check),
+waists and recovery from the slices that own them, and hands them to
+`internal/horizon/forecast`, a leaf that is arithmetic with no model call.
+
+Three rules hold everywhere in it, and anything added must keep them:
+
+- **A forecast is a range.** Its width comes from replaying the same method on
+  the person's own past (`forecast.Misses`, `BandFrom`), and coverage is scored
+  out of sample. With too little history it says what is missing instead.
+- **It says what tends to follow, never what causes what.** A what-if moves only
+  what can be stood behind. Fatigue and what has gone untrained come from the
+  load model in `internal/lifts/lift`; time off only pauses a strength trend,
+  with no loss claimed over a break of a few weeks. An extra session never
+  raises a strength forecast.
+- **A lighter week is only ever suggested.** `forecast.SuggestDeload` needs two
+  independent signs; the weekly review shows it and the person chooses.
+
+The one table, `horizon_snapshots`, is the forecast as it was made, written on
+Monday mornings and never rewritten, so that a track record of forecasts
+actually made can replace the recomputed backtest once enough have come due.
+
+---
+
 # Adding a new domain
 
 The checklist, in order:
@@ -269,16 +295,18 @@ The checklist, in order:
 2. Add a goose migration in `migrations/` (contiguous numbering) and a `db/queries.sql`,
    then register the package in `sqlc.yaml` and regenerate.
 3. Build the slice: leaf domain package (`internal/<slice>/<thing>/<thing>.go`) with
-   a `Summary()` method, then `repository.go`, `service.go`, `handler.go`. Handlers
+   a `Summary()` method, then `repository.go`, `service.go`, `api.go`. Handlers
    call their own service, never their own repository.
-4. Write a `context_source.go` and register it in `cmd/api/main.go`. Prefer an
+4. Write a `context_source.go` and register it in `cmd/api/routes.go`. Prefer an
    existing `Context` heading over inventing one.
-5. Wire the UI. A new top-level page needs a `layout.BuildNav` entry; anything
-   daily probably belongs on `/app/care` instead.
+5. Add the routes to `docs/api/openapi.yaml` (the parity test in `cmd/api`
+   fails until they match) and a golden for each response. This repository
+   renders no pages: the screens are in `north-web-app` and `north-ios-app`.
 6. If it needs background work: a `jobs.Kind` const plus payload struct in
    `internal/jobs/jobs.go`, and `worker.Register(...)` in `cmd/worker/main.go`.
-   Note there is **no scheduler** — jobs are triggered by events or by a person,
-   and anything recurring is polled at request time.
+   Recurring work is a sweep: `worker.RegisterPeriodic` enqueues it hourly and
+   the handler decides, per person and in their own time zone, whether this
+   is the hour to act (see `internal/awards/sweep.go`).
 7. Add tests against a real Postgres via `testdb.New(t)`. There are no mocks;
    cross-slice dependencies are faked with small local interfaces.
 8. Update this document.
@@ -294,7 +322,8 @@ The checklist, in order:
 - **No event-sourcing.** Logs are rows, not events with projections.
 - **No per-domain check-in.** `check_ins` stays one row per day covering mood and
   energy overall. Splitting it per domain would ask people to file their feelings.
-- **No scheduler.** See step 6 above.
+- **No cron-style scheduler.** Recurring work is an hourly sweep that checks
+  each person's local time; see step 6 above.
 
 These are current positions, not permanent ones. Each becomes worth revisiting when
 something concrete is blocked by its absence — and when that happens, the reason

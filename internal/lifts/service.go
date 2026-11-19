@@ -348,6 +348,14 @@ func (s *Service) BodyMap(ctx context.Context, user users.User, days int) (bodym
 	return bodymap.FromHeat(lift.HeatOf(sets, weights, now, user.Location(), days)), nil
 }
 
+// History is a year of the person's sets, the catalog muscle weights of the
+// exercises in them, and the moment they were read at, in the person's own
+// time zone. For readers that run the load model themselves, such as the
+// forecast.
+func (s *Service) History(ctx context.Context, user users.User) ([]Set, lift.Weights, time.Time, error) {
+	return s.yearOfSets(ctx, user)
+}
+
 // yearOfSets is the person's sets from the last year, the catalog muscle
 // weights of the exercises in them, and the moment they were read at.
 func (s *Service) yearOfSets(ctx context.Context, user users.User) ([]Set, lift.Weights, time.Time, error) {
@@ -365,6 +373,44 @@ func (s *Service) yearOfSets(ctx context.Context, user users.User) ([]Set, lift.
 		weights[slug] = lift.MuscleWeights(e.Primary, e.Secondary)
 	}
 	return sets, weights, now, nil
+}
+
+// MatchExercises is MatchExercise for several names at one reading of the
+// catalog: name to slug, with the names the catalog has nothing like left
+// out.
+func (s *Service) MatchExercises(ctx context.Context, names []string) (map[string]string, error) {
+	if s.matchers == nil || len(names) == 0 {
+		return nil, nil
+	}
+	m, err := s.matchers.Matcher(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(names))
+	for _, name := range names {
+		if slug, _ := m.Match(name); slug != "" {
+			out[name] = slug
+		}
+	}
+	return out, nil
+}
+
+// MuscleWeights is the catalog muscle weights of the given exercises: what a
+// set of each would load. For reading exercises not yet in anybody's log,
+// such as those of a plan. Unknown slugs are left out.
+func (s *Service) MuscleWeights(ctx context.Context, slugs []string) (lift.Weights, error) {
+	if s.muscles == nil || len(slugs) == 0 {
+		return nil, nil
+	}
+	catalog, err := s.muscles.Resolve(ctx, slugs)
+	if err != nil {
+		return nil, err
+	}
+	weights := make(lift.Weights, len(catalog))
+	for slug, e := range catalog {
+		weights[slug] = lift.MuscleWeights(e.Primary, e.Secondary)
+	}
+	return weights, nil
 }
 
 // Recent is the last fortnight, for the coach.

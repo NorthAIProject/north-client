@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NorthAIProject/north-client/internal/horizon"
 	"github.com/NorthAIProject/north-client/internal/stats"
 
 	"github.com/NorthAIProject/north-client/internal/caffeine"
@@ -57,14 +58,16 @@ const resultLimit = 8
 // from its slice: this package is composition, not another layer of interfaces
 // over things that already have one caller.
 type Services struct {
-	Exercises     *exercises.Service
-	Calculator    *calculator.Service
-	Goals         *goals.Service
-	Ingredients   *meals.IngredientService
-	FoodLog       *meals.FoodLogService
-	CheckIns      *checkins.Service
-	Documents     *documents.Service
-	Workouts      *workouts.Service
+	Exercises   *exercises.Service
+	Calculator  *calculator.Service
+	Goals       *goals.Service
+	Ingredients *meals.IngredientService
+	FoodLog     *meals.FoodLogService
+	CheckIns    *checkins.Service
+	Documents   *documents.Service
+	Workouts    *workouts.Service
+	// Horizon is the forecast; nil leaves get_forecast out.
+	Horizon       *horizon.Service
 	Notifications *notifications.Service
 
 	// The day's logs. Each is the slice that already owns the table; this
@@ -186,6 +189,9 @@ func Build(svc Services) *Registry {
 				setActiveWorkoutPlan(svc.Workouts, svc.Users),
 			)
 		}
+	}
+	if svc.Horizon != nil && svc.Users != nil {
+		r.Register(getForecast(svc.Horizon, svc.Users))
 	}
 	if svc.Ingredients != nil {
 		r.Register(searchIngredients(svc.Ingredients))

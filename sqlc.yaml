@@ -414,6 +414,16 @@ sql:
 
   - engine: postgresql
     schema: migrations
+    queries: internal/horizon/db/queries.sql
+    gen:
+      go:
+        <<: *gen
+        package: horizondb
+        out: internal/horizon/db
+        overrides: *overrides
+
+  - engine: postgresql
+    schema: migrations
     queries: internal/social/db/queries.sql
     gen:
       go:

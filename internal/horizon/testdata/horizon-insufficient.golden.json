@@ -1,0 +1,106 @@
+{
+  "status": "insufficient",
+  "generatedAt": "2026-11-18T12:00:00Z",
+  "scenario": {
+    "skipWeeks": 0,
+    "extraSessions": 0,
+    "deloadNow": false
+  },
+  "needs": [
+    {
+      "code": "lift_sessions",
+      "have": 3,
+      "want": 6,
+      "text": "3 of 6 Barbell Squat sessions"
+    },
+    {
+      "code": "weigh_ins",
+      "have": 0,
+      "want": 5,
+      "text": "0 of 5 days with a weigh-in"
+    },
+    {
+      "code": "waist_checks",
+      "have": 0,
+      "want": 3,
+      "text": "0 of 3 waist measurements"
+    }
+  ],
+  "summary": [],
+  "disclaimer": "A range from your own history, not a promise. It shows what tends to follow, not what causes what.",
+  "hasPlan": false,
+  "frames": [
+    {
+      "offsetDays": 0,
+      "date": "2026-11-18",
+      "shape": {
+        "waist": 0,
+        "hips": 0,
+        "chest": 0,
+        "overall": 0
+      },
+      "regions": [
+        {
+          "id": "glutes",
+          "fatigue": 0.22,
+          "retained": 1
+        },
+        {
+          "id": "quads",
+          "fatigue": 0.46,
+          "retained": 1
+        }
+      ]
+    }
+  ],
+  "lifts": [
+    {
+      "key": "barbell-squat",
+      "name": "Barbell Squat",
+      "slug": "barbell-squat",
+      "status": "insufficient",
+      "unit": "kg",
+      "needs": [
+        {
+          "code": "lift_sessions",
+          "have": 3,
+          "want": 6,
+          "text": "3 of 6 Barbell Squat sessions"
+        }
+      ],
+      "points": [],
+      "plateau": "insufficient",
+      "plateauText": "Not enough sessions yet"
+    }
+  ],
+  "bodyWeight": {
+    "status": "insufficient",
+    "unit": "kg",
+    "needs": [
+      {
+        "code": "weigh_ins",
+        "have": 0,
+        "want": 5,
+        "text": "0 of 5 days with a weigh-in"
+      }
+    ],
+    "points": []
+  },
+  "waist": {
+    "status": "insufficient",
+    "unit": "cm",
+    "needs": [
+      {
+        "code": "waist_checks",
+        "have": 0,
+        "want": 3,
+        "text": "0 of 3 waist measurements"
+      }
+    ],
+    "points": []
+  },
+  "deload": {
+    "suggested": false,
+    "reasons": []
+  }
+}

@@ -55,6 +55,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/horizon"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/inbox"
 	"github.com/NorthAIProject/north-client/internal/insights"
@@ -661,6 +662,19 @@ func routes(
 		SiteURL:       cfg.BaseURL,
 	})
 
+	// Horizon owns no measurements: it reads the slices above and forecasts
+	// from them.
+	horizonSvc := horizon.NewService(horizon.Options{
+		Lifts:        liftSvc,
+		Plans:        workoutSvc,
+		Measurements: biometricSvc,
+		Readings:     healthSvc,
+		Checks:       progressSvc,
+		Recovery:     horizon.NewMorningRecovery(insightsSvc),
+		Targets:      preferencesSvc,
+		Snapshots:    horizon.NewRepository(pool),
+	})
+
 	// Built here rather than beside the other slices because a weekly review
 	// reads the whole week through insights: it has to come after everything
 	// insights itself depends on. Without Context the generator still runs and
@@ -723,6 +737,7 @@ func routes(
 		Workouts:      workoutSvc,
 		Users:         userSvc,
 		Notifications: notificationSvc,
+		Horizon:       horizonSvc,
 
 		// The day's logs, through the slices that already own them.
 		Hydration:  hydrationSvc,
@@ -786,6 +801,7 @@ func routes(
 			screentime.NewContextSource(screenTimeSvc),
 			soreness.NewContextSource(sorenessSvc),
 			lifts.NewContextSource(liftSvc),
+			horizon.NewContextSource(horizonSvc),
 			milestones.NewContextSource(milestoneSvc),
 			// nil clock: the real one. Shares DailySignals with sleep and
 			// hydration, because a device's resting numbers are read the same
@@ -1132,7 +1148,7 @@ func routes(
 		crews:        crews.NewAPI(crewSvc, cfg.BaseURL).WithLive(crewChat, crewLive),
 		moderation:   moderation.NewAPI(moderationSvc),
 		xp:           xp.NewAPI(xpSvc),
-		weekly:       weekly.NewAPI(weeklySvc),
+		weekly:       weekly.NewAPI(weeklySvc).WithSuggestion(horizonSvc.SuggestedVolume),
 		recaps:       recaps.NewAPI(recapSvc),
 		dailyPosts:   dailyposts.NewAPI(dailyPostSvc),
 		inbox:        inbox.NewAPI(inboxSvc),
@@ -1140,6 +1156,7 @@ func routes(
 			return outreachSvc != nil && outreachSvc.CoversRecovery(ctx, u)
 		}),
 		outreach:  outreach.NewAPI(outreachSvc),
+		horizon:   horizon.NewAPI(horizonSvc),
 		firstWeek: firstweek.NewAPI(firstWeekSvc),
 		push:      push.NewAPI(pushSvc),
 	})
