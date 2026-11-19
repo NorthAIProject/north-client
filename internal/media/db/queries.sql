@@ -31,9 +31,21 @@ ORDER BY created_at DESC, id DESC
 LIMIT 1;
 
 -- name: CreateAnalysis :one
-INSERT INTO form_analyses (media_id, user_id)
-VALUES ($1, $2)
+INSERT INTO form_analyses (media_id, user_id, duration_seconds, exercise_slug)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
+
+-- name: AddAnalysisFrame :exec
+INSERT INTO form_analysis_frames (analysis_id, idx, media_id, at_seconds)
+VALUES ($1, $2, $3, $4);
+
+-- name: ListAnalysisFrames :many
+-- The stills of one check, in clip order, with where each is stored.
+SELECT f.idx, f.media_id, f.at_seconds, m.storage_key, m.mime_type
+FROM form_analysis_frames f
+JOIN media m ON m.id = f.media_id
+WHERE f.analysis_id = $1
+ORDER BY f.idx;
 
 -- name: GetAnalysis :one
 SELECT * FROM form_analyses WHERE id = $1 AND user_id = $2;

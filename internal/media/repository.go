@@ -28,13 +28,14 @@ type Media struct {
 }
 
 type PostgresRepository struct {
-	q *mediadb.Queries
+	pool *pgxpool.Pool
+	q    *mediadb.Queries
 }
 
 var _ Repository = (*PostgresRepository)(nil)
 
 func NewRepository(pool *pgxpool.Pool) *PostgresRepository {
-	return &PostgresRepository{q: mediadb.New(pool)}
+	return &PostgresRepository{pool: pool, q: mediadb.New(pool)}
 }
 
 type NewMedia struct {
@@ -139,12 +140,72 @@ func (r *PostgresRepository) GetMediaByID(ctx context.Context, id uuid.UUID) (Me
 	return mediaFromDB(row), nil
 }
 
-func (r *PostgresRepository) CreateAnalysis(ctx context.Context, mediaID, userID uuid.UUID) (analysis.Analysis, error) {
-	row, err := r.q.CreateAnalysis(ctx, mediadb.CreateAnalysisParams{MediaID: mediaID, UserID: userID})
+// NewAnalysis is a form check about to be queued, with the stills it will be
+// read from. No frames means the clip is read as video, where a provider can.
+type NewAnalysis struct {
+	MediaID         uuid.UUID
+	UserID          uuid.UUID
+	DurationSeconds float64
+	ExerciseSlug    string
+	Frames          []analysis.Frame
+}
+
+// StoredFrame is one still of a check and where its bytes are kept.
+type StoredFrame struct {
+	analysis.Frame
+	StorageKey string
+	MIMEType   string
+}
+
+// CreateAnalysis writes the check and its stills together, so a check is never
+// left pointing at half its frames.
+func (r *PostgresRepository) CreateAnalysis(ctx context.Context, in NewAnalysis) (analysis.Analysis, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return analysis.Analysis{}, apperr.Wrap(err, "begin create analysis")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	q := r.q.WithTx(tx)
+	row, err := q.CreateAnalysis(ctx, mediadb.CreateAnalysisParams{
+		MediaID:         in.MediaID,
+		UserID:          in.UserID,
+		DurationSeconds: in.DurationSeconds,
+		ExerciseSlug:    in.ExerciseSlug,
+	})
 	if err != nil {
 		return analysis.Analysis{}, apperr.Wrap(err, "create analysis")
 	}
+	for _, f := range in.Frames {
+		if err := q.AddAnalysisFrame(ctx, mediadb.AddAnalysisFrameParams{
+			AnalysisID: row.ID,
+			Idx:        int32(f.Index),
+			MediaID:    f.MediaID,
+			AtSeconds:  f.AtSeconds,
+		}); err != nil {
+			return analysis.Analysis{}, apperr.Wrap(err, "add analysis frame %d", f.Index)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return analysis.Analysis{}, apperr.Wrap(err, "commit create analysis")
+	}
 	return analysisFromDB(row), nil
+}
+
+func (r *PostgresRepository) ListFrames(ctx context.Context, analysisID uuid.UUID) ([]StoredFrame, error) {
+	rows, err := r.q.ListAnalysisFrames(ctx, analysisID)
+	if err != nil {
+		return nil, apperr.Wrap(err, "list analysis frames")
+	}
+	out := make([]StoredFrame, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, StoredFrame{
+			Frame:      analysis.Frame{Index: int(row.Idx), MediaID: row.MediaID, AtSeconds: row.AtSeconds},
+			StorageKey: row.StorageKey,
+			MIMEType:   row.MimeType,
+		})
+	}
+	return out, nil
 }
 
 func (r *PostgresRepository) GetAnalysis(ctx context.Context, id, userID uuid.UUID) (analysis.Analysis, error) {
@@ -228,6 +289,9 @@ func analysisFromDB(row mediadb.FormAnalysis) analysis.Analysis {
 		Provider:  row.Provider,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
+
+		DurationSeconds: row.DurationSeconds,
+		ExerciseSlug:    row.ExerciseSlug,
 	}
 
 	if len(row.Analysis) > 0 {

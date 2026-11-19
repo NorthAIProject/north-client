@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/jpeg" // stills arrive as JPEG; registered for DecodeConfig
 	"io"
+	"math"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -38,6 +41,22 @@ const MaxImageBytes int64 = 8 << 20 // 8 MB
 // Kept at a photo's size so one chat upload limit covers both.
 const MaxFileBytes int64 = 8 << 20 // 8 MB
 
+// Limits on the stills of one form check. They bound what one check can cost:
+// a vision model bills by pixel, so the count and the edge together are the
+// price, and the byte cap keeps the request body small enough to hold in
+// memory while it is checked.
+const (
+	MaxFramesBytes int64 = 4 << 20 // 4 MB across every still
+	MaxFrameEdge         = 1024    // pixels, the longer side
+)
+
+// stillsMaxTokens fits a summary and a handful of issues with room to spare.
+const stillsMaxTokens = 1500
+
+// stillsAttempts is one call and one retry on a reply that is not the JSON
+// asked for.
+const stillsAttempts = 2
+
 const (
 	KindVideo = "video"
 	KindImage = "image"
@@ -46,6 +65,9 @@ const (
 	// KindProgressPhoto is a body photo taken for a progress check. Its own
 	// kind so it never counts as a chat photo, photo evidence or a document.
 	KindProgressPhoto = "progress_photo"
+	// KindFormFrame is a still cut from a form-check clip. Its own kind so it
+	// never counts as a chat photo.
+	KindFormFrame = "form_frame"
 )
 
 // ErrNoChatFile is LatestChatFile's answer when this person has sent no file,
@@ -56,8 +78,12 @@ var ErrNoChatFile = apperr.Wrap(apperr.ErrNotFound, "no file has been sent in ch
 // watch a clip several times, short enough that a leaked URL expires.
 const signedURLLifetime = 2 * time.Hour
 
-// analysisTemperature is low: this is observation, not composition.
+// analysisTemperature is low: this is observation, not composition. Used on
+// the video path only; the stills path sends none, because Haiku 5.5 refuses
+// any temperature but its default.
 var analysisTemperature = float32(0.1)
+
+var allowedFrameTypes = map[string]string{"image/jpeg": ".jpg"}
 
 // allowedVideoTypes are the container formats a phone actually produces and
 // Gemini actually reads.
@@ -123,6 +149,7 @@ type Service struct {
 	registry *ai.Registry
 	provider string
 	model    string
+	vision   ai.Client
 
 	onReady func(ctx context.Context, userID, analysisID uuid.UUID)
 }
@@ -140,6 +167,12 @@ type Options struct {
 	Provider string
 
 	Model string
+
+	// Vision reads the stills of a form check. One client, not a chain, for
+	// the reason progresschecks.Assist gives: these are pictures of a person's
+	// body, and they go to the one provider the consent screen names, never
+	// to the free fallback chain. Nil means stills cannot be read here.
+	Vision ai.Client
 
 	// OnReady is called after a form analysis completes. Used to raise a
 	// bell note. Nil is a no-op.
@@ -169,7 +202,8 @@ type Repository interface {
 	DeleteMedia(ctx context.Context, id, userID uuid.UUID) (string, error)
 	LatestOfKinds(ctx context.Context, userID uuid.UUID, kinds []string, name string) (Media, error)
 	GetMediaByID(ctx context.Context, id uuid.UUID) (Media, error)
-	CreateAnalysis(ctx context.Context, mediaID, userID uuid.UUID) (analysis.Analysis, error)
+	CreateAnalysis(ctx context.Context, in NewAnalysis) (analysis.Analysis, error)
+	ListFrames(ctx context.Context, analysisID uuid.UUID) ([]StoredFrame, error)
 	GetAnalysis(ctx context.Context, id, userID uuid.UUID) (analysis.Analysis, error)
 	GetAnalysisByMedia(ctx context.Context, mediaID uuid.UUID) (analysis.Analysis, error)
 	ListAnalyses(ctx context.Context, userID uuid.UUID, limit int) ([]analysis.Analysis, error)
@@ -186,6 +220,7 @@ func NewService(opts Options) *Service {
 		registry: opts.Registry,
 		provider: opts.Provider,
 		model:    opts.Model,
+		vision:   opts.Vision,
 		onReady:  opts.OnReady,
 	}
 }
@@ -196,11 +231,36 @@ type AnalyzeFormPayload struct {
 	MediaID    uuid.UUID `json:"media_id"`
 }
 
-// UploadVideo stores a clip and queues its analysis.
+// FormUpload is one form check as a client sends it: the clip, kept for
+// playback, and the stills cut from it, which are what gets read.
+type FormUpload struct {
+	Filename string
+	Size     int64
+	Body     io.Reader
+
+	// DurationSeconds is the clip's length as the client measured it.
+	DurationSeconds float64
+
+	// ExerciseSlug is the catalogue exercise the person said they filmed.
+	// Optional.
+	ExerciseSlug string
+
+	// Frames are the stills, in clip order. Empty from a client that predates
+	// them.
+	Frames []FrameUpload
+}
+
+// FrameUpload is one still and the second of the clip it was cut at.
+type FrameUpload struct {
+	AtSeconds float64
+	Body      io.Reader
+}
+
+// UploadVideo stores a clip and its stills and queues the analysis.
 //
-// It returns as soon as the file is stored. Analysing a video takes far longer
-// than a request should, so the work happens in the worker and the page polls.
-func (s *Service) UploadVideo(ctx context.Context, userID uuid.UUID, filename string, size int64, body io.Reader) (analysis.Analysis, error) {
+// It returns as soon as the files are stored. Reading them takes longer than a
+// request should, so the work happens in the worker and the page polls.
+func (s *Service) UploadVideo(ctx context.Context, userID uuid.UUID, in FormUpload) (analysis.Analysis, error) {
 	// Asked before the upload, so the analysis cannot be left failing later.
 	if s.consent != nil {
 		allowed, err := s.consent.AllowsAI(ctx, userID)
@@ -212,11 +272,24 @@ func (s *Service) UploadVideo(ctx context.Context, userID uuid.UUID, filename st
 		}
 	}
 
+	stills, err := readFrames(in)
+	if err != nil {
+		return analysis.Analysis{}, err
+	}
+	// Refused here rather than failed in the worker: nothing that can read
+	// this upload exists, and storing 90 MB to say so later helps nobody.
+	if !s.canRead(len(stills) > 0) {
+		if len(stills) == 0 {
+			return analysis.Analysis{}, apperr.FieldErrors{{Field: "video", Message: "This version of Khepri can no longer check form. Update the app and send the clip again."}}
+		}
+		return analysis.Analysis{}, apperr.Wrap(apperr.ErrUnavailable, "form check: no provider can read stills")
+	}
+
 	record, err := s.storeUpload(ctx, storeUpload{
 		UserID:   userID,
-		Filename: filename,
-		Size:     size,
-		Body:     body,
+		Filename: in.Filename,
+		Size:     in.Size,
+		Body:     in.Body,
 		Kind:     KindVideo,
 		MaxBytes: MaxVideoBytes,
 		Allowed:  allowedVideoTypes,
@@ -228,7 +301,33 @@ func (s *Service) UploadVideo(ctx context.Context, userID uuid.UUID, filename st
 		return analysis.Analysis{}, err
 	}
 
-	pending, err := s.repo.CreateAnalysis(ctx, record.ID, userID)
+	frames := make([]analysis.Frame, 0, len(stills))
+	for i, still := range stills {
+		stored, storeErr := s.storeUpload(ctx, storeUpload{
+			UserID:   userID,
+			Filename: fmt.Sprintf("frame-%02d.jpg", i+1),
+			Size:     int64(len(still.data)),
+			Body:     bytes.NewReader(still.data),
+			Kind:     KindFormFrame,
+			MaxBytes: MaxFramesBytes,
+			Allowed:  allowedFrameTypes,
+			Field:    "frames",
+			TooBig:   "Those stills are too large.",
+			BadType:  "The stills must be JPEG images.",
+		})
+		if storeErr != nil {
+			return analysis.Analysis{}, storeErr
+		}
+		frames = append(frames, analysis.Frame{Index: i + 1, MediaID: stored.ID, AtSeconds: still.at})
+	}
+
+	pending, err := s.repo.CreateAnalysis(ctx, NewAnalysis{
+		MediaID:         record.ID,
+		UserID:          userID,
+		DurationSeconds: in.DurationSeconds,
+		ExerciseSlug:    strings.TrimSpace(in.ExerciseSlug),
+		Frames:          frames,
+	})
 	if err != nil {
 		return analysis.Analysis{}, err
 	}
@@ -244,6 +343,98 @@ func (s *Service) UploadVideo(ctx context.Context, userID uuid.UUID, filename st
 	return pending, nil
 }
 
+// canRead reports whether anything configured here can read this upload:
+// the vision client for stills, or the upload provider for a bare video.
+func (s *Service) canRead(hasStills bool) bool {
+	if hasStills && s.vision != nil {
+		return true
+	}
+	if s.provider == "" || s.registry == nil {
+		return false
+	}
+	_, err := s.registry.Get(s.provider)
+	return err == nil
+}
+
+// finite refuses the NaN and infinities strconv will happily parse; every
+// comparison against NaN is false, so it would pass the range checks.
+func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
+
+// VisionFrom picks the client that reads form-check stills: Khepri's own
+// Anthropic client, the one provider the AI consent screen names.
+//
+// The scripted fake is always registered, so it is taken only where the
+// deployment already runs on it (tests, local development). Anywhere else a
+// missing Anthropic key must mean "cannot read stills", not a made-up answer.
+// Nil when nothing may read them.
+func VisionFrom(registry *ai.Registry) ai.Client {
+	if registry == nil {
+		return nil
+	}
+	if c, err := registry.Get("anthropic"); err == nil {
+		return c
+	}
+	if registry.DefaultName() == "fake" {
+		if c, err := registry.Get("fake"); err == nil {
+			return c
+		}
+	}
+	return nil
+}
+
+type still struct {
+	at   float64
+	data []byte
+}
+
+// readFrames reads and checks every still before anything is stored, so a bad
+// one refuses the whole upload instead of leaving a check with gaps in it.
+func readFrames(in FormUpload) ([]still, error) {
+	if len(in.Frames) == 0 {
+		return nil, nil
+	}
+	refuse := func(message string) ([]still, error) {
+		return nil, apperr.FieldErrors{{Field: "frames", Message: message}}
+	}
+	if len(in.Frames) > analysis.MaxFrames {
+		return refuse(fmt.Sprintf("Send at most %d stills.", analysis.MaxFrames))
+	}
+	if !finite(in.DurationSeconds) || in.DurationSeconds <= 0 {
+		return refuse("Send the clip's length with its stills.")
+	}
+
+	out := make([]still, 0, len(in.Frames))
+	var total int64
+	last := -1.0
+	for i, f := range in.Frames {
+		// Strictly increasing and inside the clip: a marker is drawn at
+		// at/duration, so anything else would land off the timeline.
+		if !finite(f.AtSeconds) || f.AtSeconds < 0 || f.AtSeconds <= last || f.AtSeconds > in.DurationSeconds {
+			return refuse("The stills must be in clip order, each inside the clip.")
+		}
+		last = f.AtSeconds
+
+		data, err := io.ReadAll(io.LimitReader(f.Body, MaxFramesBytes-total+1))
+		if err != nil {
+			return nil, apperr.Wrap(err, "read still %d", i+1)
+		}
+		total += int64(len(data))
+		if total > MaxFramesBytes {
+			return refuse(fmt.Sprintf("Those stills are over %d MB together.", MaxFramesBytes>>20))
+		}
+
+		cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+		if err != nil || format != "jpeg" {
+			return refuse("The stills must be JPEG images.")
+		}
+		if max(cfg.Width, cfg.Height) > MaxFrameEdge {
+			return refuse(fmt.Sprintf("Each still must be at most %d pixels on its longer side.", MaxFrameEdge))
+		}
+		out = append(out, still{at: f.AtSeconds, data: data})
+	}
+	return out, nil
+}
+
 // AnalyzeVideo is the job handler. It is registered with the worker.
 func (s *Service) AnalyzeVideo(ctx context.Context, payload json.RawMessage) error {
 	var p AnalyzeFormPayload
@@ -257,7 +448,7 @@ func (s *Service) AnalyzeVideo(ctx context.Context, payload json.RawMessage) err
 		return err
 	}
 
-	result, model, provider, err := s.runAnalysis(ctx, p.MediaID)
+	result, model, provider, err := s.runAnalysis(ctx, p)
 	if err != nil {
 		// Recorded on the analysis as well as returned, so the page stops
 		// spinning and says what happened, rather than polling forever.
@@ -278,26 +469,104 @@ func (s *Service) AnalyzeVideo(ctx context.Context, payload json.RawMessage) err
 	return nil
 }
 
-func (s *Service) runAnalysis(ctx context.Context, mediaID uuid.UUID) (analysis.FormAnalysis, string, string, error) {
-	record, err := s.repo.GetMediaByID(ctx, mediaID)
+// runAnalysis reads the check from its stills when it has any, and as video
+// otherwise.
+func (s *Service) runAnalysis(ctx context.Context, p AnalyzeFormPayload) (analysis.FormAnalysis, string, string, error) {
+	record, err := s.repo.GetMediaByID(ctx, p.MediaID)
 	if err != nil {
 		return analysis.FormAnalysis{}, "", "", err
 	}
-
-	// Video is the most expensive thing per call that Khepri sends anywhere.
-	// This is also the one AI path that bypasses ai.Runner, which is exactly
-	// why metering lives on the client rather than in the runner.
 	ctx = aiattr.WithUser(ctx, record.UserID, spend.SurfaceFormAnalysis)
 
-	// Named rather than default: form analysis needs a provider with a real
-	// upload API, and the OpenAI-dialect backends have none. Taking whatever
-	// happens to head the chain would break video analysis every time the
-	// coach was pointed at OpenRouter, NVIDIA, xAI, or Hermes.
-	//
-	// This is the one AI call in Khepri that does not go through ai.Runner, for
-	// the same reason: the chain is a list of providers that can substitute for
-	// one another, and here only one can do the job at all. There is nothing to
-	// fall back to.
+	frames, err := s.repo.ListFrames(ctx, p.AnalysisID)
+	if err != nil {
+		return analysis.FormAnalysis{}, "", "", err
+	}
+	if len(frames) > 0 && s.vision != nil {
+		return s.runStills(ctx, frames)
+	}
+	return s.runVideo(ctx, record)
+}
+
+// runStills shows the model the numbered stills and asks which of them show a
+// fault. No temperature and no prefill: Haiku 5.5 refuses both.
+func (s *Service) runStills(ctx context.Context, frames []StoredFrame) (analysis.FormAnalysis, string, string, error) {
+	fail := func(err error) (analysis.FormAnalysis, string, string, error) {
+		return analysis.FormAnalysis{}, "", "", err
+	}
+
+	parts := make([]ai.Part, 0, 2*len(frames)+1)
+	plain := make([]analysis.Frame, 0, len(frames))
+	for _, f := range frames {
+		data, err := s.readFrame(ctx, f)
+		if err != nil {
+			return fail(err)
+		}
+		parts = append(parts,
+			ai.TextPart(fmt.Sprintf("Still %d of %d, at %.1f s:", f.Index, len(frames), f.AtSeconds)),
+			ai.Part{InlineData: data, MIMEType: f.MIMEType},
+		)
+		plain = append(plain, f.Frame)
+	}
+	parts = append(parts, ai.TextPart("Assess my form in these stills."))
+
+	system, err := prompts.Raw(prompts.FormAnalysisStills)
+	if err != nil {
+		return fail(err)
+	}
+
+	messages := []ai.Message{{Role: ai.RoleUser, Parts: parts}}
+	for attempt := 1; attempt <= stillsAttempts; attempt++ {
+		resp, err := s.vision.Generate(ctx, ai.Request{
+			System:         system,
+			Messages:       messages,
+			ResponseSchema: analysis.StillsSchema(),
+			MaxTokens:      stillsMaxTokens,
+		})
+		if err != nil {
+			return fail(fmt.Errorf("analyse stills via %s: %v: %w", s.vision.Name(), err, apperr.ErrUnavailable))
+		}
+
+		var result analysis.FormAnalysis
+		if json.Unmarshal(ai.JSONReply(resp.Text), &result) == nil {
+			// The model is whatever the provider says answered; the request
+			// names none, so the client's own default applies.
+			return analysis.FromStills(result, plain), resp.Model, s.vision.Name(), nil
+		}
+		messages = append(messages,
+			ai.ModelText(resp.Text),
+			ai.UserText("That was not valid JSON matching the schema. Answer again, correctly."),
+		)
+	}
+	return fail(fmt.Errorf("analyse stills via %s: reply was not the JSON asked for: %w", s.vision.Name(), apperr.ErrUnavailable))
+}
+
+func (s *Service) readFrame(ctx context.Context, f StoredFrame) ([]byte, error) {
+	object, err := s.storage.Get(ctx, f.StorageKey)
+	if err != nil {
+		return nil, apperr.Wrap(err, "open still %d", f.Index)
+	}
+	defer func() { _ = object.Close() }()
+
+	data, err := io.ReadAll(io.LimitReader(object, MaxFramesBytes+1))
+	if err != nil {
+		return nil, apperr.Wrap(err, "read still %d", f.Index)
+	}
+	if int64(len(data)) > MaxFramesBytes {
+		return nil, apperr.Wrap(apperr.ErrValidation, "still %d is larger than an upload allows", f.Index)
+	}
+	return data, nil
+}
+
+// runVideo is the path for a clip with no stills: the whole video goes to a
+// provider with a file upload API. Kept for one release behind
+// AI_UPLOAD_PROVIDER, for builds that send video only; production configures
+// no such provider, and UploadVideo refuses those uploads before they get here.
+func (s *Service) runVideo(ctx context.Context, record Media) (analysis.FormAnalysis, string, string, error) {
+	// Named rather than default: this needs a provider with a real upload
+	// API, and the OpenAI-dialect backends have none. It does not go through
+	// ai.Runner for the same reason: the chain is a list of providers that
+	// can substitute for one another, and here only one can do the job.
 	client, err := s.registry.Get(s.provider)
 	if err != nil {
 		return analysis.FormAnalysis{}, "", "", apperr.Wrap(err,
@@ -352,7 +621,34 @@ func (s *Service) runAnalysis(ctx context.Context, mediaID uuid.UUID) (analysis.
 	// Enforces what the prompt asks for. A model that lists faults while
 	// admitting it cannot see the movement is guessing, and a guessed fault
 	// sends someone away to fix a problem they do not have.
-	return analysis.Sanitise(result), s.model, client.Name(), nil
+	result = analysis.Sanitise(result)
+	result.Method = analysis.MethodVideo
+	return result, s.model, client.Name(), nil
+}
+
+// FrameLink is one still of a check as a client shows it.
+type FrameLink struct {
+	Index     int
+	AtSeconds float64
+	URL       string
+}
+
+// FrameLinks are short-lived signed links to a check's stills, in clip order.
+// Empty for a check that was read as video.
+func (s *Service) FrameLinks(ctx context.Context, analysisID uuid.UUID) ([]FrameLink, error) {
+	frames, err := s.repo.ListFrames(ctx, analysisID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]FrameLink, 0, len(frames))
+	for _, f := range frames {
+		url, err := s.storage.SignedURL(ctx, f.StorageKey, signedURLLifetime)
+		if err != nil {
+			return nil, apperr.Wrap(err, "sign still %d", f.Index)
+		}
+		out = append(out, FrameLink{Index: f.Index, AtSeconds: f.AtSeconds, URL: url})
+	}
+	return out, nil
 }
 
 func (s *Service) GetAnalysis(ctx context.Context, id, userID uuid.UUID) (analysis.Analysis, error) {
@@ -766,7 +1062,7 @@ func userFacing(err error) string {
 	case apperr.Is(err, apperr.ErrUnavailable):
 		return "Khepri could not reach its AI provider. This will be retried automatically."
 	case apperr.Is(err, apperr.ErrValidation):
-		return "Khepri could not read that video. Try re-recording or converting it to MP4."
+		return "Khepri could not read that clip. Try re-recording or converting it to MP4."
 	default:
 		return "Something went wrong analysing that video."
 	}

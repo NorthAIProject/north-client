@@ -27,6 +27,22 @@ func TestFormCheckShapes(t *testing.T) {
 	played.PlaybackURL = "https://storage.example/form/d0d0.mp4?X-Amz-Expires=900&X-Amz-Signature=abc"
 	apitest.AssertGolden(t, "form-check-playback.golden.json", played)
 
+	// A check read from stills: every issue sits on the still it was seen in.
+	stills := played
+	stills.DurationSeconds = 8
+	stills.Method = "stills"
+	stills.Frames = []FormFrameView{
+		{At: 0.5, URL: "https://storage.example/form/f01.jpg?X-Amz-Expires=900&X-Amz-Signature=abc"},
+		{At: 4.5, URL: "https://storage.example/form/f02.jpg?X-Amz-Expires=900&X-Amz-Signature=abc"},
+	}
+	result := *done.Result
+	result.Issues = []FormIssueView{{
+		At: 4.5, Severity: "moderate", Observation: "Knees are inside the toes at the bottom.",
+		Correction: "Push the knees out over the toes.", FrameURL: stills.Frames[1].URL,
+	}}
+	stills.Result = &result
+	apitest.AssertGolden(t, "form-check-stills.golden.json", stills)
+
 	apitest.AssertGolden(t, "media-link.golden.json", MediaLinkView{
 		ID:  uuid.MustParse("e0e0e0e0-e0e0-e0e0-e0e0-e0e0e0e0e0e0"),
 		URL: "https://storage.example/media/e0e0.jpg?X-Amz-Expires=900&X-Amz-Signature=abc", Kind: "image", MIMEType: "image/jpeg",

@@ -177,3 +177,33 @@ func TestSchemaRequiresConfidenceBeforeIssues(t *testing.T) {
 		t.Fatalf("confidence must be generated before issues, got %v", order)
 	}
 }
+
+func TestFromStillsAnchorsEachIssueToItsStill(t *testing.T) {
+	frames := []Frame{{Index: 1, AtSeconds: 0.5}, {Index: 2, AtSeconds: 2}, {Index: 3, AtSeconds: 3.5}}
+	got := FromStills(FormAnalysis{
+		Confidence: ConfidenceMedium,
+		Issues: []FormIssue{
+			{Frame: 3, Severity: SeverityMinor, Observation: "Heels lift at the bottom.", TimestampSeconds: 99},
+			{Frame: 0, Severity: SeverityMinor, Observation: "Names no still."},
+			{Frame: 7, Severity: SeverityCritical, Observation: "Names a still that was not sent."},
+		},
+	}, frames)
+
+	if got.Method != MethodStills {
+		t.Errorf("method = %q", got.Method)
+	}
+	if len(got.Issues) != 1 || got.Issues[0].Frame != 3 || got.Issues[0].TimestampSeconds != 3.5 {
+		t.Fatalf("issues = %+v, want the one real still at its own second", got.Issues)
+	}
+}
+
+// Low confidence still means no issues, whatever stills they name.
+func TestFromStillsKeepsTheLowConfidenceRule(t *testing.T) {
+	got := FromStills(FormAnalysis{
+		Confidence: ConfidenceLow,
+		Issues:     []FormIssue{{Frame: 1, Severity: SeverityMinor, Observation: "A guess."}},
+	}, []Frame{{Index: 1, AtSeconds: 1}})
+	if len(got.Issues) != 0 {
+		t.Fatalf("issues = %+v", got.Issues)
+	}
+}
