@@ -10,6 +10,7 @@ package horizon
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/health"
 	"github.com/NorthAIProject/north-client/internal/horizon/forecast"
 	"github.com/NorthAIProject/north-client/internal/lifts/lift"
+	"github.com/NorthAIProject/north-client/internal/media/analysis"
 	"github.com/NorthAIProject/north-client/internal/preferences"
 	"github.com/NorthAIProject/north-client/internal/progresschecks/progresscheck"
 	apperr "github.com/NorthAIProject/north-client/internal/shared/errors"
@@ -63,6 +65,10 @@ type (
 	Targets interface {
 		Get(ctx context.Context, userID uuid.UUID) (preferences.Preferences, error)
 	}
+	// Forms are the person's finished form checks, newest first.
+	Forms interface {
+		ListAnalyses(ctx context.Context, userID uuid.UUID, limit int) ([]analysis.Analysis, error)
+	}
 )
 
 // Options are the slices Horizon reads. Lifts is required; a nil anything
@@ -75,6 +81,7 @@ type Options struct {
 	Checks       Checks
 	Recovery     Recovery
 	Targets      Targets
+	Forms        Forms
 	Snapshots    *Repository
 }
 
@@ -240,6 +247,61 @@ type Lift struct {
 	// Past are the four-week forecasts the method would have made, each
 	// with what then happened.
 	Past []forecast.Miss
+	// Form is the newest form check of this lift; nil when there is none.
+	Form *FormNote
+}
+
+// FormNote is what the last form check of a lift said, beside its numbers:
+// a forecast of the load says nothing about how the lift is being moved.
+type FormNote struct {
+	AnalysisID uuid.UUID
+	At         time.Time
+	Summary    string
+	Confidence string
+	// Cue is the correction for the most serious thing seen; empty when
+	// nothing was.
+	Cue string
+}
+
+// formChecksRead is how far back a lift's form check is looked for: the
+// most the form slice lists at once.
+const formChecksRead = 50
+
+// formNote is the newest form check filmed of the catalog exercise slug. A
+// lift known only by a typed name has no slug, and so no note: a clip is
+// filed under a catalog exercise or under nothing.
+func (s *Service) formNote(ctx context.Context, userID uuid.UUID, slug string) (*FormNote, error) {
+	if s.o.Forms == nil || slug == "" {
+		return nil, nil
+	}
+	checks, err := s.o.Forms.ListAnalyses(ctx, userID, formChecksRead)
+	if err != nil {
+		return nil, fmt.Errorf("form checks: %w", err)
+	}
+	for _, c := range checks {
+		if c.ExerciseSlug != slug || c.Result == nil {
+			continue
+		}
+		return &FormNote{
+			AnalysisID: c.ID, At: c.CreatedAt,
+			Summary: c.Result.Summary, Confidence: c.Result.Confidence,
+			Cue: firstCue(c.Result.Issues),
+		}, nil
+	}
+	return nil, nil
+}
+
+// firstCue is the correction for the most serious issue, the earliest of
+// equals.
+func firstCue(issues []analysis.FormIssue) string {
+	rank := map[string]int{analysis.SeverityCritical: 3, analysis.SeverityModerate: 2, analysis.SeverityMinor: 1}
+	cue, best := "", 0
+	for _, issue := range issues {
+		if r := rank[issue.Severity]; r > best && issue.Correction != "" {
+			cue, best = issue.Correction, r
+		}
+	}
+	return cue
 }
 
 // Lift is the detail of one lift, by its key. ErrNotFound for a lift the
@@ -253,10 +315,15 @@ func (s *Service) Lift(ctx context.Context, user users.User, key string) (Lift, 
 		if h.Key != key {
 			continue
 		}
+		note, err := s.formNote(ctx, user.ID, h.Slug)
+		if err != nil {
+			return Lift{}, err
+		}
 		return Lift{
 			LiftForecast: forecast.ForecastLift(h, now, forecast.Pause{}),
 			History:      h.Points,
 			Past:         forecast.LiftMisses(h, now),
+			Form:         note,
 		}, nil
 	}
 	return Lift{}, apperr.ErrNotFound

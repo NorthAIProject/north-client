@@ -380,6 +380,20 @@ type LiftDetailView struct {
 	LiftView
 	History []HistoryPointView `json:"history"`
 	Past    []PastForecastView `json:"past"`
+	// FormNote is the newest form check of this lift; absent when there is
+	// none.
+	FormNote *FormNoteView `json:"formNote,omitempty"`
+}
+
+// FormNoteView is what the last form check of a lift said. Every field is
+// a plain string: a client decodes it whatever a later version adds.
+type FormNoteView struct {
+	AnalysisID string `json:"analysisId"`
+	Date       string `json:"date"`
+	Summary    string `json:"summary"`
+	// Confidence is high, medium or low: how clearly the clip showed the lift.
+	Confidence string `json:"confidence"`
+	Cue        string `json:"cue,omitempty"`
 }
 
 func (a *API) lift(c *echo.Context) error {
@@ -400,6 +414,12 @@ func (a *API) lift(c *echo.Context) error {
 	}
 	for _, m := range detail.Past {
 		out.Past = append(out.Past, PastForecastView{MadeOn: m.Origin.Format(dateLayout), Predicted: round(m.Predicted, 1), Actual: round(m.Actual, 1)})
+	}
+	if n := detail.Form; n != nil {
+		out.FormNote = &FormNoteView{
+			AnalysisID: n.AnalysisID.String(), Date: n.At.In(user.Location()).Format(dateLayout),
+			Summary: n.Summary, Confidence: n.Confidence, Cue: n.Cue,
+		}
 	}
 	return c.JSON(http.StatusOK, out)
 }

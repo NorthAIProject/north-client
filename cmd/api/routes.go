@@ -672,6 +672,7 @@ func routes(
 		Checks:       progressSvc,
 		Recovery:     horizon.NewMorningRecovery(insightsSvc),
 		Targets:      preferencesSvc,
+		Forms:        mediaSvc,
 		Snapshots:    horizon.NewRepository(pool),
 	})
 
