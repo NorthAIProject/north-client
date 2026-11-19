@@ -1,0 +1,32 @@
+{
+  "id": "d0d0d0d0-d0d0-d0d0-d0d0-d0d0d0d0d0d0",
+  "status": "done",
+  "result": {
+    "exercise": "Goblet squat",
+    "confidence": "high",
+    "summary": "Depth is good; knees drift in on the way up.",
+    "issues": [
+      {
+        "at": 4.5,
+        "severity": "moderate",
+        "observation": "Knees are inside the toes at the bottom.",
+        "correction": "Push the knees out over the toes.",
+        "frameUrl": "https://storage.example/form/f02.jpg?X-Amz-Expires=900\u0026X-Amz-Signature=abc"
+      }
+    ]
+  },
+  "createdAt": "2026-09-23T18:00:00Z",
+  "playbackUrl": "https://storage.example/form/d0d0.mp4?X-Amz-Expires=900\u0026X-Amz-Signature=abc",
+  "durationSeconds": 8,
+  "method": "stills",
+  "frames": [
+    {
+      "at": 0.5,
+      "url": "https://storage.example/form/f01.jpg?X-Amz-Expires=900\u0026X-Amz-Signature=abc"
+    },
+    {
+      "at": 4.5,
+      "url": "https://storage.example/form/f02.jpg?X-Amz-Expires=900\u0026X-Amz-Signature=abc"
+    }
+  ]
+}

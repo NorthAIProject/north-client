@@ -19,6 +19,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
+	"github.com/NorthAIProject/north-client/internal/ai"
+	"github.com/NorthAIProject/north-client/internal/ai/fake"
 	"github.com/NorthAIProject/north-client/internal/auth"
 	"github.com/NorthAIProject/north-client/internal/users"
 )
@@ -69,7 +71,10 @@ func TestAVideoUploadSpillsToDiskPastFourMebibytes(t *testing.T) {
 	t.Setenv("TMPDIR", dir)
 
 	store := &spyStorage{tempDir: dir}
-	api := NewAPI(&Service{storage: store}, nil)
+	// A provider that reads video, or the upload is refused before it is stored.
+	registry := ai.NewRegistry()
+	registry.Register(fake.New())
+	api := NewAPI(&Service{storage: store, registry: registry, provider: "fake"}, nil)
 
 	body, contentType := multipartVideo(t, "video", 8<<20)
 	req := httptest.NewRequest(http.MethodPost, "/form-checks", body)

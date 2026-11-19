@@ -11,16 +11,18 @@ import (
 )
 
 type FormAnalysis struct {
-	ID        uuid.UUID
-	MediaID   uuid.UUID
-	UserID    uuid.UUID
-	Status    string
-	Analysis  []byte
-	Error     string
-	Model     string
-	Provider  string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID              uuid.UUID
+	MediaID         uuid.UUID
+	UserID          uuid.UUID
+	Status          string
+	Analysis        []byte
+	Error           string
+	Model           string
+	Provider        string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DurationSeconds float64
+	ExerciseSlug    string
 }
 
 type Medium struct {

@@ -248,7 +248,7 @@ one.
 | `AI_PROVIDER` | `gemini` | Legacy single-provider form. Ignored when `AI_PROVIDER_CHAIN` is set |
 | `AI_MODEL` | empty | Leave empty so each provider uses its own model |
 | `AI_FAST_MODEL` | empty | Same. Used for cheaper side work (memory extraction) |
-| `AI_UPLOAD_PROVIDER` | `gemini` | Form video analysis. Needs a provider with a file-upload API; the OpenAI-dialect backends do not have one |
+| `AI_UPLOAD_PROVIDER` | `gemini` | Legacy form checks from builds that send video with no stills. Needs a provider with a file-upload API. Form checks are otherwise read from client-cut stills by the Anthropic client; where this provider has no key (production), a video-only upload is refused with "update the app" |
 | `ANTHROPIC_API_KEY` | empty | Khepri's own Claude key, native Messages API. Unset, no client is built |
 | `FIRST_WEEK_ENABLED` | `false` | `true` lets onboarding start a new person's first week (internal/firstweek). Weeks already running carry on when it is turned off |
 | `ANTHROPIC_FIRST` | `false` | `true` puts `anthropic` in front of `AI_PROVIDER_CHAIN`; the chain stays behind it as the fallback. `false` is the rollback |
@@ -536,7 +536,7 @@ agree.
 | `QUOTA_DOCUMENT_UPLOADS_PER_HOUR` | `60` |
 | `QUOTA_DOCUMENT_REINDEX_PER_HOUR` | `10` |
 | `QUOTA_REPORT_GENERATIONS_PER_HOUR` | `10` |
-| `QUOTA_MEDIA_ANALYSES_PER_HOUR` | `20` |
+| `QUOTA_MEDIA_ANALYSES_PER_HOUR` | `5` |
 | `QUOTA_ACCOUNT_EXPORTS_PER_HOUR` | `3` |
 
 Those are the fallback: what a free account gets, and what any tier without an
@@ -549,7 +549,7 @@ rather than a product limit.
 | `QUOTA_PRO_DOCUMENT_UPLOADS_PER_HOUR` | `300` |
 | `QUOTA_PRO_DOCUMENT_REINDEX_PER_HOUR` | `60` |
 | `QUOTA_PRO_REPORT_GENERATIONS_PER_HOUR` | `60` |
-| `QUOTA_PRO_MEDIA_ANALYSES_PER_HOUR` | `100` |
+| `QUOTA_PRO_MEDIA_ANALYSES_PER_HOUR` | `20` |
 | `QUOTA_PRO_ACCOUNT_EXPORTS_PER_HOUR` | `10` |
 
 Only the counts differ between tiers, never the window. `quota_counters` is

@@ -2806,7 +2806,14 @@ paths:
     post:
       operationId: uploadFormCheck
       summary: Upload a clip of a set to be analysed
-      description: Answers 202 with the check; poll it until done or failed.
+      description: |
+        Answers 202 with the check; poll it until done or failed.
+
+        The check is read from stills the client cuts out of the clip, not from
+        the video, which is kept for playback only. Send the stills as JPEG, in
+        clip order, with one time each. A request with no stills is refused
+        with a 422 on `video` wherever nothing can read video, which includes
+        production.
       requestBody:
         required: true
         content:
@@ -2819,6 +2826,27 @@ paths:
                   type: string
                   format: binary
                   description: A video up to 90 MB.
+                frames:
+                  type: array
+                  maxItems: 24
+                  description: >-
+                    JPEG stills cut from the clip, in clip order. At most 24, each at most
+                    1024 pixels on its longer side, 4 MB together.
+                  items:
+                    type: string
+                    format: binary
+                frameTimes:
+                  type: string
+                  description: >-
+                    The second of the clip each still was cut at, comma separated, one per
+                    still, strictly increasing and no later than durationSeconds.
+                  example: '0.5,1.0,1.5'
+                durationSeconds:
+                  type: number
+                  description: Length of the clip in seconds. Required with frames.
+                exerciseSlug:
+                  type: string
+                  description: The catalogue exercise filmed, when the person said.
       responses:
         '202':
           description: OK
@@ -14874,6 +14902,12 @@ components:
                     type: string
                   correction:
                     type: string
+                  frameUrl:
+                    type: string
+                    format: uri
+                    description: >-
+                      Short-lived signed link to the still this was seen in. Set by
+                      GET /form-checks/{analysisID} only, for a check read from stills.
         error:
           type: string
         createdAt:
@@ -14883,6 +14917,29 @@ components:
           type: string
           format: uri
           description: Short-lived signed link to the clip. Set by GET /form-checks/{analysisID} only; seek to each issue's at.
+        durationSeconds:
+          type: number
+          description: >-
+            Length of the clip in seconds; place an issue on a timeline at at/durationSeconds.
+            Absent on checks made before stills.
+        method:
+          type: string
+          description: >-
+            How the clip was read. An open string: "stills" (positions only, never tempo or
+            bar speed) or "video". Absent until the check is done, and on older checks.
+        frames:
+          type: array
+          description: The stills the check was read from, in clip order. Set by GET /form-checks/{analysisID} only.
+          items:
+            type: object
+            required: [at, url]
+            properties:
+              at:
+                type: number
+                description: Seconds into the clip.
+              url:
+                type: string
+                format: uri
     FormCheckList:
       type: object
       required: [checks]

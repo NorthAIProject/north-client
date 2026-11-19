@@ -169,6 +169,7 @@ func run() error {
 		Registry:   registry,
 		Provider:   cfg.AI.UploadProvider,
 		Model:      cfg.AI.Model,
+		Vision:     media.VisionFrom(registry),
 	})
 	mediaSvc.WithConsent(aiconsent.Checker(pool, cfg.AI.ConsentRequired))
 

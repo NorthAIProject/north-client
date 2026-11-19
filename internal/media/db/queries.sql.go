@@ -12,6 +12,28 @@ import (
 	"github.com/google/uuid"
 )
 
+const addAnalysisFrame = `-- name: AddAnalysisFrame :exec
+INSERT INTO form_analysis_frames (analysis_id, idx, media_id, at_seconds)
+VALUES ($1, $2, $3, $4)
+`
+
+type AddAnalysisFrameParams struct {
+	AnalysisID uuid.UUID
+	Idx        int32
+	MediaID    uuid.UUID
+	AtSeconds  float64
+}
+
+func (q *Queries) AddAnalysisFrame(ctx context.Context, arg AddAnalysisFrameParams) error {
+	_, err := q.db.Exec(ctx, addAnalysisFrame,
+		arg.AnalysisID,
+		arg.Idx,
+		arg.MediaID,
+		arg.AtSeconds,
+	)
+	return err
+}
+
 const completeAnalysis = `-- name: CompleteAnalysis :exec
 UPDATE form_analyses
 SET status = 'done', analysis = $2, model = $3, provider = $4, updated_at = now()
@@ -52,18 +74,25 @@ func (q *Queries) CountUserMediaByKind(ctx context.Context, arg CountUserMediaBy
 }
 
 const createAnalysis = `-- name: CreateAnalysis :one
-INSERT INTO form_analyses (media_id, user_id)
-VALUES ($1, $2)
-RETURNING id, media_id, user_id, status, analysis, error, model, provider, created_at, updated_at
+INSERT INTO form_analyses (media_id, user_id, duration_seconds, exercise_slug)
+VALUES ($1, $2, $3, $4)
+RETURNING id, media_id, user_id, status, analysis, error, model, provider, created_at, updated_at, duration_seconds, exercise_slug
 `
 
 type CreateAnalysisParams struct {
-	MediaID uuid.UUID
-	UserID  uuid.UUID
+	MediaID         uuid.UUID
+	UserID          uuid.UUID
+	DurationSeconds float64
+	ExerciseSlug    string
 }
 
 func (q *Queries) CreateAnalysis(ctx context.Context, arg CreateAnalysisParams) (FormAnalysis, error) {
-	row := q.db.QueryRow(ctx, createAnalysis, arg.MediaID, arg.UserID)
+	row := q.db.QueryRow(ctx, createAnalysis,
+		arg.MediaID,
+		arg.UserID,
+		arg.DurationSeconds,
+		arg.ExerciseSlug,
+	)
 	var i FormAnalysis
 	err := row.Scan(
 		&i.ID,
@@ -76,6 +105,8 @@ func (q *Queries) CreateAnalysis(ctx context.Context, arg CreateAnalysisParams) 
 		&i.Provider,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DurationSeconds,
+		&i.ExerciseSlug,
 	)
 	return i, err
 }
@@ -153,7 +184,7 @@ func (q *Queries) FailAnalysis(ctx context.Context, arg FailAnalysisParams) erro
 }
 
 const getAnalysis = `-- name: GetAnalysis :one
-SELECT id, media_id, user_id, status, analysis, error, model, provider, created_at, updated_at FROM form_analyses WHERE id = $1 AND user_id = $2
+SELECT id, media_id, user_id, status, analysis, error, model, provider, created_at, updated_at, duration_seconds, exercise_slug FROM form_analyses WHERE id = $1 AND user_id = $2
 `
 
 type GetAnalysisParams struct {
@@ -175,12 +206,14 @@ func (q *Queries) GetAnalysis(ctx context.Context, arg GetAnalysisParams) (FormA
 		&i.Provider,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DurationSeconds,
+		&i.ExerciseSlug,
 	)
 	return i, err
 }
 
 const getAnalysisByMedia = `-- name: GetAnalysisByMedia :one
-SELECT id, media_id, user_id, status, analysis, error, model, provider, created_at, updated_at FROM form_analyses WHERE media_id = $1
+SELECT id, media_id, user_id, status, analysis, error, model, provider, created_at, updated_at, duration_seconds, exercise_slug FROM form_analyses WHERE media_id = $1
 `
 
 func (q *Queries) GetAnalysisByMedia(ctx context.Context, mediaID uuid.UUID) (FormAnalysis, error) {
@@ -197,6 +230,8 @@ func (q *Queries) GetAnalysisByMedia(ctx context.Context, mediaID uuid.UUID) (Fo
 		&i.Provider,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DurationSeconds,
+		&i.ExerciseSlug,
 	)
 	return i, err
 }
@@ -301,7 +336,7 @@ func (q *Queries) LatestUserMediaOfKinds(ctx context.Context, arg LatestUserMedi
 }
 
 const listAnalyses = `-- name: ListAnalyses :many
-SELECT id, media_id, user_id, status, analysis, error, model, provider, created_at, updated_at FROM form_analyses
+SELECT id, media_id, user_id, status, analysis, error, model, provider, created_at, updated_at, duration_seconds, exercise_slug FROM form_analyses
 WHERE user_id = $1 AND status = 'done'
 ORDER BY created_at DESC
 LIMIT $2
@@ -332,6 +367,51 @@ func (q *Queries) ListAnalyses(ctx context.Context, arg ListAnalysesParams) ([]F
 			&i.Provider,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DurationSeconds,
+			&i.ExerciseSlug,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAnalysisFrames = `-- name: ListAnalysisFrames :many
+SELECT f.idx, f.media_id, f.at_seconds, m.storage_key, m.mime_type
+FROM form_analysis_frames f
+JOIN media m ON m.id = f.media_id
+WHERE f.analysis_id = $1
+ORDER BY f.idx
+`
+
+type ListAnalysisFramesRow struct {
+	Idx        int32
+	MediaID    uuid.UUID
+	AtSeconds  float64
+	StorageKey string
+	MimeType   string
+}
+
+// The stills of one check, in clip order, with where each is stored.
+func (q *Queries) ListAnalysisFrames(ctx context.Context, analysisID uuid.UUID) ([]ListAnalysisFramesRow, error) {
+	rows, err := q.db.Query(ctx, listAnalysisFrames, analysisID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAnalysisFramesRow{}
+	for rows.Next() {
+		var i ListAnalysisFramesRow
+		if err := rows.Scan(
+			&i.Idx,
+			&i.MediaID,
+			&i.AtSeconds,
+			&i.StorageKey,
+			&i.MimeType,
 		); err != nil {
 			return nil, err
 		}

@@ -32,6 +32,7 @@ const (
 	CoachLanguage       = "coach_language.md"
 	WorkoutPlan         = "workout_plan.md"
 	FormAnalysis        = "form_analysis.md"
+	FormAnalysisStills  = "form_analysis_stills.md"
 	ConversationTitle   = "conversation_title.md"
 	MemoryExtraction    = "memory_extraction.md"
 	WeeklyReview        = "weekly_review.md"
