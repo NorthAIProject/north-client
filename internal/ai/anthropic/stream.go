@@ -32,11 +32,8 @@ import (
 // be asked. The budget ends with the first visible output: past that, slowness
 // is the reply being written and there is nobody left to hand it to.
 func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
-	p := c.params(req)
 	searching := c.searches(req)
-	if searching {
-		p.Tools = append(p.Tools, c.webSearchTool())
-	}
+	p := c.params(req, searching)
 
 	stream, msg, held, ended, cancel, err := c.start(ctx, p)
 	if err != nil && searching && refusedRequest(err) {
@@ -47,7 +44,7 @@ func (c *Client) Chat(ctx context.Context, req ai.Request) (<-chan ai.StreamChun
 		// person yet, so nobody sees two answers.
 		middleware.FromContext(ctx).Warn("anthropic refused a request that offered web search; asking again without it",
 			slog.Any("error", err))
-		p = c.params(req)
+		p = c.params(req, false)
 		stream, msg, held, ended, cancel, err = c.start(ctx, p)
 	}
 	if err != nil {
