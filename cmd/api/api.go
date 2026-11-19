@@ -30,6 +30,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/fitness"
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/horizon"
 	"github.com/NorthAIProject/north-client/internal/inbox"
 	"github.com/NorthAIProject/north-client/internal/insights"
 	"github.com/NorthAIProject/north-client/internal/lifts"
@@ -186,6 +187,7 @@ func registerBearer(g *echo.Group, apis apiSet) {
 	apis.dailyPosts.Register(g)
 	apis.inbox.Register(g)
 	apis.lighter.Register(g)
+	apis.horizon.Register(g)
 	apis.outreach.Register(g)
 	apis.firstWeek.Register(g)
 	apis.push.Register(g)
@@ -250,6 +252,7 @@ type apiSet struct {
 	dailyPosts   *dailyposts.API
 	inbox        *inbox.API
 	lighter      *lighterday.API
+	horizon      *horizon.API
 	outreach     *outreach.API
 	firstWeek    *firstweek.API
 	push         *push.API

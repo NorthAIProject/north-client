@@ -5012,6 +5012,99 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /horizon:
+    get:
+      operationId: getHorizon
+      summary: Where training is heading, as ranges over the next twelve weeks
+      description: >-
+        Lifts, body weight and waist forecast from the person's own history, the
+        body figure on each day ahead, and a suggestion to take a lighter week.
+        Every number is a range, never a point. Arithmetic, with no model call:
+        the same history always gives the same answer. The query parameters are
+        a what-if; they change how fatigued each muscle is and when progress
+        resumes. Time off pauses a strength trend with no loss claimed, and an
+        extra session never raises a strength forecast. Every label is an open
+        string.
+      tags: [training]
+      parameters:
+        - name: skipWeeks
+          in: query
+          required: false
+          description: Weeks from today with no training, 0 to 4. Out of range is clamped.
+          schema:
+            type: integer
+        - name: extraSessions
+          in: query
+          required: false
+          description: Sessions a week added to the plan, 0 or 1.
+          schema:
+            type: integer
+        - name: deloadNow
+          in: query
+          required: false
+          description: Make the next week of training a lighter one.
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Horizon'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /horizon/lifts/{key}:
+    get:
+      operationId: getHorizonLift
+      summary: One lift's forecast with the history behind it
+      tags: [training]
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: The lift's key from GET /horizon — its catalog slug, or its name in lower case.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HorizonLiftDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /horizon/next-sets:
+    get:
+      operationId: getHorizonNextSets
+      summary: A suggested next working set for each lift
+      description: >-
+        Double progression from the last session: more reps at a load until
+        every set reaches the top of the plan's rep range with reps in reserve,
+        then more load. A lift with fewer than two earlier sessions, or never
+        loaded, gets no entry. A starting point for the set-entry form.
+      tags: [training]
+      parameters:
+        - name: keys
+          in: query
+          required: true
+          description: Lift keys, or the names the lifts were logged under (case ignored), comma separated, at most 20. Each entry comes back under the key as asked, lower-cased.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HorizonNextSets'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /today/lighter:
     get:
       operationId: getLighterDay
@@ -9009,6 +9102,15 @@ components:
       type: object
       required: [reviewing, planning, goals]
       properties:
+        suggestedVolume:
+          type: string
+          description: >-
+            A volume worth considering for the planned week — "deload" when the
+            forecast's lighter-week rule fires. Absent otherwise. An open string;
+            never applied for the person.
+        suggestedReason:
+          type: string
+          description: Why, in the reader's language. Present with suggestedVolume.
         reviewing:
           type: string
           format: date
@@ -9145,6 +9247,265 @@ components:
           description: A suggested knowledge-note title.
         why:
           type: string
+    HorizonPoint:
+      type: object
+      required: [offsetDays, low, mid, high]
+      properties:
+        offsetDays:
+          type: integer
+          description: Days from today. Daily to 14, then weekly to 84.
+        low:
+          type: number
+        mid:
+          type: number
+        high:
+          type: number
+    HorizonNeed:
+      type: object
+      required: [code, have, want, text]
+      properties:
+        code:
+          type: string
+          description: lift_sessions, lift_recent, weigh_ins or waist_checks. An open string.
+        have:
+          type: integer
+        want:
+          type: integer
+        text:
+          type: string
+    HorizonTrackRecord:
+      type: object
+      required: [horizonWeeks, hits, total, kind, text]
+      properties:
+        horizonWeeks:
+          type: integer
+        hits:
+          type: integer
+        total:
+          type: integer
+        kind:
+          type: string
+          description: >-
+            backtest (what the method would have forecast, recomputed) or
+            recorded (forecasts stored at the time). An open string.
+        text:
+          type: string
+    HorizonSeries:
+      type: object
+      required: [status, unit, needs, points]
+      properties:
+        status:
+          type: string
+          description: ready or insufficient. An open string.
+        unit:
+          type: string
+          description: kg or cm.
+        needs:
+          type: array
+          items:
+            $ref: '#/components/schemas/HorizonNeed'
+        now:
+          type: number
+          description: The fitted level today. Absent when insufficient.
+        points:
+          type: array
+          description: From day 0. May stop before day 84 — never further ahead than the history is long.
+          items:
+            $ref: '#/components/schemas/HorizonPoint'
+        trackRecord:
+          $ref: '#/components/schemas/HorizonTrackRecord'
+    HorizonLift:
+      allOf:
+        - $ref: '#/components/schemas/HorizonSeries'
+        - type: object
+          required: [key, name, plateau, plateauText]
+          properties:
+            key:
+              type: string
+            name:
+              type: string
+            slug:
+              type: string
+            plateau:
+              type: string
+              description: progressing, holding, plateau, sliding or insufficient. An open string.
+            plateauText:
+              type: string
+    HorizonLiftDetail:
+      allOf:
+        - $ref: '#/components/schemas/HorizonLift'
+        - type: object
+          required: [history, past]
+          properties:
+            history:
+              type: array
+              description: The best estimated one-rep max of each day the lift was trained.
+              items:
+                type: object
+                required: [date, value]
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  value:
+                    type: number
+            past:
+              type: array
+              description: Four-week forecasts the method would have made, and what then happened.
+              items:
+                type: object
+                required: [madeOn, predicted, actual]
+                properties:
+                  madeOn:
+                    type: string
+                    format: date
+                  predicted:
+                    type: number
+                  actual:
+                    type: number
+    HorizonFrame:
+      type: object
+      required: [offsetDays, date, shape, regions]
+      properties:
+        offsetDays:
+          type: integer
+        date:
+          type: string
+          format: date
+        shape:
+          type: object
+          description: The body figure's four morphs, as GET /body/current gives them.
+          required: [waist, hips, chest, overall]
+          properties:
+            waist:
+              type: number
+            hips:
+              type: number
+            chest:
+              type: number
+            overall:
+              type: number
+        regions:
+          type: array
+          items:
+            type: object
+            required: [id, fatigue, retained]
+            properties:
+              id:
+                type: string
+                description: A body-figure region key.
+              fatigue:
+                type: number
+                description: 0 (fresh) to 1 (spent).
+              retained:
+                type: number
+                description: The body map's detraining shade, 1 (trained within two weeks) down to 0.5. For drawing the figure; not a share of any lift's strength.
+    Horizon:
+      type: object
+      required: [status, generatedAt, scenario, needs, summary, disclaimer, hasPlan, frames, lifts, bodyWeight, waist, deload]
+      properties:
+        status:
+          type: string
+          description: ready when at least one series could be forecast, else insufficient. An open string.
+        generatedAt:
+          type: string
+          format: date-time
+        scenario:
+          type: object
+          required: [skipWeeks, extraSessions, deloadNow]
+          properties:
+            skipWeeks:
+              type: integer
+            extraSessions:
+              type: integer
+            deloadNow:
+              type: boolean
+        needs:
+          type: array
+          items:
+            $ref: '#/components/schemas/HorizonNeed'
+        summary:
+          type: array
+          items:
+            type: string
+        disclaimer:
+          type: string
+        hasPlan:
+          type: boolean
+          description: False when no plan is followed; the frames then show training stopping.
+        frames:
+          type: array
+          items:
+            $ref: '#/components/schemas/HorizonFrame'
+        lifts:
+          type: array
+          items:
+            $ref: '#/components/schemas/HorizonLift'
+        bodyWeight:
+          $ref: '#/components/schemas/HorizonSeries'
+        waist:
+          $ref: '#/components/schemas/HorizonSeries'
+        goalEta:
+          type: object
+          required: [targetKg, state, text]
+          properties:
+            targetKg:
+              type: number
+            state:
+              type: string
+              description: reached, window, open or unreachable. An open string.
+            earliest:
+              type: string
+              format: date
+            latest:
+              type: string
+              format: date
+            text:
+              type: string
+        deload:
+          type: object
+          required: [suggested, reasons]
+          properties:
+            suggested:
+              type: boolean
+            suggestedVolume:
+              type: string
+              description: deload when suggested — the volume PUT /weekly/review takes. Never applied for the person.
+            reasons:
+              type: array
+              items:
+                type: object
+                required: [code, text]
+                properties:
+                  code:
+                    type: string
+                  text:
+                    type: string
+    HorizonNextSets:
+      type: object
+      required: [sets]
+      properties:
+        sets:
+          type: array
+          items:
+            type: object
+            required: [key, weightKg, reps, reason, reasonText, lastWeightKg, lastReps]
+            properties:
+              key:
+                type: string
+              weightKg:
+                type: number
+              reps:
+                type: integer
+              reason:
+                type: string
+                description: add_load, add_rep, repeat or lighter. An open string.
+              reasonText:
+                type: string
+              lastWeightKg:
+                type: number
+              lastReps:
+                type: integer
     LighterDay:
       type: object
       required: [offered, readiness]

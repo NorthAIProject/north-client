@@ -49,6 +49,7 @@ import (
 	"github.com/NorthAIProject/north-client/internal/goals"
 	"github.com/NorthAIProject/north-client/internal/habits"
 	"github.com/NorthAIProject/north-client/internal/health"
+	"github.com/NorthAIProject/north-client/internal/horizon"
 	"github.com/NorthAIProject/north-client/internal/hydration"
 	"github.com/NorthAIProject/north-client/internal/inbox"
 	"github.com/NorthAIProject/north-client/internal/insights"
@@ -483,6 +484,20 @@ func run() error {
 	lighterSvc := lighterday.NewService(lighterday.NewRepository(pool), recoverySrc, workoutSvc).WithAwards(awardsSvc)
 	workoutSvc.WithLighter(lighterSvc)
 
+	// Horizon's track record: each Monday the week's forecasts are stored, to
+	// be scored against what happened once their day comes.
+	horizonSvc := horizon.NewService(horizon.Options{
+		Lifts:        lifts.NewService(lifts.NewRepository(pool), exercises.NewService(exercises.NewRepository(pool))),
+		Plans:        workoutSvc,
+		Measurements: biometricSvc,
+		Readings:     healthReadings,
+		Checks:       progresschecks.NewService(progresschecks.NewRepository(pool), mediaSvc, biometricSvc),
+		Recovery:     horizon.NewMorningRecovery(recoverySrc),
+		Targets:      preferences.NewService(preferences.NewRepository(pool)),
+		Snapshots:    horizon.NewRepository(pool),
+	})
+	worker.Register(jobs.KindSweepHorizon, horizon.NewSweeper(userSvc, horizonSvc, log).HandleSweep)
+
 	// The first week (internal/firstweek): days whose log turned up while the
 	// person was not looking are recorded here, and weeks nobody closed are
 	// ended. Runs whatever FIRST_WEEK_ENABLED says: the switch stops new weeks
@@ -662,6 +677,7 @@ func run() error {
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepAreaStreaks, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepCrewChallenges, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepBadges, struct{}{})
+	worker.RegisterPeriodic(time.Hour, jobs.KindSweepHorizon, struct{}{})
 	worker.RegisterPeriodic(24*time.Hour, jobs.KindSweepRarity, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepSummaries, struct{}{})
 	worker.RegisterPeriodic(time.Hour, jobs.KindSweepStrava, struct{}{})
