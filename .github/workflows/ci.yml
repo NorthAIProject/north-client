@@ -12,13 +12,25 @@ concurrency:
 
 jobs:
   test:
-    name: Test & Build
+    # Production runs Postgres 18 (platform/infra apps/khepri/data/postgres.yaml).
+    # The pg19 leg is an early warning for the planned 18 -> 19 upgrade and is
+    # allowed to fail; the pg18 leg keeps the original job name.
+    name: Test & Build${{ matrix.pg != '18' && format(' (pg{0}, allowed to fail)', matrix.pg) || '' }}
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pg: "18"
+            experimental: false
+          - pg: "19"
+            experimental: true
 
     services:
       postgres:
         # Match docker-compose: pgvector image so extensions stay available.
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg${{ matrix.pg }}
         env:
           POSTGRES_USER: north
           POSTGRES_PASSWORD: north

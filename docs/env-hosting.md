@@ -50,7 +50,7 @@ this list before the first public cutover.
 |---|---|---|
 | `GO_ENV` | `production` | Cookie flags, CSRF, JSON logs, embedded assets. The image already sets this; keep it explicit in the platform Secret/ConfigMap so a override cannot slip back to `development` |
 | `BASE_URL` | `https://www.duxos.ai` | Public origin with **no** `:8090`. Builds MCP snippets, OAuth callbacks, WebAuthn RP ID, Strava redirect, Telegram webhook URL, password-reset links |
-| `DATABASE_URL` | cluster Postgres DSN | **Required to boot.** Needs pgvector (the Compose image is `pgvector/pgvector:pg17`) |
+| `DATABASE_URL` | cluster Postgres DSN | **Required to boot.** Needs pgvector (the Compose image is `pgvector/pgvector:pg18`) |
 | `ENCRYPTION_KEY` | `openssl rand -base64 32` | Seals BYOK provider keys and Strava tokens. Unset still boots, but BYOK is unavailable and Strava tokens are stored in plaintext. Set-but-malformed **fails the boot** |
 | `STORAGE_ENDPOINT` | the real S3 / R2 / MinIO URL | Default is `http://localhost:9000` |
 | `STORAGE_BUCKET` | the media bucket | Default `north-media` is fine if that bucket exists |
