@@ -144,7 +144,7 @@ func (q *Queries) CountCentury(ctx context.Context, userID uuid.UUID) (int32, er
 const countConnectedDays = `-- name: CountConnectedDays :one
 SELECT count(DISTINCT day)::int FROM (
     SELECT (hm.started_at AT TIME ZONE $1::text)::date AS day
-    FROM health_metrics hm WHERE hm.user_id = $2::uuid AND hm.source = 'apple_health'
+    FROM health_metrics hm WHERE hm.user_id = $2::uuid AND hm.source IN ('apple_health', 'health_connect')
     UNION
     SELECT (a.started_at AT TIME ZONE $1::text)::date AS day
     FROM activity_sessions a WHERE a.user_id = $2::uuid AND a.source = 'strava'
