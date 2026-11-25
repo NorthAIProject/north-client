@@ -165,8 +165,8 @@ type CheckInRequest struct {
 	Stress       *int     `json:"stress,omitempty"`
 	SleepQuality *int     `json:"sleepQuality,omitempty"`
 	Tags         []string `json:"tags,omitempty"`
-	// Source is "ios", "siri", "widget", "notification" or "web" (the
-	// SvelteKit web app); anything else is recorded as "ios". It is stored
+	// Source is "ios", "android", "siri", "widget", "notification" or "web"
+	// (the SvelteKit web app); anything else is recorded as "ios". It is stored
 	// only when the request creates the day's check-in.
 	Source string `json:"source,omitempty"`
 }
@@ -176,7 +176,7 @@ type CheckInRequest struct {
 func (req CheckInRequest) input() Input {
 	source := checkin.SourceIOS
 	switch s := checkin.Source(req.Source); s {
-	case checkin.SourceSiri, checkin.SourceWidget, checkin.SourceNotification, checkin.SourceWeb:
+	case checkin.SourceAndroid, checkin.SourceSiri, checkin.SourceWidget, checkin.SourceNotification, checkin.SourceWeb:
 		source = s
 	}
 	return Input{

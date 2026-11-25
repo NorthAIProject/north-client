@@ -88,6 +88,7 @@ func TestCheckInRequestRecordsTheNativeSurface(t *testing.T) {
 		"notification": checkin.SourceNotification,
 		"":             checkin.SourceIOS,
 		"web":          checkin.SourceWeb,
+		"android":      checkin.SourceAndroid,
 		"capture":      checkin.SourceIOS,
 	} {
 		if got := (CheckInRequest{Mood: 3, Energy: 3, Source: in}).input().Source; got != want {
