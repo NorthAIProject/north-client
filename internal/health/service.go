@@ -72,11 +72,11 @@ func (s *Service) Ingest(ctx context.Context, userID uuid.UUID, source string, r
 		return Result{}, err
 	}
 
-	// Apple Health has no connect step: the app simply starts sending. The
-	// first delivery is therefore the moment it counts as a source, and the
-	// check runs only when there is a funnel to tell.
+	// A phone health store has no connect step: the app simply starts
+	// sending. The first delivery is therefore the moment it counts as a
+	// source, and the check runs only when there is a funnel to tell.
 	first := false
-	if source == SourceAppleHealth && s.funnel != nil {
+	if isDeviceSource(source) && s.funnel != nil {
 		had, err := s.repo.HasFromSource(ctx, userID, source)
 		if err != nil {
 			return Result{}, err
@@ -90,11 +90,11 @@ func (s *Service) Ingest(ctx context.Context, userID uuid.UUID, source string, r
 	}
 	// Only a connected device counts toward connected_30; a typed cuff reading
 	// does not, so it skips the check.
-	if s.awards != nil && written > 0 && source == SourceAppleHealth {
+	if s.awards != nil && written > 0 && isDeviceSource(source) {
 		s.awards.Check(ctx, userID, time.Now(), award.Body)
 	}
 	if first && written > 0 {
-		s.funnel.SourceConnected(ctx, userID, analytics.SourceAppleHealth)
+		s.funnel.SourceConnected(ctx, userID, source)
 	}
 	return Result{Written: written}, nil
 }

@@ -154,6 +154,8 @@ const (
 	// SourceAppleHealth is the phone's first health delivery. The app reads
 	// Apple Health and speaks for it, so there is no connect step to count.
 	SourceAppleHealth = "apple_health"
+	// SourceHealthConnect is the same moment on Android.
+	SourceHealthConnect = "health_connect"
 )
 
 // Ways an account can come into existence, for EventRegistered.

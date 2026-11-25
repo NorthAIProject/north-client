@@ -6995,10 +6995,11 @@ paths:
   /health/samples:
     post:
       operationId: syncHealth
-      summary: Store readings and workouts read from Apple Health on the phone
+      summary: Store readings and workouts read from the phone's health store (Apple Health or Health Connect)
       description: >-
-        Replaying a batch is safe: readings are stored as sent and workouts are
-        deduplicated by their Apple Health id, and a workout another provider
+        Replaying a batch is safe: readings are stored as sent, replacing the
+        same source's reading for the same metric and start, and workouts are
+        deduplicated by the health store's id, and a workout another provider
         already sent (the same run from Strava) is recognised by its time and
         not counted twice.
       requestBody:
@@ -7020,12 +7021,22 @@ paths:
           $ref: '#/components/responses/ValidationError'
     delete:
       operationId: forgetHealth
-      summary: Delete every reading Apple Health sent; workouts stay in activity history
+      summary: Delete every reading one phone health store sent; workouts stay in activity history
+      parameters:
+        - name: source
+          in: query
+          required: false
+          description: The health store whose readings to delete. Defaults to apple_health.
+          schema:
+            type: string
+            enum: [apple_health, health_connect]
       responses:
         '204':
           description: Done
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /me:
     get:
       operationId: getMe
@@ -17450,6 +17461,10 @@ components:
     HealthSyncRequest:
       type: object
       properties:
+        source:
+          type: string
+          enum: [apple_health, health_connect]
+          description: The phone health store the batch was read from. Absent means apple_health.
         readings:
           type: array
           items:

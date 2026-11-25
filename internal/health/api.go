@@ -17,6 +17,28 @@ import (
 // the package note).
 const SourceAppleHealth = "apple_health"
 
+// SourceHealthConnect is the source the Android app writes under: Health
+// Connect on the phone, read and sent the same way Apple Health is.
+const SourceHealthConnect = "health_connect"
+
+// deviceSource names the phone health store a request speaks for. Absent means
+// Apple Health, which is what every iOS build sends without saying so.
+func deviceSource(raw string) (string, error) {
+	switch raw {
+	case "", SourceAppleHealth:
+		return SourceAppleHealth, nil
+	case SourceHealthConnect:
+		return SourceHealthConnect, nil
+	}
+	return "", apperr.Wrap(apperr.ErrValidation, "unknown health source")
+}
+
+// isDeviceSource reports whether readings came from a phone's health store,
+// as opposed to typed in or pushed through a bridge.
+func isDeviceSource(source string) bool {
+	return source == SourceAppleHealth || source == SourceHealthConnect
+}
+
 // maxSyncBytes bounds one sync from the phone, and matches the JSON group's
 // cap in cmd/api. The phone sends daily aggregates, a few kilobytes a sync;
 // raw per-beat samples, which would need more, go to /ingest/health instead.
@@ -71,6 +93,8 @@ type SampleWorkout struct {
 }
 
 type SyncRequest struct {
+	// Source is apple_health (the default) or health_connect.
+	Source   string          `json:"source,omitempty"`
 	Readings []SampleReading `json:"readings"`
 	Workouts []SampleWorkout `json:"workouts"`
 }
@@ -92,6 +116,11 @@ func (a *API) sync(c *echo.Context) error {
 		return httpx.Fail(apperr.Wrap(apperr.ErrValidation, "empty sync"), "There was nothing to sync.")
 	}
 
+	source, err := deviceSource(req.Source)
+	if err != nil {
+		return httpx.Fail(err, "That health source is not supported.")
+	}
+
 	ctx := c.Request().Context()
 	userID := auth.MustUser(ctx).ID
 	var out SyncResult
@@ -101,7 +130,7 @@ func (a *API) sync(c *echo.Context) error {
 		for _, in := range req.Readings {
 			readings = append(readings, Reading(in))
 		}
-		result, err := a.svc.Ingest(ctx, userID, SourceAppleHealth, readings)
+		result, err := a.svc.Ingest(ctx, userID, source, readings)
 		if err != nil {
 			return httpx.Fail(err, "The health data could not be saved.")
 		}
@@ -113,7 +142,7 @@ func (a *API) sync(c *echo.Context) error {
 		for _, in := range req.Workouts {
 			workouts = append(workouts, Workout(in))
 		}
-		result, err := a.svc.IngestWorkouts(ctx, userID, SourceAppleHealth, workouts)
+		result, err := a.svc.IngestWorkouts(ctx, userID, source, workouts)
 		if err != nil {
 			return httpx.Fail(err, "The workouts could not be saved.")
 		}
@@ -123,12 +152,17 @@ func (a *API) sync(c *echo.Context) error {
 	return c.JSON(http.StatusOK, out)
 }
 
-// forget deletes every reading Apple Health sent, on the person's request.
+// forget deletes every reading one phone health store sent (Apple Health unless
+// ?source=health_connect), on the person's request.
 // Workouts already in their activity history stay: those are sessions they
 // did, and removing one is its own decision on the activity page.
 func (a *API) forget(c *echo.Context) error {
+	source, err := deviceSource(c.QueryParam("source"))
+	if err != nil {
+		return httpx.Fail(err, "That health source is not supported.")
+	}
 	ctx := c.Request().Context()
-	if err := a.svc.Forget(ctx, auth.MustUser(ctx).ID, SourceAppleHealth); err != nil {
+	if err := a.svc.Forget(ctx, auth.MustUser(ctx).ID, source); err != nil {
 		return httpx.Fail(err, "The health data could not be removed.")
 	}
 	return c.NoContent(http.StatusNoContent)
