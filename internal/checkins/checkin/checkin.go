@@ -53,6 +53,7 @@ const (
 	SourceUnknown Source = "unknown"
 	SourceWeb     Source = "web"
 	SourceIOS     Source = "ios"
+	SourceAndroid Source = "android"
 	SourceSiri    Source = "siri"
 	SourceCoach   Source = "coach"
 	SourceMCP     Source = "mcp"

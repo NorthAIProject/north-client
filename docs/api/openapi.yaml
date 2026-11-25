@@ -14951,7 +14951,7 @@ components:
             type: string
         source:
           type: string
-          description: Where the check-in was filed - ios, siri, widget, notification or web. Anything else is recorded as ios.
+          description: Where the check-in was filed - ios, android, siri, widget, notification or web. Anything else is recorded as ios.
     ReportSummary:
       type: object
       required: [id, kind, title, periodStart, periodEnd, status, archived]
