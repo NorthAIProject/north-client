@@ -106,7 +106,12 @@ var equipmentRules = []equipmentRule{
 	{"machine", []string{"machine", "leg press", "lat pulldown", "cable", "smith", "pec deck", "hack squat", "leg extension", "leg curl"}},
 	{"pull-up bar", []string{"pull-up", "pull up", "pullup", "chin-up", "chin up", "chinup", "hanging leg raise"}},
 	{"resistance band", []string{"resistance band", "band"}},
-	{"rower", []string{"row machine", "rowing machine", "erg"}},
+	// Never the bare "erg": it sits inside "ergométrica" (an exercise bike in
+	// Portuguese and Spanish), "undergrip" and "convergent", and rower is
+	// checked before bike. "Rowing machine" is usually claimed by the machine
+	// rule above; these catch what that misses. "skierg" keeps the catalog's
+	// SkiErg row (filed under rower) in step with the validator.
+	{"rower", []string{"row machine", "rowing machine", "rower", "rowing erg", "rowerg", "skierg"}},
 	{"treadmill", []string{"treadmill"}},
 	{"bike", []string{"bike", "cycling", "assault bike"}},
 	{"bench", []string{"bench"}},
