@@ -342,3 +342,55 @@ func TestEquipmentAliasesDoNotGrantOtherEquipment(t *testing.T) {
 		t.Fatalf("a barbell squat must still be refused, got %v", problems)
 	}
 }
+
+// The bug this test exists for: the rower rule matched the bare substring
+// "erg", and rower is checked before bike. A Portuguese plan for someone with
+// a bike and no rower asked for "Bicicleta ergométrica" (an exercise bike),
+// the validator called it a rower, and the correction it sent back was
+// impossible to satisfy: both attempts failed and the person got "A plan could
+// not be made" (prod, 2026-11-26). "erg" also sits inside English words such as
+// "undergrip" and "convergent".
+func TestErgInsideAWordIsNotARower(t *testing.T) {
+	t.Parallel()
+
+	// The equipment list from the failed request: a bike, no rower.
+	intake := Intake{
+		Goal: "general fitness", Experience: "beginner",
+		DaysPerWeek: 1, SessionMinutes: 45,
+		Equipment: []string{
+			"resistance band", "treadmill", "pull-up bar", "machine", "dumbbell",
+			"barbell", "bench", "kettlebell", "bike",
+		},
+	}
+
+	plan := planWith(day("Monday",
+		exercise("Bicicleta ergométrica leve", "bike"),
+		exercise("Bicicleta ergométrica (bike) em ritmo leve", ""),
+		exercise("Undergrip row", "machine"),
+		exercise("Convergent press", "machine"),
+		exercise("Bike erg intervals", ""),
+	))
+
+	if problems := Validate(plan, intake); len(problems) != 0 {
+		t.Fatalf("an exercise bike must not be read as a rower: %v", problems)
+	}
+}
+
+func TestRowersAreStillRecognised(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ name, equipment, want string }{
+		{"Rower 500m repeats", "", "rower"},
+		{"RowErg 2k test", "", "rower"},
+		{"Rowing erg sprints", "", "rower"},
+		{"SkiErg", "", "rower"},
+		{"Bicicleta ergométrica leve", "", ""},
+		{"Bike erg intervals", "", "bike"},
+	}
+
+	for _, tt := range tests {
+		if got := InferEquipment(tt.name, tt.equipment); got != tt.want {
+			t.Errorf("InferEquipment(%q, %q) = %q, want %q", tt.name, tt.equipment, got, tt.want)
+		}
+	}
+}
